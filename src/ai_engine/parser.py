@@ -1,6 +1,9 @@
 import json
 
-from src.ai_engine.schemas import validate_homework_check_result
+from src.ai_engine.schemas import (
+    validate_homework_check_result,
+    validate_image_transcription_result,
+)
 
 
 def parse_json_safely(raw_text: str) -> dict:
@@ -24,3 +27,8 @@ def parse_json_safely(raw_text: str) -> dict:
 def parse_homework_check_response(raw_text: str) -> dict:
     data = parse_json_safely(raw_text)
     return validate_homework_check_result(data)
+
+
+def parse_image_transcription_response(raw_text: str) -> dict:
+    data = parse_json_safely(raw_text)
+    return validate_image_transcription_result(data)

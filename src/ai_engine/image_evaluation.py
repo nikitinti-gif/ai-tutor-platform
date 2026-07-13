@@ -84,4 +84,6 @@ def evaluate_synthetic_image_case(case: dict | None = None) -> dict:
         "feedback": result["feedback"],
         "hint": result["hint"],
         "error_type": result["error_type"],
+        "image_legibility": result.get("image_legibility"),
+        "image_transcription": result.get("image_transcription"),
     }

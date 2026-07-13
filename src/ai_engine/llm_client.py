@@ -8,9 +8,12 @@ from dotenv import load_dotenv
 from src.ai_engine.prompts import (
     HOMEWORK_CHECK_SYSTEM_PROMPT,
     build_homework_check_prompt,
-    build_homework_image_check_prompt,
+    build_homework_image_transcription_prompt,
 )
-from src.ai_engine.schemas import HOMEWORK_CHECK_RESPONSE_SCHEMA
+from src.ai_engine.schemas import (
+    HOMEWORK_CHECK_RESPONSE_SCHEMA,
+    IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA,
+)
 
 
 DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
@@ -162,12 +165,10 @@ class LLMClient:
 
         return interaction.output_text
 
-    def check_homework_image(
+    def transcribe_homework_image(
         self,
         image_bytes: bytes,
         mime_type: str,
-        task_text: str | None = None,
-        topic: str | None = None,
         synthetic_test: bool = False,
     ) -> str:
         if not synthetic_test:
@@ -186,14 +187,7 @@ class LLMClient:
                 "JPEG, WEBP, HEIC или HEIF."
             )
 
-        user_prompt = build_homework_image_check_prompt(
-            task_text=task_text or "",
-            topic=topic,
-        )
-        full_prompt = (
-            f"{HOMEWORK_CHECK_SYSTEM_PROMPT}\n\n"
-            f"{user_prompt}"
-        )
+        transcription_prompt = build_homework_image_transcription_prompt()
         image_part = types.Part.from_bytes(
             data=image_bytes,
             mime_type=normalized_mime_type,
@@ -201,16 +195,18 @@ class LLMClient:
 
         response = self.client.models.generate_content(
             model=self.model,
-            contents=[full_prompt, image_part],
+            contents=[transcription_prompt, image_part],
             config={
                 "response_mime_type": "application/json",
-                "response_json_schema": HOMEWORK_CHECK_RESPONSE_SCHEMA,
+                "response_json_schema": (
+                    IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA
+                ),
             },
         )
 
         if not response.text:
             raise LLMResponseError(
-                "Gemini не вернул результат проверки изображения."
+                "Gemini не вернул транскрипцию изображения."
             )
 
         return response.text

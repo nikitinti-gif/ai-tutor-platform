@@ -1,5 +1,8 @@
 from src.ai_engine.llm_client import LLMClient
-from src.ai_engine.parser import parse_homework_check_response
+from src.ai_engine.parser import (
+    parse_homework_check_response,
+    parse_image_transcription_response,
+)
 
 
 def check_homework_text(
@@ -56,15 +59,42 @@ def check_homework_image(
         }
 
     client = LLMClient()
-    raw_response = client.check_homework_image(
+    raw_transcription = client.transcribe_homework_image(
         image_bytes=image_bytes,
         mime_type=mime_type,
+        synthetic_test=True,
+    )
+    transcription = parse_image_transcription_response(raw_transcription)
+
+    if transcription["legibility"] != "readable":
+        return {
+            "status": "unclear",
+            "confidence": transcription["confidence"],
+            "feedback": (
+                "Изображение недостаточно читаемо для надёжной проверки."
+            ),
+            "hint": (
+                "Сделай новое фото без размытия, чтобы всё решение "
+                "и отступы были видны."
+            ),
+            "error_type": "unreadable_image",
+            "topic": topic,
+            "needs_teacher_review": True,
+            "image_legibility": transcription["legibility"],
+            "image_transcription": transcription["transcription"],
+        }
+
+    raw_response = client.check_homework_text(
+        text=transcription["transcription"],
         task_text=task_text,
         topic=topic,
         synthetic_test=True,
     )
+    result = parse_homework_check_response(raw_response)
+    result["image_legibility"] = transcription["legibility"]
+    result["image_transcription"] = transcription["transcription"]
 
-    return parse_homework_check_response(raw_response)
+    return result
 
 
 def render_check_result_for_student(result: dict) -> str:

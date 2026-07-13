@@ -4,6 +4,12 @@ HOMEWORK_CHECK_STATUSES = {
     "unclear",
 }
 
+IMAGE_LEGIBILITY_STATUSES = {
+    "readable",
+    "partial",
+    "unreadable",
+}
+
 
 HOMEWORK_CHECK_RESPONSE_SCHEMA = {
     "type": "object",
@@ -34,6 +40,29 @@ HOMEWORK_CHECK_RESPONSE_SCHEMA = {
 }
 
 
+IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "legibility": {
+            "type": "string",
+            "enum": sorted(IMAGE_LEGIBILITY_STATUSES),
+        },
+        "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+        },
+        "transcription": {"type": "string"},
+    },
+    "required": [
+        "legibility",
+        "confidence",
+        "transcription",
+    ],
+    "additionalProperties": False,
+}
+
+
 def default_homework_check_result() -> dict:
     return {
         "status": "unclear",
@@ -49,16 +78,27 @@ def default_homework_check_result() -> dict:
     }
 
 
-def _clean_optional_string(value) -> str | None:
-    if value is None:
-        return None
+def default_image_transcription_result() -> dict:
+    return {
+        "legibility": "unreadable",
+        "confidence": 0.0,
+        "transcription": "",
+    }
 
-    if not isinstance(value, str):
+
+def _clean_optional_string(value) -> str | None:
+    if value is None or not isinstance(value, str):
         return None
 
     value = value.strip()
-
     return value or None
+
+
+def _bounded_confidence(value) -> float:
+    try:
+        return max(0.0, min(float(value), 1.0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def validate_homework_check_result(data: dict) -> dict:
@@ -68,35 +108,49 @@ def validate_homework_check_result(data: dict) -> dict:
         return result
 
     status = data.get("status")
-
     if status in HOMEWORK_CHECK_STATUSES:
         result["status"] = status
 
-    try:
-        confidence = float(data.get("confidence", 0.0))
-        result["confidence"] = max(0.0, min(confidence, 1.0))
-    except (TypeError, ValueError):
-        result["confidence"] = 0.0
+    result["confidence"] = _bounded_confidence(
+        data.get("confidence", 0.0)
+    )
 
     feedback = _clean_optional_string(data.get("feedback"))
     hint = _clean_optional_string(data.get("hint"))
-
     if feedback:
         result["feedback"] = feedback
-
     if hint:
         result["hint"] = hint
 
     result["error_type"] = _clean_optional_string(
         data.get("error_type")
     )
-    result["topic"] = _clean_optional_string(
-        data.get("topic")
-    )
-
+    result["topic"] = _clean_optional_string(data.get("topic"))
     result["needs_teacher_review"] = (
         result["status"] == "unclear"
         or result["confidence"] < 0.85
     )
+
+    return result
+
+
+def validate_image_transcription_result(data: dict) -> dict:
+    result = default_image_transcription_result()
+
+    if not isinstance(data, dict):
+        return result
+
+    legibility = data.get("legibility")
+    if legibility in IMAGE_LEGIBILITY_STATUSES:
+        result["legibility"] = legibility
+
+    result["confidence"] = _bounded_confidence(
+        data.get("confidence", 0.0)
+    )
+    transcription = _clean_optional_string(data.get("transcription"))
+    result["transcription"] = transcription or ""
+
+    if result["legibility"] == "readable" and not transcription:
+        result["legibility"] = "partial"
 
     return result
