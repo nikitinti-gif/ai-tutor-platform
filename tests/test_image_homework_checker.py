@@ -2,9 +2,15 @@ import unittest
 from unittest.mock import Mock, patch
 
 from src.ai_engine.homework_checker import check_homework_image
+from src.ai_engine.image_evaluation import SYNTHETIC_IMAGE_CASES
 
 
 class ImageHomeworkCheckerTest(unittest.TestCase):
+    def test_all_synthetic_image_fixtures_exist(self):
+        self.assertEqual(len(SYNTHETIC_IMAGE_CASES), 5)
+        for case in SYNTHETIC_IMAGE_CASES:
+            self.assertTrue(case["image_path"].is_file(), case["id"])
+
     @patch("src.ai_engine.homework_checker.LLMClient")
     def test_synthetic_image_response_is_parsed(self, client_class):
         client = Mock()

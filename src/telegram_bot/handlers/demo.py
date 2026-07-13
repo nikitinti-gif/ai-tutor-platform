@@ -10,7 +10,10 @@ from src.ai_engine.evaluation import (
     SYNTHETIC_CASES,
     evaluate_synthetic_case,
 )
-from src.ai_engine.image_evaluation import evaluate_synthetic_image_case
+from src.ai_engine.image_evaluation import (
+    SYNTHETIC_IMAGE_CASES,
+    evaluate_synthetic_image_case,
+)
 from src.services.demo_data_service import create_informatics_demo
 
 
@@ -113,32 +116,57 @@ async def start_gemini_evaluation(message: Message) -> None:
 
 
 async def run_gemini_image_evaluation(bot: Bot, chat_id: int) -> None:
-    try:
-        evaluation = await asyncio.to_thread(
-            evaluate_synthetic_image_case,
-        )
-        logger.info(
-            "Gemini synthetic image evaluation result: %s",
-            evaluation,
-        )
+    matched = 0
+    failed = 0
+    mismatches = []
 
-        marker = "✅" if evaluation["match"] else "🟡"
+    try:
+        for case in SYNTHETIC_IMAGE_CASES:
+            try:
+                evaluation = await asyncio.to_thread(
+                    evaluate_synthetic_image_case,
+                    case,
+                )
+            except Exception as error:
+                failed += 1
+                logger.exception(
+                    "Gemini synthetic image evaluation failed for %s",
+                    case["id"],
+                )
+                mismatches.append(
+                    f"• {case['id']}: API {type(error).__name__}"
+                )
+            else:
+                matched += int(evaluation["match"])
+                if not evaluation["match"]:
+                    mismatches.append(
+                        f"• {evaluation['id']}: "
+                        f"{evaluation['expected']} → "
+                        f"{evaluation['actual']} "
+                        f"({evaluation['confidence']:.2f})"
+                    )
+                logger.info(
+                    "Gemini synthetic image evaluation result: %s",
+                    evaluation,
+                )
+
+            await asyncio.sleep(1)
+
+        details = "\n".join(mismatches) or "Нет."
         await bot.send_message(
             chat_id,
-            f"{marker} Синтетическая проверка изображения завершена.\n\n"
-            f"Пример: {evaluation['id']}\n"
-            f"Ожидалось: {evaluation['expected']}\n"
-            f"Получено: {evaluation['actual']}\n"
-            f"Уверенность: {evaluation['confidence']:.2f}\n\n"
-            f"Обратная связь: {evaluation['feedback']}\n\n"
-            f"Подсказка: {evaluation['hint']}",
+            "🖼 Синтетическая оценка изображений завершена.\n\n"
+            f"Примеров: {len(SYNTHETIC_IMAGE_CASES)}\n"
+            f"Совпало с ожиданием: {matched}\n"
+            f"Ошибок API: {failed}\n\n"
+            f"Несовпадения и ошибки:\n{details}",
         )
-    except Exception as error:
-        logger.exception("Gemini synthetic image evaluation failed")
+    except Exception:
+        logger.exception("Gemini synthetic image evaluation task crashed")
         await bot.send_message(
             chat_id,
-            "🔴 Проверка синтетического изображения завершилась ошибкой: "
-            f"{type(error).__name__}. Проверь логи Render.",
+            "🔴 Оценка синтетических изображений прервана. "
+            "Проверь логи Render.",
         )
 
 
@@ -152,7 +180,7 @@ async def start_gemini_image_evaluation(message: Message) -> None:
         return
 
     await message.answer(
-        "🖼 Отправляю Gemini одно синтетическое изображение решения. "
+        "🖼 Отправляю Gemini 5 синтетических изображений решений. "
         "Реальные фотографии учеников не используются."
     )
     task = asyncio.create_task(
