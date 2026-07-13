@@ -8,12 +8,20 @@ from dotenv import load_dotenv
 from src.ai_engine.prompts import (
     HOMEWORK_CHECK_SYSTEM_PROMPT,
     build_homework_check_prompt,
+    build_homework_image_check_prompt,
 )
 from src.ai_engine.schemas import HOMEWORK_CHECK_RESPONSE_SCHEMA
 
 
 DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
 SUPPORTED_PROXY_SCHEMES = {"http", "https", "socks5"}
+SUPPORTED_IMAGE_MIME_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+}
 
 
 load_dotenv()
@@ -150,6 +158,60 @@ class LLMClient:
         if not interaction.output_text:
             raise LLMResponseError(
                 "Gemini не вернул результат проверки."
+            )
+
+        return interaction.output_text
+
+    def check_homework_image(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        task_text: str | None = None,
+        topic: str | None = None,
+        synthetic_test: bool = False,
+    ) -> str:
+        if not synthetic_test:
+            raise LLMDataPolicyError(
+                "Gemini разрешён только для синтетических тестовых "
+                "изображений."
+            )
+
+        if not image_bytes:
+            raise ValueError("Синтетическое изображение пустое.")
+
+        normalized_mime_type = mime_type.strip().lower()
+        if normalized_mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
+            raise ValueError(
+                "Неподдерживаемый формат изображения. Используй PNG, "
+                "JPEG, WEBP, HEIC или HEIF."
+            )
+
+        user_prompt = build_homework_image_check_prompt(
+            task_text=task_text or "",
+            topic=topic,
+        )
+        full_prompt = (
+            f"{HOMEWORK_CHECK_SYSTEM_PROMPT}\n\n"
+            f"{user_prompt}"
+        )
+        image_part = types.Part.from_bytes(
+            data=image_bytes,
+            mime_type=normalized_mime_type,
+        )
+
+        interaction = self.client.interactions.create(
+            model=self.model,
+            input=[image_part, full_prompt],
+            response_format={
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": HOMEWORK_CHECK_RESPONSE_SCHEMA,
+            },
+        )
+
+        if not interaction.output_text:
+            raise LLMResponseError(
+                "Gemini не вернул результат проверки изображения."
             )
 
         return interaction.output_text

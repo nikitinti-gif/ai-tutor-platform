@@ -10,6 +10,7 @@ from src.ai_engine.evaluation import (
     SYNTHETIC_CASES,
     evaluate_synthetic_case,
 )
+from src.ai_engine.image_evaluation import evaluate_synthetic_image_case
 from src.services.demo_data_service import create_informatics_demo
 
 
@@ -111,6 +112,60 @@ async def start_gemini_evaluation(message: Message) -> None:
     task.add_done_callback(evaluation_tasks.discard)
 
 
+async def run_gemini_image_evaluation(bot: Bot, chat_id: int) -> None:
+    try:
+        evaluation = await asyncio.to_thread(
+            evaluate_synthetic_image_case,
+        )
+        logger.info(
+            "Gemini synthetic image evaluation result: %s",
+            evaluation,
+        )
+
+        marker = "✅" if evaluation["match"] else "🟡"
+        await bot.send_message(
+            chat_id,
+            f"{marker} Синтетическая проверка изображения завершена.\n\n"
+            f"Пример: {evaluation['id']}\n"
+            f"Ожидалось: {evaluation['expected']}\n"
+            f"Получено: {evaluation['actual']}\n"
+            f"Уверенность: {evaluation['confidence']:.2f}\n\n"
+            f"Обратная связь: {evaluation['feedback']}\n\n"
+            f"Подсказка: {evaluation['hint']}",
+        )
+    except Exception as error:
+        logger.exception("Gemini synthetic image evaluation failed")
+        await bot.send_message(
+            chat_id,
+            "🔴 Проверка синтетического изображения завершилась ошибкой: "
+            f"{type(error).__name__}. Проверь логи Render.",
+        )
+
+
+async def start_gemini_image_evaluation(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+
+    if evaluation_tasks:
+        await message.answer("⏳ Другая оценка Gemini уже выполняется.")
+        return
+
+    await message.answer(
+        "🖼 Отправляю Gemini одно синтетическое изображение решения. "
+        "Реальные фотографии учеников не используются."
+    )
+    task = asyncio.create_task(
+        run_gemini_image_evaluation(message.bot, message.chat.id)
+    )
+    evaluation_tasks.add(task)
+    task.add_done_callback(evaluation_tasks.discard)
+
+
 def register_demo_handlers(dp: Dispatcher):
     dp.message.register(start_gemini_evaluation, Command("gemini_eval"))
+    dp.message.register(
+        start_gemini_image_evaluation,
+        Command("gemini_image_eval"),
+    )
     dp.message.register(demo_informatics, Command("demo_informatics"))

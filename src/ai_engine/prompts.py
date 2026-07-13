@@ -70,5 +70,28 @@ def build_homework_check_prompt(
 """.strip()
 
 
+def build_homework_image_check_prompt(
+    task_text: str,
+    topic: str | None = None,
+) -> str:
+    safe_task = task_text.strip() if task_text else "Условие не передано"
+    safe_topic = topic.strip() if topic else "Определи тему самостоятельно"
+
+    return f"""
+Предмет: Информатика
+Тема: {safe_topic}
+
+УСЛОВИЕ ЗАДАНИЯ:
+{safe_task}
+
+РЕШЕНИЕ УЧЕНИКА находится на приложенном изображении.
+Сначала внимательно прочитай только видимый текст решения, включая отступы и
+математические обозначения. Затем проверь его по условию. Если существенная
+часть изображения не читается, используй статус unclear и не додумывай текст.
+
+Верни только JSON установленного формата.
+""".strip()
+
+
 # Временная совместимость со старым кодом.
 HOMEWORK_CHECK_PROMPT = HOMEWORK_CHECK_SYSTEM_PROMPT

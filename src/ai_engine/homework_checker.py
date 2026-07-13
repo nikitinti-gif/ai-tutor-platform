@@ -35,6 +35,38 @@ def check_homework_text(
     return result
 
 
+def check_homework_image(
+    image_bytes: bytes,
+    mime_type: str,
+    task_text: str | None = None,
+    topic: str | None = None,
+    synthetic_test: bool = False,
+) -> dict:
+    if not synthetic_test:
+        return {
+            "status": "unclear",
+            "confidence": 0.0,
+            "feedback": (
+                "Проверка реальных фотографий пока не подключена."
+            ),
+            "hint": "Дождись проверки преподавателя.",
+            "error_type": None,
+            "topic": topic,
+            "needs_teacher_review": True,
+        }
+
+    client = LLMClient()
+    raw_response = client.check_homework_image(
+        image_bytes=image_bytes,
+        mime_type=mime_type,
+        task_text=task_text,
+        topic=topic,
+        synthetic_test=True,
+    )
+
+    return parse_homework_check_response(raw_response)
+
+
 def render_check_result_for_student(result: dict) -> str:
     if result["status"] == "correct":
         return (
