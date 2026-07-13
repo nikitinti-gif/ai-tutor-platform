@@ -89,6 +89,46 @@ class SyntheticLearningStorageTest(unittest.TestCase):
 
         self.assertFalse(self.db_path.exists())
 
+    @patch("src.database.json_storage._append_synthetic_check_to_postgres")
+    def test_database_url_routes_write_to_postgres(self, append_check):
+        expected = {
+            "topic": "Циклы",
+            "status": "correct",
+            "confidence": 1.0,
+            "error_type": None,
+        }
+        append_check.return_value = expected
+
+        with patch.dict("os.environ", {"DATABASE_URL": "postgresql://test"}):
+            result = save_synthetic_learning_check(
+                {
+                    **expected,
+                    "image_transcription": "не сохранять",
+                    "telegram_id": 123,
+                }
+            )
+
+        self.assertEqual(result, expected)
+        append_check.assert_called_once_with("postgresql://test", expected)
+        self.assertFalse(self.db_path.exists())
+
+    @patch("src.database.json_storage._load_synthetic_checks_from_postgres")
+    def test_database_url_routes_read_to_postgres(self, load_checks):
+        load_checks.return_value = [
+            {
+                "topic": "Циклы",
+                "status": "correct",
+                "confidence": 1.0,
+                "error_type": None,
+            }
+        ]
+
+        with patch.dict("os.environ", {"DATABASE_URL": "postgresql://test"}):
+            result = get_synthetic_learning_checks()
+
+        self.assertEqual(result, load_checks.return_value)
+        load_checks.assert_called_once_with("postgresql://test")
+
 
 if __name__ == "__main__":
     unittest.main()

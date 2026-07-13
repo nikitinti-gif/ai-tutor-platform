@@ -18,6 +18,22 @@ SYNTHETIC_CHECK_STATUSES = {
 }
 
 
+def _get_database_url():
+    return os.getenv("DATABASE_URL", "").strip()
+
+
+def _append_synthetic_check_to_postgres(database_url: str, record: dict):
+    from src.database.postgres_storage import append_synthetic_learning_check
+
+    return append_synthetic_learning_check(database_url, record)
+
+
+def _load_synthetic_checks_from_postgres(database_url: str):
+    from src.database.postgres_storage import load_synthetic_learning_checks
+
+    return load_synthetic_learning_checks(database_url)
+
+
 def load_db():
     if not os.path.exists(DB_FILE):
         return {
@@ -143,6 +159,10 @@ def save_synthetic_learning_check(check_result: dict):
     if set(record) != SYNTHETIC_CHECK_FIELDS:
         raise RuntimeError("Нарушен контракт политики хранения v1.")
 
+    database_url = _get_database_url()
+    if database_url:
+        return _append_synthetic_check_to_postgres(database_url, record)
+
     db = load_db()
     checks = db["learning_dna"].setdefault(SYNTHETIC_CHECKS_KEY, [])
     if not isinstance(checks, list):
@@ -154,6 +174,10 @@ def save_synthetic_learning_check(check_result: dict):
 
 
 def get_synthetic_learning_checks():
+    database_url = _get_database_url()
+    if database_url:
+        return _load_synthetic_checks_from_postgres(database_url)
+
     db = load_db()
     checks = db["learning_dna"].get(SYNTHETIC_CHECKS_KEY, [])
     return checks if isinstance(checks, list) else []
