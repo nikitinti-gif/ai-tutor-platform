@@ -199,22 +199,21 @@ class LLMClient:
             mime_type=normalized_mime_type,
         )
 
-        interaction = self.client.interactions.create(
+        response = self.client.models.generate_content(
             model=self.model,
-            input=[image_part, full_prompt],
-            response_format={
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": HOMEWORK_CHECK_RESPONSE_SCHEMA,
+            contents=[full_prompt, image_part],
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": HOMEWORK_CHECK_RESPONSE_SCHEMA,
             },
         )
 
-        if not interaction.output_text:
+        if not response.text:
             raise LLMResponseError(
                 "Gemini не вернул результат проверки изображения."
             )
 
-        return interaction.output_text
+        return response.text
 
 
 def ask_llm(prompt: str) -> str:
