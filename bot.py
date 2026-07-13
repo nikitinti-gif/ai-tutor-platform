@@ -33,10 +33,10 @@ def create_dispatcher() -> Dispatcher:
     dp = Dispatcher()
 
     register_registration_handlers(dp)
+    register_demo_handlers(dp)
     register_student_handlers(dp)
     register_parent_handlers(dp)
     register_teacher_handlers(dp)
-    register_demo_handlers(dp)
 
     return dp
 

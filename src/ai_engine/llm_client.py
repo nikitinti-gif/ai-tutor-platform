@@ -33,7 +33,10 @@ class LLMDataPolicyError(RuntimeError):
 
 def build_gemini_http_options(proxy_url: str | None) -> types.HttpOptions:
     """Build isolated transport settings for Gemini requests only."""
-    client_args: dict[str, object] = {"trust_env": False}
+    client_args: dict[str, object] = {
+        "trust_env": False,
+        "timeout": 30.0,
+    }
 
     if proxy_url:
         proxy_url = proxy_url.strip()
