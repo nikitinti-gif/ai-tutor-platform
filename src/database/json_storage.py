@@ -4,6 +4,18 @@ from datetime import datetime
 from uuid import uuid4
 
 DB_FILE = "database.json"
+SYNTHETIC_CHECKS_KEY = "_synthetic_admin_checks"
+SYNTHETIC_CHECK_FIELDS = {
+    "topic",
+    "status",
+    "confidence",
+    "error_type",
+}
+SYNTHETIC_CHECK_STATUSES = {
+    "correct",
+    "has_error",
+    "unclear",
+}
 
 
 def load_db():
@@ -103,6 +115,48 @@ def save_learning_dna(student_id: int, dna: dict):
     db["learning_dna"][str(student_id)] = dna
     save_db(db)
     return dna
+
+
+def save_synthetic_learning_check(check_result: dict):
+    status = check_result.get("status")
+    if status not in SYNTHETIC_CHECK_STATUSES:
+        raise ValueError("Некорректный статус синтетической проверки.")
+
+    try:
+        confidence = float(check_result.get("confidence", 0.0))
+    except (TypeError, ValueError) as error:
+        raise ValueError("Некорректная уверенность проверки.") from error
+
+    topic = check_result.get("topic")
+    error_type = check_result.get("error_type")
+    record = {
+        "topic": topic if isinstance(topic, str) and topic else "unknown",
+        "status": status,
+        "confidence": max(0.0, min(confidence, 1.0)),
+        "error_type": (
+            error_type
+            if isinstance(error_type, str) and error_type
+            else None
+        ),
+    }
+
+    if set(record) != SYNTHETIC_CHECK_FIELDS:
+        raise RuntimeError("Нарушен контракт политики хранения v1.")
+
+    db = load_db()
+    checks = db["learning_dna"].setdefault(SYNTHETIC_CHECKS_KEY, [])
+    if not isinstance(checks, list):
+        raise ValueError("Повреждён журнал синтетических проверок.")
+
+    checks.append(record)
+    save_db(db)
+    return record
+
+
+def get_synthetic_learning_checks():
+    db = load_db()
+    checks = db["learning_dna"].get(SYNTHETIC_CHECKS_KEY, [])
+    return checks if isinstance(checks, list) else []
 
 def save_pedagogical_decision(student_id: int, decision_data: dict):
     db = load_db()

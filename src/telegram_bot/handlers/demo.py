@@ -19,6 +19,7 @@ from src.ai_engine.homework_checker import (
     check_homework_image,
     render_check_result_for_student,
 )
+from src.repositories.learning_dna_repository import LearningDNARepository
 from src.services.demo_data_service import create_informatics_demo
 
 
@@ -231,13 +232,38 @@ async def run_uploaded_synthetic_photo_check(
             result.get("image_legibility"),
         )
 
+        try:
+            saved_record = await asyncio.to_thread(
+                LearningDNARepository.save_synthetic_check,
+                result,
+            )
+        except Exception:
+            logger.exception("Synthetic learning result was not saved")
+            storage_message = (
+                "⚠️ Структурированный результат не сохранён. "
+                "Проверь логи Render."
+            )
+        else:
+            stored_checks = await asyncio.to_thread(
+                LearningDNARepository.get_synthetic_checks,
+            )
+            storage_message = (
+                "💾 Сохранено по политике v1: "
+                f"topic={saved_record['topic']}, "
+                f"status={saved_record['status']}, "
+                f"confidence={saved_record['confidence']:.2f}, "
+                f"error_type={saved_record['error_type']}. "
+                f"Записей в тестовом журнале: {len(stored_checks)}."
+            )
+
         transcription = result.get("image_transcription") or "—"
         await bot.send_message(
             chat_id,
             "🖼 Проверка загруженного синтетического фото завершена.\n\n"
             f"Читаемость: {result.get('image_legibility', 'unknown')}\n"
             f"Транскрипция:\n{transcription}\n\n"
-            f"{render_check_result_for_student(result)}",
+            f"{render_check_result_for_student(result)}\n\n"
+            f"{storage_message}",
         )
     except Exception as error:
         logger.exception("Admin synthetic photo check failed")
