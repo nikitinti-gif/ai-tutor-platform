@@ -13,6 +13,7 @@ def load_db():
             "homework": [],
             "learning_dna": {},
             "pedagogical_decisions": [],
+            "student_homework": [],
         }
 
     with open(DB_FILE, "r", encoding="utf-8") as file:

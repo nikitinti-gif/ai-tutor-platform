@@ -1,8 +1,22 @@
 import asyncio
+import logging
+import sys
 
+from aiohttp import web
 from aiogram import Bot, Dispatcher
+from aiogram.webhook.aiohttp_server import (
+    SimpleRequestHandler,
+    setup_application,
+)
 
-from config import BOT_TOKEN
+from config import (
+    BOT_MODE,
+    BOT_TOKEN,
+    PORT,
+    WEBHOOK_BASE_URL,
+    WEBHOOK_PATH,
+    WEBHOOK_SECRET,
+)
 from src.telegram_bot.handlers.registration import register_registration_handlers
 from src.telegram_bot.handlers.student import register_student_handlers
 from src.telegram_bot.handlers.parent import register_parent_handlers
@@ -10,8 +24,7 @@ from src.telegram_bot.handlers.teacher import register_teacher_handlers
 from src.telegram_bot.handlers.demo import register_demo_handlers
 
 
-async def main():
-    bot = Bot(token=BOT_TOKEN)
+def create_dispatcher() -> Dispatcher:
     dp = Dispatcher()
 
     register_registration_handlers(dp)
@@ -20,8 +33,47 @@ async def main():
     register_teacher_handlers(dp)
     register_demo_handlers(dp)
 
+    return dp
+
+
+async def run_polling() -> None:
+    bot = Bot(token=BOT_TOKEN)
+    dp = create_dispatcher()
     await dp.start_polling(bot)
 
 
+async def health_check(_: web.Request) -> web.Response:
+    return web.json_response({"status": "ok", "mode": BOT_MODE})
+
+
+async def set_telegram_webhook(bot: Bot) -> None:
+    await bot.set_webhook(
+        f"{WEBHOOK_BASE_URL}{WEBHOOK_PATH}",
+        secret_token=WEBHOOK_SECRET,
+    )
+
+
+def run_webhook() -> None:
+    bot = Bot(token=BOT_TOKEN)
+    dp = create_dispatcher()
+    dp.startup.register(set_telegram_webhook)
+
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        secret_token=WEBHOOK_SECRET,
+    ).register(app, path=WEBHOOK_PATH)
+    setup_application(app, dp, bot=bot)
+
+    web.run_app(app, host="0.0.0.0", port=PORT)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+
+    if BOT_MODE == "webhook":
+        run_webhook()
+    else:
+        asyncio.run(run_polling())

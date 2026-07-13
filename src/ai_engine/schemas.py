@@ -5,16 +5,60 @@ HOMEWORK_CHECK_STATUSES = {
 }
 
 
+HOMEWORK_CHECK_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "status": {
+            "type": "string",
+            "enum": sorted(HOMEWORK_CHECK_STATUSES),
+        },
+        "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+        },
+        "feedback": {"type": "string"},
+        "hint": {"type": "string"},
+        "error_type": {"type": ["string", "null"]},
+        "topic": {"type": ["string", "null"]},
+    },
+    "required": [
+        "status",
+        "confidence",
+        "feedback",
+        "hint",
+        "error_type",
+        "topic",
+    ],
+    "additionalProperties": False,
+}
+
+
 def default_homework_check_result() -> dict:
     return {
         "status": "unclear",
         "confidence": 0.0,
         "feedback": "Не удалось уверенно проверить решение.",
-        "hint": "Пожалуйста, отправь более чёткое фото или дождись проверки преподавателя.",
+        "hint": (
+            "Отправь условие задачи и решение ещё раз "
+            "или дождись проверки преподавателя."
+        ),
         "error_type": None,
         "topic": None,
         "needs_teacher_review": True,
     }
+
+
+def _clean_optional_string(value) -> str | None:
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        return None
+
+    value = value.strip()
+
+    return value or None
 
 
 def validate_homework_check_result(data: dict) -> dict:
@@ -34,10 +78,21 @@ def validate_homework_check_result(data: dict) -> dict:
     except (TypeError, ValueError):
         result["confidence"] = 0.0
 
-    result["feedback"] = data.get("feedback") or result["feedback"]
-    result["hint"] = data.get("hint") or result["hint"]
-    result["error_type"] = data.get("error_type")
-    result["topic"] = data.get("topic")
+    feedback = _clean_optional_string(data.get("feedback"))
+    hint = _clean_optional_string(data.get("hint"))
+
+    if feedback:
+        result["feedback"] = feedback
+
+    if hint:
+        result["hint"] = hint
+
+    result["error_type"] = _clean_optional_string(
+        data.get("error_type")
+    )
+    result["topic"] = _clean_optional_string(
+        data.get("topic")
+    )
 
     result["needs_teacher_review"] = (
         result["status"] == "unclear"
