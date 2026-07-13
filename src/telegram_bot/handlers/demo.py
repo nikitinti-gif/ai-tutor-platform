@@ -1,7 +1,8 @@
 import asyncio
 import logging
+from io import BytesIO
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -14,11 +15,16 @@ from src.ai_engine.image_evaluation import (
     SYNTHETIC_IMAGE_CASES,
     evaluate_synthetic_image_case,
 )
+from src.ai_engine.homework_checker import (
+    check_homework_image,
+    render_check_result_for_student,
+)
 from src.services.demo_data_service import create_informatics_demo
 
 
 logger = logging.getLogger(__name__)
 evaluation_tasks: set[asyncio.Task] = set()
+MAX_SYNTHETIC_PHOTO_BYTES = 5 * 1024 * 1024
 
 
 async def demo_informatics(message: Message):
@@ -190,10 +196,116 @@ async def start_gemini_image_evaluation(message: Message) -> None:
     task.add_done_callback(evaluation_tasks.discard)
 
 
+def parse_synthetic_photo_task(caption: str | None) -> str | None:
+    if not caption:
+        return None
+
+    parts = caption.strip().split(maxsplit=1)
+    command = parts[0].split("@", maxsplit=1)[0]
+
+    if command != "/check_synthetic_photo" or len(parts) < 2:
+        return None
+
+    task_text = parts[1].strip()
+    return task_text or None
+
+
+async def run_uploaded_synthetic_photo_check(
+    bot: Bot,
+    chat_id: int,
+    image_bytes: bytes,
+    task_text: str,
+) -> None:
+    try:
+        result = await asyncio.to_thread(
+            check_homework_image,
+            image_bytes=image_bytes,
+            mime_type="image/jpeg",
+            task_text=task_text,
+            topic="Информатика",
+            synthetic_test=True,
+        )
+        logger.info(
+            "Admin synthetic photo check: status=%s legibility=%s",
+            result["status"],
+            result.get("image_legibility"),
+        )
+
+        transcription = result.get("image_transcription") or "—"
+        await bot.send_message(
+            chat_id,
+            "🖼 Проверка загруженного синтетического фото завершена.\n\n"
+            f"Читаемость: {result.get('image_legibility', 'unknown')}\n"
+            f"Транскрипция:\n{transcription}\n\n"
+            f"{render_check_result_for_student(result)}",
+        )
+    except Exception as error:
+        logger.exception("Admin synthetic photo check failed")
+        await bot.send_message(
+            chat_id,
+            "🔴 Проверка синтетического фото завершилась ошибкой: "
+            f"{type(error).__name__}. Проверь логи Render.",
+        )
+
+
+async def check_uploaded_synthetic_photo(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+
+    task_text = parse_synthetic_photo_task(message.caption)
+    if not task_text:
+        await message.answer(
+            "Добавь к фото подпись:\n"
+            "/check_synthetic_photo текст задания"
+        )
+        return
+
+    if evaluation_tasks:
+        await message.answer("⏳ Другая оценка Gemini уже выполняется.")
+        return
+
+    photo = message.photo[-1]
+    if photo.file_size and photo.file_size > MAX_SYNTHETIC_PHOTO_BYTES:
+        await message.answer("⛔ Фото должно быть не больше 5 Мбайт.")
+        return
+
+    buffer = BytesIO()
+    try:
+        await message.bot.download(photo, destination=buffer)
+        image_bytes = buffer.getvalue()
+    finally:
+        buffer.close()
+
+    if not image_bytes:
+        await message.answer("🔴 Telegram вернул пустой файл изображения.")
+        return
+
+    await message.answer(
+        "🧪 Принято как синтетическое тестовое фото. "
+        "Обрабатываю в памяти без сохранения файла."
+    )
+    task = asyncio.create_task(
+        run_uploaded_synthetic_photo_check(
+            message.bot,
+            message.chat.id,
+            image_bytes,
+            task_text,
+        )
+    )
+    evaluation_tasks.add(task)
+    task.add_done_callback(evaluation_tasks.discard)
+
+
 def register_demo_handlers(dp: Dispatcher):
     dp.message.register(start_gemini_evaluation, Command("gemini_eval"))
     dp.message.register(
         start_gemini_image_evaluation,
         Command("gemini_image_eval"),
+    )
+    dp.message.register(
+        check_uploaded_synthetic_photo,
+        F.photo,
+        F.caption.startswith("/check_synthetic_photo"),
     )
     dp.message.register(demo_informatics, Command("demo_informatics"))
