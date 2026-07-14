@@ -19,6 +19,10 @@ from src.ai_engine.homework_checker import (
     check_homework_image,
     render_check_result_for_student,
 )
+from src.ai_engine.provider_clients import (
+    SUPPORTED_TEXT_PROVIDERS,
+    create_text_provider,
+)
 from src.repositories.learning_dna_repository import LearningDNARepository
 from src.repositories.homework_repository import HomeworkRepository
 from src.services.homework_service import (
@@ -122,6 +126,122 @@ async def start_gemini_evaluation(message: Message) -> None:
     )
     task = asyncio.create_task(
         run_gemini_evaluation(message.bot, message.chat.id)
+    )
+    evaluation_tasks.add(task)
+    task.add_done_callback(evaluation_tasks.discard)
+
+
+async def run_provider_comparison(bot: Bot, chat_id: int) -> None:
+    summaries = []
+
+    try:
+        for provider_name in SUPPORTED_TEXT_PROVIDERS:
+            try:
+                await asyncio.to_thread(
+                    create_text_provider,
+                    provider_name,
+                )
+            except Exception as error:
+                logger.exception(
+                    "%s comparison preflight failed",
+                    provider_name,
+                )
+                summaries.append(
+                    f"• {provider_name}: конфигурация "
+                    f"{type(error).__name__}"
+                )
+                continue
+
+            matched = 0
+            failed = 0
+            mismatches = []
+            await bot.send_message(
+                chat_id,
+                f"🧪 Начинаю {provider_name}: "
+                f"{len(SYNTHETIC_CASES)} примеров.",
+            )
+
+            for index, case in enumerate(SYNTHETIC_CASES, start=1):
+                try:
+                    evaluation = await asyncio.to_thread(
+                        evaluate_synthetic_case,
+                        case,
+                        provider_name,
+                    )
+                except Exception as error:
+                    failed += 1
+                    logger.exception(
+                        "%s evaluation failed for %s",
+                        provider_name,
+                        case["id"],
+                    )
+                    mismatches.append(
+                        f"{case['id']}: API {type(error).__name__}"
+                    )
+                else:
+                    matched += int(evaluation["match"])
+                    if not evaluation["match"]:
+                        mismatches.append(
+                            f"{case['id']}: "
+                            f"{evaluation['expected']} → "
+                            f"{evaluation['actual']} "
+                            f"({evaluation['confidence']:.2f})"
+                        )
+                    logger.info(
+                        "%s comparison result: %s",
+                        provider_name,
+                        evaluation,
+                    )
+
+                if index in {5, 10}:
+                    await bot.send_message(
+                        chat_id,
+                        f"⏳ {provider_name}: "
+                        f"{index}/{len(SYNTHETIC_CASES)}",
+                    )
+                await asyncio.sleep(1)
+
+            details = "; ".join(mismatches) or "нет"
+            summaries.append(
+                f"• {provider_name}: {matched}/{len(SYNTHETIC_CASES)}, "
+                f"API-ошибок {failed}\n"
+                f"  Несовпадения: {details}"
+            )
+            if mismatches:
+                logger.warning(
+                    "%s mismatches: %s",
+                    provider_name,
+                    mismatches,
+                )
+
+        await bot.send_message(
+            chat_id,
+            "📊 Сравнение AI-провайдеров завершено.\n\n"
+            + "\n".join(summaries),
+        )
+    except Exception:
+        logger.exception("Provider comparison task crashed")
+        await bot.send_message(
+            chat_id,
+            "🔴 Сравнение провайдеров прервано. Проверь логи Render.",
+        )
+
+
+async def start_provider_comparison(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+
+    if evaluation_tasks:
+        await message.answer("⏳ Другая AI-оценка уже выполняется.")
+        return
+
+    await message.answer(
+        "📊 Сравниваю Gemini, Mistral и YandexGPT на одинаковых "
+        "15 синтетических решениях. Реальные данные не используются."
+    )
+    task = asyncio.create_task(
+        run_provider_comparison(message.bot, message.chat.id)
     )
     evaluation_tasks.add(task)
     task.add_done_callback(evaluation_tasks.discard)
@@ -360,6 +480,10 @@ def register_demo_handlers(dp: Dispatcher):
         Command("student_cycle_demo"),
     )
     dp.message.register(start_gemini_evaluation, Command("gemini_eval"))
+    dp.message.register(
+        start_provider_comparison,
+        Command("provider_eval"),
+    )
     dp.message.register(
         start_gemini_image_evaluation,
         Command("gemini_image_eval"),

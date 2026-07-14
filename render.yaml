@@ -19,6 +19,16 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.1-flash-lite
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: MISTRAL_MODEL
+        value: mistral-small-latest
+      - key: YANDEX_API_KEY
+        sync: false
+      - key: YANDEX_FOLDER_ID
+        sync: false
+      - key: YANDEX_MODEL
+        value: yandexgpt/latest
       - key: DATABASE_URL
         sync: false
       - key: WEBHOOK_SECRET

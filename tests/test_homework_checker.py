@@ -11,8 +11,8 @@ from src.ai_engine.homework_checker import check_homework_text
 
 
 class HomeworkCheckerTest(unittest.TestCase):
-    @patch("src.ai_engine.homework_checker.LLMClient")
-    def test_valid_provider_json_is_parsed(self, client_class):
+    @patch("src.ai_engine.homework_checker.create_text_provider")
+    def test_valid_provider_json_is_parsed(self, provider_factory):
         client = Mock()
         client.check_homework_text.return_value = """
         {
@@ -24,7 +24,7 @@ class HomeworkCheckerTest(unittest.TestCase):
             "topic": "Циклы"
         }
         """
-        client_class.return_value = client
+        provider_factory.return_value = client
 
         result = check_homework_text(
             text="for i in range(1, 10): print(i)",
@@ -36,6 +36,7 @@ class HomeworkCheckerTest(unittest.TestCase):
         self.assertEqual(result["status"], "has_error")
         self.assertEqual(result["error_type"], "loop_error")
         self.assertFalse(result["needs_teacher_review"])
+        provider_factory.assert_called_once_with("gemini")
         client.check_homework_text.assert_called_once_with(
             text="for i in range(1, 10): print(i)",
             task_text="Вывести числа от 1 до 10 включительно.",
@@ -43,14 +44,14 @@ class HomeworkCheckerTest(unittest.TestCase):
             synthetic_test=True,
         )
 
-    @patch("src.ai_engine.homework_checker.LLMClient")
+    @patch("src.ai_engine.homework_checker.create_text_provider")
     def test_invalid_provider_response_becomes_unclear(
         self,
-        client_class,
+        provider_factory,
     ):
         client = Mock()
         client.check_homework_text.return_value = "not json"
-        client_class.return_value = client
+        provider_factory.return_value = client
 
         result = check_homework_text(
             text="неполный ответ",
@@ -60,16 +61,40 @@ class HomeworkCheckerTest(unittest.TestCase):
         self.assertEqual(result["status"], "unclear")
         self.assertTrue(result["needs_teacher_review"])
 
-    @patch("src.ai_engine.homework_checker.LLMClient")
+    @patch("src.ai_engine.homework_checker.create_text_provider")
     def test_regular_student_text_is_not_sent_to_gemini(
         self,
-        client_class,
+        provider_factory,
     ):
         result = check_homework_text(text="ответ ученика")
 
         self.assertEqual(result["status"], "unclear")
         self.assertTrue(result["needs_teacher_review"])
-        client_class.assert_not_called()
+        provider_factory.assert_not_called()
+
+    @patch("src.ai_engine.homework_checker.create_text_provider")
+    def test_selected_synthetic_provider_is_used(self, provider_factory):
+        client = Mock()
+        client.check_homework_text.return_value = """
+        {
+            "status": "correct",
+            "confidence": 0.95,
+            "feedback": "Верно.",
+            "hint": "Следующая задача.",
+            "error_type": null,
+            "topic": "Циклы"
+        }
+        """
+        provider_factory.return_value = client
+
+        result = check_homework_text(
+            text="for i in range(3): print(i)",
+            synthetic_test=True,
+            provider_name="mistral",
+        )
+
+        self.assertEqual(result["status"], "correct")
+        provider_factory.assert_called_once_with("mistral")
 
 
 if __name__ == "__main__":

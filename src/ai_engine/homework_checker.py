@@ -1,8 +1,9 @@
-from src.ai_engine.llm_client import LLMClient
 from src.ai_engine.parser import (
     parse_homework_check_response,
     parse_image_transcription_response,
 )
+from src.ai_engine.llm_client import LLMClient
+from src.ai_engine.provider_clients import create_text_provider
 
 
 def check_homework_text(
@@ -10,6 +11,7 @@ def check_homework_text(
     task_text: str | None = None,
     topic: str | None = None,
     synthetic_test: bool = False,
+    provider_name: str = "gemini",
 ) -> dict:
     if not synthetic_test:
         return {
@@ -25,7 +27,7 @@ def check_homework_text(
             "needs_teacher_review": True,
         }
 
-    client = LLMClient()
+    client = create_text_provider(provider_name)
 
     raw_response = client.check_homework_text(
         text=text,

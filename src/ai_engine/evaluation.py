@@ -110,17 +110,22 @@ SYNTHETIC_CASES = [
 ]
 
 
-def evaluate_synthetic_case(case: dict) -> dict:
+def evaluate_synthetic_case(
+    case: dict,
+    provider_name: str = "gemini",
+) -> dict:
     result = check_homework_text(
         text=case["solution"],
         task_text=case["task"],
         topic=case["topic"],
         synthetic_test=True,
+        provider_name=provider_name,
     )
     actual = result["status"]
 
     return {
         "id": case["id"],
+        "provider": provider_name,
         "expected": case["expected"],
         "actual": actual,
         "match": actual == case["expected"],
