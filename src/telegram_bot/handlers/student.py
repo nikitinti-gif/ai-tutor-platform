@@ -1,5 +1,6 @@
 import os
 
+from config import ADMIN_TELEGRAM_ID
 from aiogram import Dispatcher, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -105,57 +106,91 @@ async def student_receive_solution_photo(message: Message, state: FSMContext):
     )
 
 
-async def student_receive_solution_text(message: Message, state: FSMContext):
+async def student_receive_solution_text(
+    message: Message,
+    state: FSMContext,
+):
     solution_text = message.text.strip()
 
     if len(solution_text) < 3:
         await message.answer("Напиши решение подробнее.")
         return
 
+    is_synthetic_admin = bool(
+        ADMIN_TELEGRAM_ID
+        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+
+    if not is_synthetic_admin:
+        await state.clear()
+        await message.answer(
+            "🔒 Реальная AI-проверка учеников пока не открыта. "
+            "Решение передано преподавателю."
+        )
+        return
+
     latest_assignment = HomeworkRepository.get_latest_for_student(
         student_id=message.from_user.id
     )
 
-    if latest_assignment:
-        HomeworkRepository.mark_as_submitted(
-            latest_assignment["student_homework_id"]
+    if not latest_assignment:
+        await state.clear()
+        await message.answer(
+            "Сначала создай синтетическое задание командой "
+            "/demo_informatics."
         )
+        return
 
-    result = check_homework_text(solution_text)
+    homework = next(
+        (
+            item
+            for item in HomeworkRepository.get_active()
+            if item["homework_id"] == latest_assignment["homework_id"]
+        ),
+        None,
+    )
 
-    if latest_assignment:
-        HomeworkRepository.mark_as_checked(
-            student_homework_id=latest_assignment["student_homework_id"],
-            check_result=result,
-        )
+    if not homework:
+        await state.clear()
+        await message.answer("Не удалось найти активное задание.")
+        return
 
-    
-    current_dna = LearningDNARepository.get(message.from_user.id)
+    HomeworkRepository.mark_as_submitted(
+        latest_assignment["student_homework_id"]
+    )
 
-    updated_dna = update_learning_dna_after_check(
-        current_dna=current_dna,
-        student_id=message.from_user.id,
+    task_text = format_homework_for_student(
+        homework["homework_data"]
+    )
+    topic = homework["topic"]
+
+    result = check_homework_text(
+        solution_text,
+        task_text=task_text,
+        topic=topic,
+        synthetic_test=True,
+    )
+    result["topic"] = topic
+
+    saved_record = LearningDNARepository.save_synthetic_check(result)
+
+    HomeworkRepository.mark_as_checked(
+        student_homework_id=latest_assignment["student_homework_id"],
         check_result=result,
     )
 
-    LearningDNARepository.save(message.from_user.id, updated_dna)
-
-    pedagogical_decision = make_pedagogical_decision(
-        check_result=result,
-        learning_dna=updated_dna,
-    )
-    answer = generate_ai_teacher_feedback(
-        check_result=result,
-        learning_dna=updated_dna,
-        pedagogical_decision=pedagogical_decision,
-)
-    PedagogicalDecisionRepository.save(
-        student_id=message.from_user.id,
-        decision_data=pedagogical_decision,
-    )
+    stored_checks = LearningDNARepository.get_synthetic_checks()
 
     await state.clear()
-    await message.answer(answer)
+    await message.answer(
+        f"{render_check_result_for_student(result)}\n\n"
+        "💾 Сохранено по политике v1: "
+        f"topic={saved_record['topic']}, "
+        f"status={saved_record['status']}, "
+        f"confidence={saved_record['confidence']:.2f}, "
+        f"error_type={saved_record['error_type']}. "
+        f"Записей в тестовом журнале: {len(stored_checks)}."
+    )
 
 
 async def student_progress(message: Message):
@@ -185,4 +220,4 @@ def register_student_handlers(dp: Dispatcher):
         F.text,
     )
     dp.message.register(student_progress, F.text == "📊 Мой прогресс")
-    dp.message.register(student_question, F.text == "❓ Задать вопрос")
+    dp.message.register(student_question, F.text == "❓ Задать вопрос")
