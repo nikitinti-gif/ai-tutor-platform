@@ -20,6 +20,11 @@ from src.ai_engine.homework_checker import (
     render_check_result_for_student,
 )
 from src.repositories.learning_dna_repository import LearningDNARepository
+from src.repositories.homework_repository import HomeworkRepository
+from src.services.homework_service import (
+    format_homework_for_student,
+    generate_homework_by_topic,
+)
 from src.services.demo_data_service import create_informatics_demo
 
 
@@ -322,8 +327,38 @@ async def check_uploaded_synthetic_photo(message: Message) -> None:
     evaluation_tasks.add(task)
     task.add_done_callback(evaluation_tasks.discard)
 
+async def create_synthetic_student_cycle(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer(
+            "⛔ Команда доступна только администратору."
+        )
+        return
+
+    topic = "Условные операторы"
+    homework_data = generate_homework_by_topic(topic)
+
+    homework = HomeworkRepository.create(
+        topic=topic,
+        homework_data=homework_data,
+        teacher_id=message.from_user.id,
+    )
+    assignment = HomeworkRepository.assign_to_student(
+        homework_id=homework["homework_id"],
+        student_id=message.from_user.id,
+    )
+
+    await message.answer(
+        "🧪 Создан новый синтетический ученический цикл.\n\n"
+        f"{format_homework_for_student(homework_data)}\n\n"
+        f"Статус: {assignment['status']}\n\n"
+        "Теперь отправь: 📸 Проверить решение"
+    )
 
 def register_demo_handlers(dp: Dispatcher):
+    dp.message.register(
+        create_synthetic_student_cycle,
+        Command("student_cycle_demo"),
+    )
     dp.message.register(start_gemini_evaluation, Command("gemini_eval"))
     dp.message.register(
         start_gemini_image_evaluation,
