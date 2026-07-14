@@ -107,30 +107,60 @@ def validate_homework_check_result(data: dict) -> dict:
     if not isinstance(data, dict):
         return result
 
+    required_fields = HOMEWORK_CHECK_RESPONSE_SCHEMA["required"]
+    if any(field not in data for field in required_fields):
+        return result
+
     status = data.get("status")
-    if status in HOMEWORK_CHECK_STATUSES:
-        result["status"] = status
-
-    result["confidence"] = _bounded_confidence(
-        data.get("confidence", 0.0)
-    )
-
     feedback = _clean_optional_string(data.get("feedback"))
     hint = _clean_optional_string(data.get("hint"))
-    if feedback:
-        result["feedback"] = feedback
-    if hint:
-        result["hint"] = hint
 
-    result["error_type"] = _clean_optional_string(
-        data.get("error_type")
-    )
-    result["topic"] = _clean_optional_string(data.get("topic"))
-    result["needs_teacher_review"] = (
-        result["status"] == "unclear"
-        or result["confidence"] < 0.85
-    )
+    if (
+        status not in HOMEWORK_CHECK_STATUSES
+        or not feedback
+        or not hint
+    ):
+        return result
 
+    raw_confidence = data.get("confidence")
+    if isinstance(raw_confidence, bool):
+        return result
+
+    try:
+        confidence = float(raw_confidence)
+    except (TypeError, ValueError):
+        return result
+
+    if not 0.0 <= confidence <= 1.0:
+        return result
+
+    raw_error_type = data.get("error_type")
+    raw_topic = data.get("topic")
+    if raw_error_type is not None and not isinstance(raw_error_type, str):
+        return result
+    if raw_topic is not None and not isinstance(raw_topic, str):
+        return result
+
+    error_type = _clean_optional_string(raw_error_type)
+    topic = _clean_optional_string(raw_topic)
+    if raw_error_type is not None and error_type is None:
+        return result
+    if raw_topic is not None and topic is None:
+        return result
+
+    result.update(
+        {
+            "status": status,
+            "confidence": confidence,
+            "feedback": feedback,
+            "hint": hint,
+            "error_type": error_type,
+            "topic": topic,
+            "needs_teacher_review": (
+                status == "unclear" or confidence < 0.85
+            ),
+        }
+    )
     return result
 
 

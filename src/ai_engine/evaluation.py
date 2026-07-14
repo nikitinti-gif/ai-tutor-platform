@@ -110,6 +110,48 @@ SYNTHETIC_CASES = [
 ]
 
 
+YANDEX_BINARY_DIAGNOSTIC_CASES = [
+    {
+        "id": "unicode_abbreviated",
+        "topic": "Системы счисления",
+        "task": "Перевести двоичное число 10110 в десятичную систему.",
+        "solution": "10110₂ = 16 + 4 + 2 = 22₁₀",
+        "expected": "correct",
+    },
+    {
+        "id": "ascii_abbreviated",
+        "topic": "Системы счисления",
+        "task": "Перевести двоичное число 10110 в десятичную систему.",
+        "solution": (
+            "10110 (основание 2) = 16 + 4 + 2 = 22 "
+            "(основание 10)"
+        ),
+        "expected": "correct",
+    },
+    {
+        "id": "ascii_full_expansion",
+        "topic": "Системы счисления",
+        "task": "Перевести двоичное число 10110 в десятичную систему.",
+        "solution": (
+            "10110 (основание 2) = 1 * 2^4 + 0 * 2^3 + "
+            "1 * 2^2 + 1 * 2^1 + 0 * 2^0 = "
+            "16 + 0 + 4 + 2 + 0 = 22 (основание 10)"
+        ),
+        "expected": "correct",
+    },
+    {
+        "id": "ascii_wrong_weight_control",
+        "topic": "Системы счисления",
+        "task": "Перевести двоичное число 10110 в десятичную систему.",
+        "solution": (
+            "10110 (основание 2) = 16 + 8 + 2 = 26 "
+            "(основание 10)"
+        ),
+        "expected": "has_error",
+    },
+]
+
+
 def evaluate_synthetic_case(
     case: dict,
     provider_name: str = "gemini",

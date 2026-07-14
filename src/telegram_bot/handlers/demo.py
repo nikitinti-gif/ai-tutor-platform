@@ -9,6 +9,7 @@ from aiogram.types import Message
 from config import ADMIN_TELEGRAM_ID
 from src.ai_engine.evaluation import (
     SYNTHETIC_CASES,
+    YANDEX_BINARY_DIAGNOSTIC_CASES,
     evaluate_synthetic_case,
 )
 from src.ai_engine.image_evaluation import (
@@ -242,6 +243,75 @@ async def start_provider_comparison(message: Message) -> None:
     )
     task = asyncio.create_task(
         run_provider_comparison(message.bot, message.chat.id)
+    )
+    evaluation_tasks.add(task)
+    task.add_done_callback(evaluation_tasks.discard)
+
+
+async def run_yandex_binary_diagnostic(bot: Bot, chat_id: int) -> None:
+    results = []
+
+    try:
+        await asyncio.to_thread(create_text_provider, "yandex")
+
+        for case in YANDEX_BINARY_DIAGNOSTIC_CASES:
+            try:
+                evaluation = await asyncio.to_thread(
+                    evaluate_synthetic_case,
+                    case,
+                    "yandex",
+                )
+            except Exception as error:
+                logger.exception(
+                    "Yandex binary diagnostic failed for %s",
+                    case["id"],
+                )
+                results.append(
+                    f"• {case['id']}: API {type(error).__name__}"
+                )
+            else:
+                logger.info(
+                    "Yandex binary diagnostic result: %s",
+                    evaluation,
+                )
+                results.append(
+                    f"• {case['id']}: {evaluation['expected']} → "
+                    f"{evaluation['actual']} "
+                    f"({evaluation['confidence']:.2f})\n"
+                    f"  {evaluation['feedback']}\n"
+                    f"  Подсказка: {evaluation['hint']}"
+                )
+
+            await asyncio.sleep(1)
+
+        await bot.send_message(
+            chat_id,
+            "🔎 Диагностика YandexGPT по двоичному числу завершена.\n\n"
+            + "\n\n".join(results),
+        )
+    except Exception:
+        logger.exception("Yandex binary diagnostic task crashed")
+        await bot.send_message(
+            chat_id,
+            "🔴 Диагностика YandexGPT прервана. Проверь логи Render.",
+        )
+
+
+async def start_yandex_binary_diagnostic(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+
+    if evaluation_tasks:
+        await message.answer("⏳ Другая AI-оценка уже выполняется.")
+        return
+
+    await message.answer(
+        "🔎 Проверяю YandexGPT на четырёх вариантах одного "
+        "синтетического решения. Основной benchmark не изменяется."
+    )
+    task = asyncio.create_task(
+        run_yandex_binary_diagnostic(message.bot, message.chat.id)
     )
     evaluation_tasks.add(task)
     task.add_done_callback(evaluation_tasks.discard)
@@ -483,6 +553,10 @@ def register_demo_handlers(dp: Dispatcher):
     dp.message.register(
         start_provider_comparison,
         Command("provider_eval"),
+    )
+    dp.message.register(
+        start_yandex_binary_diagnostic,
+        Command("yandex_binary_diag"),
     )
     dp.message.register(
         start_gemini_image_evaluation,

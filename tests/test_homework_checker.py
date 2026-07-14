@@ -61,6 +61,41 @@ class HomeworkCheckerTest(unittest.TestCase):
         self.assertEqual(result["status"], "unclear")
         self.assertTrue(result["needs_teacher_review"])
 
+    def test_incomplete_provider_response_becomes_unclear(self):
+        from src.ai_engine.schemas import validate_homework_check_result
+
+        result = validate_homework_check_result(
+            {
+                "status": "correct",
+                "confidence": 0.99,
+                "feedback": "Перевод выполнен верно.",
+                "error_type": None,
+                "topic": "Системы счисления",
+            }
+        )
+
+        self.assertEqual(result["status"], "unclear")
+        self.assertEqual(result["confidence"], 0.0)
+        self.assertTrue(result["needs_teacher_review"])
+
+    def test_yandex_binary_diagnostic_does_not_change_baseline(self):
+        from src.ai_engine.evaluation import (
+            SYNTHETIC_CASES,
+            YANDEX_BINARY_DIAGNOSTIC_CASES,
+        )
+
+        self.assertEqual(len(SYNTHETIC_CASES), 15)
+        self.assertEqual(len(YANDEX_BINARY_DIAGNOSTIC_CASES), 4)
+        self.assertEqual(
+            [case["id"] for case in YANDEX_BINARY_DIAGNOSTIC_CASES],
+            [
+                "unicode_abbreviated",
+                "ascii_abbreviated",
+                "ascii_full_expansion",
+                "ascii_wrong_weight_control",
+            ],
+        )
+
     @patch("src.ai_engine.homework_checker.create_text_provider")
     def test_regular_student_text_is_not_sent_to_gemini(
         self,
