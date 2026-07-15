@@ -24,6 +24,21 @@ class SyntheticPhotoCaptionTest(unittest.TestCase):
     def test_other_caption_is_rejected(self):
         self.assertIsNone(parse_synthetic_photo_task("обычное фото"))
 
+    def test_qwen_command_extracts_task_only_when_selected(self):
+        caption = (
+            "/check_qwen_synthetic_photo "
+            "Перевести 10110₂ в десятичную систему."
+        )
+
+        self.assertIsNone(parse_synthetic_photo_task(caption))
+        self.assertEqual(
+            parse_synthetic_photo_task(
+                caption,
+                "/check_qwen_synthetic_photo",
+            ),
+            "Перевести 10110₂ в десятичную систему.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

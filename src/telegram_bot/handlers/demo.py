@@ -564,14 +564,17 @@ async def start_gemini_image_evaluation(message: Message) -> None:
     task.add_done_callback(evaluation_tasks.discard)
 
 
-def parse_synthetic_photo_task(caption: str | None) -> str | None:
+def parse_synthetic_photo_task(
+    caption: str | None,
+    expected_command: str = "/check_synthetic_photo",
+) -> str | None:
     if not caption:
         return None
 
     parts = caption.strip().split(maxsplit=1)
     command = parts[0].split("@", maxsplit=1)[0]
 
-    if command != "/check_synthetic_photo" or len(parts) < 2:
+    if command != expected_command or len(parts) < 2:
         return None
 
     task_text = parts[1].strip()
@@ -583,6 +586,7 @@ async def run_uploaded_synthetic_photo_check(
     chat_id: int,
     image_bytes: bytes,
     task_text: str,
+    provider_name: str = "gemini",
 ) -> None:
     try:
         result = await asyncio.to_thread(
@@ -592,9 +596,12 @@ async def run_uploaded_synthetic_photo_check(
             task_text=task_text,
             topic="Информатика",
             synthetic_test=True,
+            provider_name=provider_name,
         )
         logger.info(
-            "Admin synthetic photo check: status=%s legibility=%s",
+            "Admin synthetic photo check: provider=%s "
+            "status=%s legibility=%s",
+            provider_name,
             result["status"],
             result.get("image_legibility"),
         )
@@ -627,6 +634,7 @@ async def run_uploaded_synthetic_photo_check(
         await bot.send_message(
             chat_id,
             "🖼 Проверка загруженного синтетического фото завершена.\n\n"
+            f"Провайдер: {provider_name}\n"
             f"Читаемость: {result.get('image_legibility', 'unknown')}\n"
             f"Транскрипция:\n{transcription}\n\n"
             f"{render_check_result_for_student(result)}\n\n"
@@ -641,21 +649,29 @@ async def run_uploaded_synthetic_photo_check(
         )
 
 
-async def check_uploaded_synthetic_photo(message: Message) -> None:
+async def _check_uploaded_synthetic_photo(
+    message: Message,
+    *,
+    provider_name: str,
+    expected_command: str,
+) -> None:
     if not is_admin(message):
         await message.answer("⛔ Команда доступна только администратору.")
         return
 
-    task_text = parse_synthetic_photo_task(message.caption)
+    task_text = parse_synthetic_photo_task(
+        message.caption,
+        expected_command,
+    )
     if not task_text:
         await message.answer(
             "Добавь к фото подпись:\n"
-            "/check_synthetic_photo текст задания"
+            f"{expected_command} текст задания"
         )
         return
 
     if evaluation_tasks:
-        await message.answer("⏳ Другая оценка Gemini уже выполняется.")
+        await message.answer("⏳ Другая AI-оценка уже выполняется.")
         return
 
     photo = message.photo[-1]
@@ -676,6 +692,7 @@ async def check_uploaded_synthetic_photo(message: Message) -> None:
 
     await message.answer(
         "🧪 Принято как синтетическое тестовое фото. "
+        f"Провайдер: {provider_name}. "
         "Обрабатываю в памяти без сохранения файла."
     )
     task = asyncio.create_task(
@@ -684,10 +701,27 @@ async def check_uploaded_synthetic_photo(message: Message) -> None:
             message.chat.id,
             image_bytes,
             task_text,
+            provider_name,
         )
     )
     evaluation_tasks.add(task)
     task.add_done_callback(evaluation_tasks.discard)
+
+
+async def check_uploaded_synthetic_photo(message: Message) -> None:
+    await _check_uploaded_synthetic_photo(
+        message,
+        provider_name="gemini",
+        expected_command="/check_synthetic_photo",
+    )
+
+
+async def check_uploaded_qwen_synthetic_photo(message: Message) -> None:
+    await _check_uploaded_synthetic_photo(
+        message,
+        provider_name=QWEN_PROVIDER,
+        expected_command="/check_qwen_synthetic_photo",
+    )
 
 async def create_synthetic_student_cycle(message: Message) -> None:
     if not is_admin(message):
@@ -741,6 +775,11 @@ def register_demo_handlers(dp: Dispatcher):
     dp.message.register(
         start_gemini_image_evaluation,
         Command("gemini_image_eval"),
+    )
+    dp.message.register(
+        check_uploaded_qwen_synthetic_photo,
+        F.photo,
+        F.caption.startswith("/check_qwen_synthetic_photo"),
     )
     dp.message.register(
         check_uploaded_synthetic_photo,
