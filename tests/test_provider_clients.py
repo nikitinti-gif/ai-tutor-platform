@@ -13,6 +13,7 @@ from src.ai_engine.llm_client import (
     LLMDataPolicyError,
 )
 from src.ai_engine.provider_clients import (
+    GigaChatHomeworkClient,
     OpenAICompatibleHomeworkClient,
     create_text_provider,
 )
@@ -91,6 +92,137 @@ class ProviderClientsTest(unittest.TestCase):
     def test_mistral_key_is_required(self):
         with self.assertRaises(LLMConfigurationError):
             create_text_provider("mistral")
+
+    def test_gigachat_real_data_is_blocked_before_oauth(self):
+        client = GigaChatHomeworkClient(
+            authorization_key="secret",
+        )
+
+        with patch("src.ai_engine.provider_clients.httpx.Client") as cls:
+            with self.assertRaises(LLMDataPolicyError):
+                client.check_homework_text("реальный ответ")
+
+        cls.assert_not_called()
+
+    @patch("src.ai_engine.provider_clients.httpx.Client")
+    def test_gigachat_exchanges_key_and_calls_pro_model(
+        self,
+        client_class,
+    ):
+        oauth_response = Mock()
+        oauth_response.json.return_value = {"access_token": "token"}
+        chat_response = Mock()
+        chat_response.json.return_value = {
+            "choices": [
+                {"message": {"content": '{"status":"correct"}'}}
+            ]
+        }
+        context_client = Mock()
+        context_client.post.side_effect = [
+            oauth_response,
+            chat_response,
+        ]
+        client_class.return_value.__enter__.return_value = context_client
+
+        client = GigaChatHomeworkClient(
+            authorization_key="Basic secret",
+        )
+        result = client.check_homework_text(
+            "print(1)",
+            synthetic_test=True,
+        )
+
+        self.assertEqual(result, '{"status":"correct"}')
+        oauth_request, chat_request = context_client.post.call_args_list
+        self.assertEqual(
+            oauth_request.args[0],
+            "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+        )
+        self.assertEqual(
+            oauth_request.kwargs["headers"]["Authorization"],
+            "Basic secret",
+        )
+        self.assertEqual(
+            oauth_request.kwargs["data"],
+            {"scope": "GIGACHAT_API_PERS"},
+        )
+        self.assertEqual(
+            chat_request.kwargs["json"]["model"],
+            "GigaChat-2-Pro",
+        )
+        self.assertEqual(
+            chat_request.kwargs["headers"]["Authorization"],
+            "Bearer token",
+        )
+
+    @patch.dict(
+        os.environ,
+        {
+            "GIGACHAT_AUTH_KEY": "key",
+            "GIGACHAT_MODEL": "GigaChat-2-Pro",
+            "GIGACHAT_SCOPE": "GIGACHAT_API_PERS",
+        },
+        clear=False,
+    )
+    def test_gigachat_factory_uses_pro_model(self):
+        client = create_text_provider("gigachat")
+
+        self.assertEqual(client.model, "GigaChat-2-Pro")
+        self.assertEqual(client.scope, "GIGACHAT_API_PERS")
+
+    @patch("src.ai_engine.provider_clients.httpx.Client")
+    def test_gigachat_token_is_reused_between_clients(self, client_class):
+        oauth_response = Mock()
+        oauth_response.json.return_value = {"access_token": "cached"}
+        chat_response = Mock()
+        chat_response.json.return_value = {
+            "choices": [
+                {"message": {"content": '{"status":"correct"}'}}
+            ]
+        }
+        context_client = Mock()
+        context_client.post.side_effect = [
+            oauth_response,
+            chat_response,
+            chat_response,
+        ]
+        client_class.return_value.__enter__.return_value = context_client
+
+        first = GigaChatHomeworkClient(
+            authorization_key="cache-secret",
+        )
+        second = GigaChatHomeworkClient(
+            authorization_key="cache-secret",
+        )
+
+        first.check_homework_text("one", synthetic_test=True)
+        second.check_homework_text("two", synthetic_test=True)
+
+        oauth_calls = [
+            call for call in context_client.post.call_args_list
+            if call.args[0].endswith("/oauth")
+        ]
+        self.assertEqual(len(oauth_calls), 1)
+
+    @patch.dict(
+        os.environ,
+        {
+            "MISTRAL_API_KEY": "key",
+            "MISTRAL_MODEL": "mistral-small-latest",
+        },
+        clear=False,
+    )
+    def test_mistral_factory_uses_json_schema(self):
+        from src.ai_engine.schemas import HOMEWORK_CHECK_RESPONSE_SCHEMA
+
+        client = create_text_provider("mistral")
+
+        self.assertEqual(client.response_format["type"], "json_schema")
+        self.assertTrue(client.response_format["json_schema"]["strict"])
+        self.assertEqual(
+            client.response_format["json_schema"]["schema"],
+            HOMEWORK_CHECK_RESPONSE_SCHEMA,
+        )
 
     def test_unknown_provider_is_rejected(self):
         with self.assertRaises(LLMConfigurationError):

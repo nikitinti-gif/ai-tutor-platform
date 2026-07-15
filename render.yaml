@@ -4,7 +4,10 @@ services:
     runtime: python
     plan: free
     region: frankfurt
-    buildCommand: pip install -r requirements.txt
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      curl -k "https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt"
+      -w "\n" >> $(python -m certifi)
     startCommand: python bot.py
     autoDeployTrigger: commit
     healthCheckPath: /
@@ -29,6 +32,12 @@ services:
         sync: false
       - key: YANDEX_MODEL
         value: yandexgpt/latest
+      - key: GIGACHAT_AUTH_KEY
+        sync: false
+      - key: GIGACHAT_MODEL
+        value: GigaChat-2-Pro
+      - key: GIGACHAT_SCOPE
+        value: GIGACHAT_API_PERS
       - key: DATABASE_URL
         sync: false
       - key: WEBHOOK_SECRET
