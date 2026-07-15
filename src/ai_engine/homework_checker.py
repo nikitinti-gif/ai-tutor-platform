@@ -46,6 +46,7 @@ def check_homework_image(
     task_text: str | None = None,
     topic: str | None = None,
     synthetic_test: bool = False,
+    provider_name: str = "gemini",
 ) -> dict:
     if not synthetic_test:
         return {
@@ -60,7 +61,14 @@ def check_homework_image(
             "needs_teacher_review": True,
         }
 
-    client = LLMClient()
+    if provider_name == "gemini":
+        client = LLMClient()
+    else:
+        client = create_text_provider(provider_name)
+        if not hasattr(client, "transcribe_homework_image"):
+            raise ValueError(
+                f"Провайдер {provider_name} не поддерживает изображения."
+            )
     raw_transcription = client.transcribe_homework_image(
         image_bytes=image_bytes,
         mime_type=mime_type,
