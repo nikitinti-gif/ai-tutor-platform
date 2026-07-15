@@ -413,6 +413,82 @@ async def start_qwen_evaluation(message: Message) -> None:
     task.add_done_callback(evaluation_tasks.discard)
 
 
+async def run_qwen_image_evaluation(bot: Bot, chat_id: int) -> None:
+    matched = 0
+    failed = 0
+    mismatches = []
+
+    try:
+        await asyncio.to_thread(create_text_provider, QWEN_PROVIDER)
+
+        for case in SYNTHETIC_IMAGE_CASES:
+            try:
+                evaluation = await asyncio.to_thread(
+                    evaluate_synthetic_image_case,
+                    case,
+                    QWEN_PROVIDER,
+                )
+            except Exception as error:
+                failed += 1
+                logger.exception(
+                    "Qwen image evaluation failed for %s",
+                    case["id"],
+                )
+                mismatches.append(
+                    f"{case['id']}: API {type(error).__name__}"
+                )
+            else:
+                matched += int(evaluation["match"])
+                if not evaluation["match"]:
+                    mismatches.append(
+                        f"{evaluation['id']}: "
+                        f"{evaluation['expected']} → "
+                        f"{evaluation['actual']} "
+                        f"({evaluation['confidence']:.2f})"
+                    )
+                logger.info(
+                    "Qwen image evaluation result: %s",
+                    evaluation,
+                )
+
+            await asyncio.sleep(1)
+
+        details = "; ".join(mismatches) or "нет"
+        await bot.send_message(
+            chat_id,
+            "🖼 Проверка Qwen Vision завершена.\n\n"
+            f"• qwen: {matched}/{len(SYNTHETIC_IMAGE_CASES)}, "
+            f"API-ошибок {failed}\n"
+            f"  Несовпадения: {details}",
+        )
+    except Exception:
+        logger.exception("Qwen image evaluation task crashed")
+        await bot.send_message(
+            chat_id,
+            "🔴 Проверка Qwen Vision прервана. Проверь логи Render.",
+        )
+
+
+async def start_qwen_image_evaluation(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+
+    if evaluation_tasks:
+        await message.answer("⏳ Другая AI-оценка уже выполняется.")
+        return
+
+    await message.answer(
+        "🖼 Проверяю Qwen3.6 35B на пяти неизменённых "
+        "синтетических изображениях. Реальные фото не используются."
+    )
+    task = asyncio.create_task(
+        run_qwen_image_evaluation(message.bot, message.chat.id)
+    )
+    evaluation_tasks.add(task)
+    task.add_done_callback(evaluation_tasks.discard)
+
+
 async def run_gemini_image_evaluation(bot: Bot, chat_id: int) -> None:
     matched = 0
     failed = 0
@@ -657,6 +733,10 @@ def register_demo_handlers(dp: Dispatcher):
     dp.message.register(
         start_qwen_evaluation,
         Command("qwen_eval"),
+    )
+    dp.message.register(
+        start_qwen_image_evaluation,
+        Command("qwen_image_eval"),
     )
     dp.message.register(
         start_gemini_image_evaluation,

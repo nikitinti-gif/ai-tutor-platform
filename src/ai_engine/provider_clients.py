@@ -1,3 +1,4 @@
+import base64
 import os
 import threading
 import time
@@ -15,8 +16,12 @@ from src.ai_engine.llm_client import (
 from src.ai_engine.prompts import (
     HOMEWORK_CHECK_SYSTEM_PROMPT,
     build_homework_check_prompt,
+    build_homework_image_transcription_prompt,
 )
-from src.ai_engine.schemas import HOMEWORK_CHECK_RESPONSE_SCHEMA
+from src.ai_engine.schemas import (
+    HOMEWORK_CHECK_RESPONSE_SCHEMA,
+    IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA,
+)
 
 
 SUPPORTED_TEXT_PROVIDERS = ("gemini", "mistral", "yandex")
@@ -34,6 +39,11 @@ DEFAULT_GIGACHAT_BASE_URL = (
     "https://gigachat.devices.sberbank.ru/api/v1"
 )
 DEFAULT_QWEN_MODEL = "qwen3.6-35b-a3b"
+SUPPORTED_QWEN_IMAGE_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
 
 
 class HomeworkTextProvider(Protocol):
@@ -143,6 +153,99 @@ class OpenAICompatibleHomeworkClient:
         if not isinstance(content, str) or not content.strip():
             raise LLMResponseError(
                 f"{self.provider_name} вернул пустой результат проверки."
+            )
+        return content
+
+
+class QwenHomeworkClient(OpenAICompatibleHomeworkClient):
+    def transcribe_homework_image(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        synthetic_test: bool = False,
+    ) -> str:
+        if not synthetic_test:
+            raise LLMDataPolicyError(
+                "qwen разрешён только для синтетических "
+                "тестовых изображений."
+            )
+        if not image_bytes:
+            raise ValueError("Синтетическое изображение пустое.")
+
+        normalized_mime_type = mime_type.strip().lower()
+        if normalized_mime_type not in SUPPORTED_QWEN_IMAGE_MIME_TYPES:
+            raise ValueError(
+                "Qwen Vision поддерживает JPEG, PNG и WEBP."
+            )
+
+        encoded_image = base64.b64encode(image_bytes).decode("ascii")
+        image_url = (
+            f"data:{normalized_mime_type};base64,{encoded_image}"
+        )
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                build_homework_image_transcription_prompt()
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_url},
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0.0,
+            "max_tokens": 1200,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "homework_image_transcription",
+                    "strict": True,
+                    "schema": IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA,
+                },
+            },
+        }
+
+        try:
+            with httpx.Client(
+                timeout=self.timeout,
+                trust_env=False,
+            ) as client:
+                response = client.post(
+                    self.url,
+                    headers=self.headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPStatusError as error:
+            status = error.response.status_code
+            detail = error.response.text[:300]
+            raise LLMResponseError(
+                f"qwen vision вернул HTTP {status}: {detail}"
+            ) from error
+        except (httpx.HTTPError, ValueError) as error:
+            raise LLMResponseError(
+                f"Ошибка запроса к qwen vision: {error}"
+            ) from error
+
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise LLMResponseError(
+                "qwen vision вернул неожиданный ответ."
+            ) from error
+
+        if not isinstance(content, str) or not content.strip():
+            raise LLMResponseError(
+                "qwen vision вернул пустую транскрипцию."
             )
         return content
 
@@ -400,7 +503,7 @@ def create_text_provider(provider_name: str) -> HomeworkTextProvider:
         if not model.startswith("gpt://"):
             model = f"gpt://{folder_id}/{model.lstrip('/')}"
 
-        return OpenAICompatibleHomeworkClient(
+        return QwenHomeworkClient(
             provider_name=QWEN_PROVIDER,
             api_key=api_key,
             model=model,

@@ -61,7 +61,10 @@ SYNTHETIC_IMAGE_CASES = [
 ]
 
 
-def evaluate_synthetic_image_case(case: dict | None = None) -> dict:
+def evaluate_synthetic_image_case(
+    case: dict | None = None,
+    provider_name: str = "gemini",
+) -> dict:
     selected_case = case or SYNTHETIC_IMAGE_CASES[0]
     image_path = Path(selected_case["image_path"])
     image_bytes = image_path.read_bytes()
@@ -72,11 +75,13 @@ def evaluate_synthetic_image_case(case: dict | None = None) -> dict:
         task_text=selected_case["task"],
         topic=selected_case["topic"],
         synthetic_test=True,
+        provider_name=provider_name,
     )
     actual = result["status"]
 
     return {
         "id": selected_case["id"],
+        "provider": provider_name,
         "expected": selected_case["expected"],
         "actual": actual,
         "match": actual == selected_case["expected"],

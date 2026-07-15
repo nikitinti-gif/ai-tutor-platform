@@ -83,6 +83,42 @@ class ImageHomeworkCheckerTest(unittest.TestCase):
         self.assertTrue(result["needs_teacher_review"])
         client_class.assert_not_called()
 
+    @patch("src.ai_engine.homework_checker.create_text_provider")
+    def test_qwen_image_uses_qwen_for_both_steps(self, factory):
+        client = Mock()
+        client.transcribe_homework_image.return_value = """
+        {
+            "legibility": "readable",
+            "confidence": 0.97,
+            "transcription": "for i in range(1, 11): print(i)"
+        }
+        """
+        client.check_homework_text.return_value = """
+        {
+            "status": "correct",
+            "confidence": 0.95,
+            "feedback": "Цикл верный.",
+            "hint": "Проверь границы диапазона.",
+            "error_type": null,
+            "topic": "Циклы Python"
+        }
+        """
+        factory.return_value = client
+
+        result = check_homework_image(
+            image_bytes=b"synthetic-image",
+            mime_type="image/jpeg",
+            task_text="Вывести числа от 1 до 10.",
+            topic="Циклы Python",
+            synthetic_test=True,
+            provider_name="qwen",
+        )
+
+        self.assertEqual(result["status"], "correct")
+        factory.assert_called_once_with("qwen")
+        client.transcribe_homework_image.assert_called_once()
+        client.check_homework_text.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

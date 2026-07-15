@@ -15,6 +15,7 @@ from src.ai_engine.llm_client import (
 from src.ai_engine.provider_clients import (
     GigaChatHomeworkClient,
     OpenAICompatibleHomeworkClient,
+    QwenHomeworkClient,
     create_text_provider,
 )
 
@@ -230,6 +231,74 @@ class ProviderClientsTest(unittest.TestCase):
         self.assertEqual(
             client.response_format["json_schema"]["schema"],
             HOMEWORK_CHECK_RESPONSE_SCHEMA,
+        )
+        self.assertIsInstance(client, QwenHomeworkClient)
+
+    def test_qwen_real_image_is_blocked_before_http_request(self):
+        client = QwenHomeworkClient(
+            provider_name="qwen",
+            api_key="secret",
+            model="qwen3.6-35b-a3b",
+            base_url="https://example.test/v1",
+        )
+
+        with patch("src.ai_engine.provider_clients.httpx.Client") as cls:
+            with self.assertRaises(LLMDataPolicyError):
+                client.transcribe_homework_image(
+                    b"real-image",
+                    "image/jpeg",
+                )
+
+        cls.assert_not_called()
+
+    @patch("src.ai_engine.provider_clients.httpx.Client")
+    def test_qwen_sends_synthetic_image_as_base64(self, client_class):
+        from src.ai_engine.schemas import (
+            IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA,
+        )
+
+        response = Mock()
+        response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"legibility":"readable",'
+                            '"confidence":0.9,'
+                            '"transcription":"print(1)"}'
+                        )
+                    }
+                }
+            ]
+        }
+        context_client = Mock()
+        context_client.post.return_value = response
+        client_class.return_value.__enter__.return_value = context_client
+
+        client = QwenHomeworkClient(
+            provider_name="qwen",
+            api_key="secret",
+            model="qwen3.6-35b-a3b",
+            base_url="https://example.test/v1",
+        )
+        result = client.transcribe_homework_image(
+            b"synthetic-image",
+            "image/jpeg",
+            synthetic_test=True,
+        )
+
+        self.assertIn('"legibility":"readable"', result)
+        payload = context_client.post.call_args.kwargs["json"]
+        image_part = payload["messages"][0]["content"][1]
+        self.assertEqual(image_part["type"], "image_url")
+        self.assertTrue(
+            image_part["image_url"]["url"].startswith(
+                "data:image/jpeg;base64,"
+            )
+        )
+        self.assertEqual(
+            payload["response_format"]["json_schema"]["schema"],
+            IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA,
         )
 
     @patch.dict(
