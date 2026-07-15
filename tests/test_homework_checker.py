@@ -78,6 +78,44 @@ class HomeworkCheckerTest(unittest.TestCase):
         self.assertEqual(result["confidence"], 0.0)
         self.assertTrue(result["needs_teacher_review"])
 
+    def test_contradictory_correct_response_becomes_unclear(self):
+        from src.ai_engine.schemas import validate_homework_check_result
+
+        result = validate_homework_check_result(
+            {
+                "status": "correct",
+                "confidence": 1.0,
+                "feedback": (
+                    "В решении указано 16 + 8 + 2 = 26, "
+                    "но правильный ответ — 22."
+                ),
+                "hint": "Пересчитай сумму степеней двойки.",
+                "error_type": "calculation_error",
+                "topic": "Системы счисления",
+            }
+        )
+
+        self.assertEqual(result["status"], "unclear")
+        self.assertEqual(result["confidence"], 0.0)
+        self.assertTrue(result["needs_teacher_review"])
+
+    def test_error_status_without_error_type_becomes_unclear(self):
+        from src.ai_engine.schemas import validate_homework_check_result
+
+        result = validate_homework_check_result(
+            {
+                "status": "has_error",
+                "confidence": 0.99,
+                "feedback": "В решении есть ошибка.",
+                "hint": "Проверь вычисления.",
+                "error_type": None,
+                "topic": "Системы счисления",
+            }
+        )
+
+        self.assertEqual(result["status"], "unclear")
+        self.assertTrue(result["needs_teacher_review"])
+
     def test_yandex_binary_diagnostic_does_not_change_baseline(self):
         from src.ai_engine.evaluation import (
             SYNTHETIC_CASES,

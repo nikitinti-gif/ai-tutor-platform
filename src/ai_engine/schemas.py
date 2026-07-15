@@ -148,6 +148,11 @@ def validate_homework_check_result(data: dict) -> dict:
     if raw_topic is not None and topic is None:
         return result
 
+    if status == "correct" and error_type is not None:
+        return result
+    if status == "has_error" and error_type is None:
+        return result
+
     result.update(
         {
             "status": status,
