@@ -11,6 +11,22 @@ from src.ai_engine.homework_checker import check_homework_text
 
 
 class HomeworkCheckerTest(unittest.TestCase):
+    def test_prompt_requires_simple_and_specific_feedback(self):
+        from src.ai_engine.prompts import HOMEWORK_CHECK_SYSTEM_PROMPT
+
+        self.assertIn(
+            "понятными ученику 7–9 класса",
+            HOMEWORK_CHECK_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "одно конкретное место ошибки",
+            HOMEWORK_CHECK_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "не сообщать итоговый ответ",
+            HOMEWORK_CHECK_SYSTEM_PROMPT,
+        )
+
     @patch("src.ai_engine.homework_checker.create_text_provider")
     def test_valid_provider_json_is_parsed(self, provider_factory):
         client = Mock()
