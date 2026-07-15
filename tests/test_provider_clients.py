@@ -214,6 +214,8 @@ class ProviderClientsTest(unittest.TestCase):
         clear=False,
     )
     def test_qwen_factory_uses_yandex_ai_studio(self):
+        from src.ai_engine.schemas import HOMEWORK_CHECK_RESPONSE_SCHEMA
+
         client = create_text_provider("qwen")
 
         self.assertEqual(
@@ -223,6 +225,12 @@ class ProviderClientsTest(unittest.TestCase):
         self.assertEqual(client.provider_name, "qwen")
         self.assertEqual(client.headers["Authorization"], "Api-Key key")
         self.assertEqual(client.headers["OpenAI-Project"], "folder")
+        self.assertEqual(client.response_format["type"], "json_schema")
+        self.assertTrue(client.response_format["json_schema"]["strict"])
+        self.assertEqual(
+            client.response_format["json_schema"]["schema"],
+            HOMEWORK_CHECK_RESPONSE_SCHEMA,
+        )
 
     @patch.dict(
         os.environ,

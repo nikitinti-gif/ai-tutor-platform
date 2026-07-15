@@ -412,6 +412,14 @@ def create_text_provider(provider_name: str) -> HomeworkTextProvider:
                 "Authorization": f"Api-Key {api_key}",
                 "OpenAI-Project": folder_id,
             },
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "homework_check_result",
+                    "strict": True,
+                    "schema": HOMEWORK_CHECK_RESPONSE_SCHEMA,
+                },
+            },
         )
 
     supported = ", ".join(
