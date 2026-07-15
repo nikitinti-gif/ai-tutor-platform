@@ -207,6 +207,26 @@ class ProviderClientsTest(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
+            "YANDEX_API_KEY": "key",
+            "YANDEX_FOLDER_ID": "folder",
+            "QWEN_MODEL": "qwen3.6-35b-a3b",
+        },
+        clear=False,
+    )
+    def test_qwen_factory_uses_yandex_ai_studio(self):
+        client = create_text_provider("qwen")
+
+        self.assertEqual(
+            client.model,
+            "gpt://folder/qwen3.6-35b-a3b",
+        )
+        self.assertEqual(client.provider_name, "qwen")
+        self.assertEqual(client.headers["Authorization"], "Api-Key key")
+        self.assertEqual(client.headers["OpenAI-Project"], "folder")
+
+    @patch.dict(
+        os.environ,
+        {
             "MISTRAL_API_KEY": "key",
             "MISTRAL_MODEL": "mistral-small-latest",
         },

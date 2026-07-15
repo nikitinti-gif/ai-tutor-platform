@@ -21,6 +21,7 @@ from src.ai_engine.schemas import HOMEWORK_CHECK_RESPONSE_SCHEMA
 
 SUPPORTED_TEXT_PROVIDERS = ("gemini", "mistral", "yandex")
 GIGACHAT_PROVIDER = "gigachat"
+QWEN_PROVIDER = "qwen"
 DEFAULT_MISTRAL_MODEL = "mistral-small-latest"
 DEFAULT_YANDEX_MODEL = "yandexgpt/latest"
 DEFAULT_YANDEX_BASE_URL = "https://ai.api.cloud.yandex.net/v1"
@@ -32,6 +33,7 @@ DEFAULT_GIGACHAT_OAUTH_URL = (
 DEFAULT_GIGACHAT_BASE_URL = (
     "https://gigachat.devices.sberbank.ru/api/v1"
 )
+DEFAULT_QWEN_MODEL = "qwen3.6-35b-a3b"
 
 
 class HomeworkTextProvider(Protocol):
@@ -387,8 +389,37 @@ def create_text_provider(provider_name: str) -> HomeworkTextProvider:
             ca_bundle=ca_bundle or True,
         )
 
+    if normalized == QWEN_PROVIDER:
+        api_key = os.getenv("YANDEX_API_KEY", "")
+        folder_id = os.getenv("YANDEX_FOLDER_ID", "")
+        if not folder_id:
+            raise LLMConfigurationError(
+                "YANDEX_FOLDER_ID не найден."
+            )
+        model = os.getenv("QWEN_MODEL", DEFAULT_QWEN_MODEL)
+        if not model.startswith("gpt://"):
+            model = f"gpt://{folder_id}/{model.lstrip('/')}"
+
+        return OpenAICompatibleHomeworkClient(
+            provider_name=QWEN_PROVIDER,
+            api_key=api_key,
+            model=model,
+            base_url=os.getenv(
+                "YANDEX_BASE_URL",
+                DEFAULT_YANDEX_BASE_URL,
+            ),
+            extra_headers={
+                "Authorization": f"Api-Key {api_key}",
+                "OpenAI-Project": folder_id,
+            },
+        )
+
     supported = ", ".join(
-        (*SUPPORTED_TEXT_PROVIDERS, GIGACHAT_PROVIDER)
+        (
+            *SUPPORTED_TEXT_PROVIDERS,
+            GIGACHAT_PROVIDER,
+            QWEN_PROVIDER,
+        )
     )
     raise LLMConfigurationError(
         f"Неизвестный AI-провайдер: {provider_name}. "

@@ -21,6 +21,7 @@ from src.ai_engine.homework_checker import (
 )
 from src.ai_engine.provider_clients import (
     GIGACHAT_PROVIDER,
+    QWEN_PROVIDER,
     SUPPORTED_TEXT_PROVIDERS,
     create_text_provider,
 )
@@ -333,6 +334,85 @@ async def start_gigachat_evaluation(message: Message) -> None:
     task.add_done_callback(evaluation_tasks.discard)
 
 
+async def run_qwen_evaluation(bot: Bot, chat_id: int) -> None:
+    matched = 0
+    failed = 0
+    mismatches = []
+
+    try:
+        await asyncio.to_thread(create_text_provider, QWEN_PROVIDER)
+
+        for index, case in enumerate(SYNTHETIC_CASES, start=1):
+            try:
+                evaluation = await asyncio.to_thread(
+                    evaluate_synthetic_case,
+                    case,
+                    QWEN_PROVIDER,
+                )
+            except Exception as error:
+                failed += 1
+                logger.exception(
+                    "Qwen evaluation failed for %s",
+                    case["id"],
+                )
+                mismatches.append(
+                    f"{case['id']}: API {type(error).__name__}"
+                )
+            else:
+                matched += int(evaluation["match"])
+                if not evaluation["match"]:
+                    mismatches.append(
+                        f"{case['id']}: "
+                        f"{evaluation['expected']} → "
+                        f"{evaluation['actual']} "
+                        f"({evaluation['confidence']:.2f})"
+                    )
+                logger.info("Qwen evaluation result: %s", evaluation)
+
+            if index in {5, 10}:
+                await bot.send_message(
+                    chat_id,
+                    f"⏳ Qwen3.6 35B: "
+                    f"{index}/{len(SYNTHETIC_CASES)}",
+                )
+            await asyncio.sleep(1)
+
+        details = "; ".join(mismatches) or "нет"
+        await bot.send_message(
+            chat_id,
+            "📊 Проверка Qwen3.6 35B завершена.\n\n"
+            f"• qwen: {matched}/{len(SYNTHETIC_CASES)}, "
+            f"API-ошибок {failed}\n"
+            f"  Несовпадения: {details}",
+        )
+    except Exception:
+        logger.exception("Qwen evaluation task crashed")
+        await bot.send_message(
+            chat_id,
+            "🔴 Проверка Qwen прервана. Проверь логи Render.",
+        )
+
+
+async def start_qwen_evaluation(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+
+    if evaluation_tasks:
+        await message.answer("⏳ Другая AI-оценка уже выполняется.")
+        return
+
+    await message.answer(
+        "📊 Проверяю Qwen3.6 35B на неизменённых "
+        "15 синтетических решениях. Реальные данные не используются."
+    )
+    task = asyncio.create_task(
+        run_qwen_evaluation(message.bot, message.chat.id)
+    )
+    evaluation_tasks.add(task)
+    task.add_done_callback(evaluation_tasks.discard)
+
+
 async def run_gemini_image_evaluation(bot: Bot, chat_id: int) -> None:
     matched = 0
     failed = 0
@@ -573,6 +653,10 @@ def register_demo_handlers(dp: Dispatcher):
     dp.message.register(
         start_gigachat_evaluation,
         Command("gigachat_eval"),
+    )
+    dp.message.register(
+        start_qwen_evaluation,
+        Command("qwen_eval"),
     )
     dp.message.register(
         start_gemini_image_evaluation,
