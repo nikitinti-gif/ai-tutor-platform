@@ -21,6 +21,8 @@ from src.ai_engine.homework_checker import (
 )
 from src.ai_engine.provider_clients import (
     GIGACHAT_PROVIDER,
+    KIMI_PROVIDER,
+    MINIMAX_PROVIDER,
     QWEN_PROVIDER,
     SUPPORTED_TEXT_PROVIDERS,
     create_text_provider,
@@ -489,6 +491,170 @@ async def start_qwen_image_evaluation(message: Message) -> None:
     task.add_done_callback(evaluation_tasks.discard)
 
 
+async def run_multimodal_provider_evaluation(
+    bot: Bot,
+    chat_id: int,
+    provider_name: str,
+    provider_label: str,
+) -> None:
+    text_matched = 0
+    image_matched = 0
+    failed = 0
+    mismatches = []
+
+    try:
+        await asyncio.to_thread(create_text_provider, provider_name)
+
+        for index, case in enumerate(SYNTHETIC_CASES, start=1):
+            try:
+                evaluation = await asyncio.to_thread(
+                    evaluate_synthetic_case,
+                    case,
+                    provider_name,
+                )
+            except Exception as error:
+                failed += 1
+                logger.exception(
+                    "%s text evaluation failed for %s",
+                    provider_label,
+                    case["id"],
+                )
+                mismatches.append(
+                    f"text/{case['id']}: API {type(error).__name__}"
+                )
+            else:
+                text_matched += int(evaluation["match"])
+                if not evaluation["match"]:
+                    mismatches.append(
+                        f"text/{case['id']}: "
+                        f"{evaluation['expected']} → "
+                        f"{evaluation['actual']} "
+                        f"({evaluation['confidence']:.2f})"
+                    )
+                logger.info(
+                    "%s text evaluation result: %s",
+                    provider_label,
+                    evaluation,
+                )
+
+            if index in {5, 10}:
+                await bot.send_message(
+                    chat_id,
+                    f"⏳ {provider_label} text: "
+                    f"{index}/{len(SYNTHETIC_CASES)}",
+                )
+            await asyncio.sleep(1)
+
+        await bot.send_message(chat_id, "⏳ Перехожу к 5 изображениям.")
+        for case in SYNTHETIC_IMAGE_CASES:
+            try:
+                evaluation = await asyncio.to_thread(
+                    evaluate_synthetic_image_case,
+                    case,
+                    provider_name,
+                )
+            except Exception as error:
+                failed += 1
+                logger.exception(
+                    "%s image evaluation failed for %s",
+                    provider_label,
+                    case["id"],
+                )
+                mismatches.append(
+                    f"vision/{case['id']}: API {type(error).__name__}"
+                )
+            else:
+                image_matched += int(evaluation["match"])
+                if not evaluation["match"]:
+                    mismatches.append(
+                        f"vision/{case['id']}: "
+                        f"{evaluation['expected']} → "
+                        f"{evaluation['actual']} "
+                        f"({evaluation['confidence']:.2f})"
+                    )
+                logger.info(
+                    "%s image evaluation result: %s",
+                    provider_label,
+                    evaluation,
+                )
+            await asyncio.sleep(1)
+
+        details = "; ".join(mismatches) or "нет"
+        await bot.send_message(
+            chat_id,
+            f"📊 Проверка {provider_label} завершена.\n\n"
+            f"• text: {text_matched}/{len(SYNTHETIC_CASES)}\n"
+            f"• vision: {image_matched}/{len(SYNTHETIC_IMAGE_CASES)}\n"
+            f"• API-ошибок: {failed}\n"
+            f"• Несовпадения: {details}",
+        )
+    except Exception:
+        logger.exception("%s evaluation task crashed", provider_label)
+        await bot.send_message(
+            chat_id,
+            f"🔴 Проверка {provider_label} прервана. "
+            "Проверь логи Render.",
+        )
+
+
+async def run_kimi_evaluation(bot: Bot, chat_id: int) -> None:
+    await run_multimodal_provider_evaluation(
+        bot,
+        chat_id,
+        KIMI_PROVIDER,
+        "Kimi K2.6",
+    )
+
+
+async def run_minimax_evaluation(bot: Bot, chat_id: int) -> None:
+    await run_multimodal_provider_evaluation(
+        bot,
+        chat_id,
+        MINIMAX_PROVIDER,
+        "MiniMax M3",
+    )
+
+
+async def start_kimi_evaluation(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+
+    if evaluation_tasks:
+        await message.answer("⏳ Другая AI-оценка уже выполняется.")
+        return
+
+    await message.answer(
+        "🌙 Проверяю Kimi K2.6 на 15 текстах и 5 изображениях. "
+        "Используются только синтетические данные."
+    )
+    task = asyncio.create_task(
+        run_kimi_evaluation(message.bot, message.chat.id)
+    )
+    evaluation_tasks.add(task)
+    task.add_done_callback(evaluation_tasks.discard)
+
+
+async def start_minimax_evaluation(message: Message) -> None:
+    if not is_admin(message):
+        await message.answer("⛔ Команда доступна только администратору.")
+        return
+
+    if evaluation_tasks:
+        await message.answer("⏳ Другая AI-оценка уже выполняется.")
+        return
+
+    await message.answer(
+        "📐 Проверяю MiniMax M3 на 15 текстах и 5 изображениях. "
+        "Используются только синтетические данные."
+    )
+    task = asyncio.create_task(
+        run_minimax_evaluation(message.bot, message.chat.id)
+    )
+    evaluation_tasks.add(task)
+    task.add_done_callback(evaluation_tasks.discard)
+
+
 async def run_gemini_image_evaluation(bot: Bot, chat_id: int) -> None:
     matched = 0
     failed = 0
@@ -771,6 +937,14 @@ def register_demo_handlers(dp: Dispatcher):
     dp.message.register(
         start_qwen_image_evaluation,
         Command("qwen_image_eval"),
+    )
+    dp.message.register(
+        start_kimi_evaluation,
+        Command("kimi_eval"),
+    )
+    dp.message.register(
+        start_minimax_evaluation,
+        Command("minimax_eval"),
     )
     dp.message.register(
         start_gemini_image_evaluation,

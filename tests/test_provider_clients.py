@@ -318,6 +318,137 @@ class ProviderClientsTest(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
+            "MOONSHOT_API_KEY": "moonshot-key",
+            "KIMI_MODEL": "kimi-k2.6",
+        },
+        clear=False,
+    )
+    def test_kimi_factory_uses_moonshot_multimodal_model(self):
+        client = create_text_provider("kimi")
+
+        self.assertIsInstance(client, QwenHomeworkClient)
+        self.assertEqual(client.provider_name, "kimi")
+        self.assertEqual(client.model, "kimi-k2.6")
+        self.assertEqual(
+            client.url,
+            "https://api.moonshot.ai/v1/chat/completions",
+        )
+
+    @patch("src.ai_engine.provider_clients.httpx.Client")
+    def test_kimi_request_disables_thinking_and_omits_temperature(
+        self,
+        client_class,
+    ):
+        response = Mock()
+        response.json.return_value = {
+            "choices": [
+                {"message": {"content": '{"status":"correct"}'}}
+            ]
+        }
+        context_client = Mock()
+        context_client.post.return_value = response
+        client_class.return_value.__enter__.return_value = context_client
+        client = QwenHomeworkClient(
+            provider_name="kimi",
+            api_key="secret",
+            model="kimi-k2.6",
+            base_url="https://api.moonshot.ai/v1",
+        )
+
+        client.check_homework_text("print(1)", synthetic_test=True)
+
+        payload = context_client.post.call_args.kwargs["json"]
+        self.assertNotIn("temperature", payload)
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+
+    def test_kimi_real_image_is_blocked_before_http_request(self):
+        client = QwenHomeworkClient(
+            provider_name="kimi",
+            api_key="secret",
+            model="kimi-k2.6",
+            base_url="https://api.moonshot.ai/v1",
+        )
+
+        with patch("src.ai_engine.provider_clients.httpx.Client") as cls:
+            with self.assertRaises(LLMDataPolicyError):
+                client.transcribe_homework_image(
+                    b"real-image",
+                    "image/jpeg",
+                )
+
+        cls.assert_not_called()
+
+    @patch.dict(
+        os.environ,
+        {
+            "MINIMAX_API_KEY": "minimax-key",
+            "MINIMAX_MODEL": "MiniMax-M3",
+        },
+        clear=False,
+    )
+    def test_minimax_factory_uses_m3_multimodal_model(self):
+        client = create_text_provider("minimax")
+
+        self.assertIsInstance(client, QwenHomeworkClient)
+        self.assertEqual(client.provider_name, "minimax")
+        self.assertEqual(client.model, "MiniMax-M3")
+        self.assertEqual(
+            client.url,
+            "https://api.minimax.io/v1/chat/completions",
+        )
+        self.assertEqual(
+            client.response_format,
+            {"type": "json_object"},
+        )
+
+    @patch("src.ai_engine.provider_clients.httpx.Client")
+    def test_minimax_request_disables_thinking(self, client_class):
+        response = Mock()
+        response.json.return_value = {
+            "choices": [
+                {"message": {"content": '{"status":"correct"}'}}
+            ]
+        }
+        context_client = Mock()
+        context_client.post.return_value = response
+        client_class.return_value.__enter__.return_value = context_client
+        client = QwenHomeworkClient(
+            provider_name="minimax",
+            api_key="secret",
+            model="MiniMax-M3",
+            base_url="https://api.minimax.io/v1",
+            response_format={"type": "json_object"},
+        )
+
+        client.check_homework_text("print(1)", synthetic_test=True)
+
+        payload = context_client.post.call_args.kwargs["json"]
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+        self.assertEqual(
+            payload["response_format"],
+            {"type": "json_object"},
+        )
+
+    def test_minimax_real_image_is_blocked_before_http_request(self):
+        client = QwenHomeworkClient(
+            provider_name="minimax",
+            api_key="secret",
+            model="MiniMax-M3",
+            base_url="https://api.minimax.io/v1",
+        )
+
+        with patch("src.ai_engine.provider_clients.httpx.Client") as cls:
+            with self.assertRaises(LLMDataPolicyError):
+                client.transcribe_homework_image(
+                    b"real-image",
+                    "image/jpeg",
+                )
+
+        cls.assert_not_called()
+
+    @patch.dict(
+        os.environ,
+        {
             "MISTRAL_API_KEY": "key",
             "MISTRAL_MODEL": "mistral-small-latest",
         },

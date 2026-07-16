@@ -27,6 +27,8 @@ from src.ai_engine.schemas import (
 SUPPORTED_TEXT_PROVIDERS = ("gemini", "mistral", "yandex")
 GIGACHAT_PROVIDER = "gigachat"
 QWEN_PROVIDER = "qwen"
+KIMI_PROVIDER = "kimi"
+MINIMAX_PROVIDER = "minimax"
 DEFAULT_MISTRAL_MODEL = "mistral-small-latest"
 DEFAULT_YANDEX_MODEL = "yandexgpt/latest"
 DEFAULT_YANDEX_BASE_URL = "https://ai.api.cloud.yandex.net/v1"
@@ -39,6 +41,10 @@ DEFAULT_GIGACHAT_BASE_URL = (
     "https://gigachat.devices.sberbank.ru/api/v1"
 )
 DEFAULT_QWEN_MODEL = "qwen3.6-35b-a3b"
+DEFAULT_KIMI_MODEL = "kimi-k2.6"
+DEFAULT_KIMI_BASE_URL = "https://api.moonshot.ai/v1"
+DEFAULT_MINIMAX_MODEL = "MiniMax-M3"
+DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 SUPPORTED_QWEN_IMAGE_MIME_TYPES = {
     "image/jpeg",
     "image/png",
@@ -122,6 +128,11 @@ class OpenAICompatibleHomeworkClient:
             "max_tokens": 1200,
             "response_format": self.response_format,
         }
+        if self.provider_name == KIMI_PROVIDER:
+            payload.pop("temperature")
+            payload["thinking"] = {"type": "disabled"}
+        elif self.provider_name == MINIMAX_PROVIDER:
+            payload["thinking"] = {"type": "disabled"}
 
         try:
             with httpx.Client(
@@ -168,9 +179,10 @@ class QwenHomeworkClient(OpenAICompatibleHomeworkClient):
         synthetic_test: bool = False,
         pilot_v2: bool = False,
     ) -> str:
-        if not synthetic_test and not pilot_v2:
+        pilot_allowed = pilot_v2 and self.provider_name == QWEN_PROVIDER
+        if not synthetic_test and not pilot_allowed:
             raise LLMDataPolicyError(
-                "qwen разрешён только для синтетических "
+                f"{self.provider_name} разрешён только для синтетических "
                 "тестовых изображений."
             )
         if not image_bytes:
@@ -179,7 +191,7 @@ class QwenHomeworkClient(OpenAICompatibleHomeworkClient):
         normalized_mime_type = mime_type.strip().lower()
         if normalized_mime_type not in SUPPORTED_QWEN_IMAGE_MIME_TYPES:
             raise ValueError(
-                "Qwen Vision поддерживает JPEG, PNG и WEBP."
+                f"{self.provider_name} поддерживает JPEG, PNG и WEBP."
             )
 
         encoded_image = base64.b64encode(image_bytes).decode("ascii")
@@ -216,6 +228,12 @@ class QwenHomeworkClient(OpenAICompatibleHomeworkClient):
                 },
             },
         }
+        if self.provider_name == KIMI_PROVIDER:
+            payload.pop("temperature")
+            payload["thinking"] = {"type": "disabled"}
+        elif self.provider_name == MINIMAX_PROVIDER:
+            payload["thinking"] = {"type": "disabled"}
+            payload["response_format"] = {"type": "json_object"}
 
         try:
             with httpx.Client(
@@ -233,23 +251,24 @@ class QwenHomeworkClient(OpenAICompatibleHomeworkClient):
             status = error.response.status_code
             detail = error.response.text[:300]
             raise LLMResponseError(
-                f"qwen vision вернул HTTP {status}: {detail}"
+                f"{self.provider_name} vision вернул HTTP "
+                f"{status}: {detail}"
             ) from error
         except (httpx.HTTPError, ValueError) as error:
             raise LLMResponseError(
-                f"Ошибка запроса к qwen vision: {error}"
+                f"Ошибка запроса к {self.provider_name} vision: {error}"
             ) from error
 
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as error:
             raise LLMResponseError(
-                "qwen vision вернул неожиданный ответ."
+                f"{self.provider_name} vision вернул неожиданный ответ."
             ) from error
 
         if not isinstance(content, str) or not content.strip():
             raise LLMResponseError(
-                "qwen vision вернул пустую транскрипцию."
+                f"{self.provider_name} vision вернул пустую транскрипцию."
             )
         return content
 
@@ -529,11 +548,44 @@ def create_text_provider(provider_name: str) -> HomeworkTextProvider:
             },
         )
 
+    if normalized == KIMI_PROVIDER:
+        return QwenHomeworkClient(
+            provider_name=KIMI_PROVIDER,
+            api_key=os.getenv("MOONSHOT_API_KEY", ""),
+            model=os.getenv("KIMI_MODEL", DEFAULT_KIMI_MODEL),
+            base_url=os.getenv(
+                "MOONSHOT_BASE_URL",
+                DEFAULT_KIMI_BASE_URL,
+            ),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "homework_check_result",
+                    "strict": True,
+                    "schema": HOMEWORK_CHECK_RESPONSE_SCHEMA,
+                },
+            },
+        )
+
+    if normalized == MINIMAX_PROVIDER:
+        return QwenHomeworkClient(
+            provider_name=MINIMAX_PROVIDER,
+            api_key=os.getenv("MINIMAX_API_KEY", ""),
+            model=os.getenv("MINIMAX_MODEL", DEFAULT_MINIMAX_MODEL),
+            base_url=os.getenv(
+                "MINIMAX_BASE_URL",
+                DEFAULT_MINIMAX_BASE_URL,
+            ),
+            response_format={"type": "json_object"},
+        )
+
     supported = ", ".join(
         (
             *SUPPORTED_TEXT_PROVIDERS,
             GIGACHAT_PROVIDER,
             QWEN_PROVIDER,
+            KIMI_PROVIDER,
+            MINIMAX_PROVIDER,
         )
     )
     raise LLMConfigurationError(

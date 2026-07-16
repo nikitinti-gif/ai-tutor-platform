@@ -42,6 +42,14 @@ services:
         value: qwen3.6-35b-a3b
       - key: QWEN_PILOT_V2_ENABLED
         value: "false"
+      - key: MOONSHOT_API_KEY
+        sync: false
+      - key: KIMI_MODEL
+        value: kimi-k2.6
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: MINIMAX_MODEL
+        value: MiniMax-M3
       - key: DATABASE_URL
         sync: false
       - key: WEBHOOK_SECRET
