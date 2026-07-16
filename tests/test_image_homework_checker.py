@@ -119,6 +119,45 @@ class ImageHomeworkCheckerTest(unittest.TestCase):
         client.transcribe_homework_image.assert_called_once()
         client.check_homework_text.assert_called_once()
 
+    @patch("src.ai_engine.homework_checker.create_text_provider")
+    def test_qwen_pilot_allows_real_image_as_teacher_draft(self, factory):
+        client = Mock()
+        client.transcribe_homework_image.return_value = """
+        {
+            "legibility": "readable",
+            "confidence": 0.91,
+            "transcription": "x = int(input())"
+        }
+        """
+        client.check_homework_text.return_value = """
+        {
+            "status": "unclear",
+            "confidence": 0.7,
+            "feedback": "Нужна проверка преподавателя.",
+            "hint": "Проверь условие задачи.",
+            "error_type": null,
+            "topic": "Условия"
+        }
+        """
+        factory.return_value = client
+
+        result = check_homework_image(
+            image_bytes=b"real-image",
+            mime_type="image/jpeg",
+            task_text="Проверить знак числа.",
+            topic="Условия",
+            provider_name="qwen",
+            pilot_v2=True,
+        )
+
+        self.assertEqual(result["status"], "unclear")
+        self.assertTrue(
+            client.transcribe_homework_image.call_args.kwargs["pilot_v2"]
+        )
+        self.assertTrue(
+            client.check_homework_text.call_args.kwargs["pilot_v2"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

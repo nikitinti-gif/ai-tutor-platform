@@ -35,6 +35,20 @@ class ProviderClientsTest(unittest.TestCase):
 
         cls.assert_not_called()
 
+    def test_pilot_flag_does_not_allow_non_qwen_provider(self):
+        client = OpenAICompatibleHomeworkClient(
+            provider_name="mistral",
+            api_key="secret",
+            model="model",
+            base_url="https://example.test/v1",
+        )
+
+        with patch("src.ai_engine.provider_clients.httpx.Client") as cls:
+            with self.assertRaises(LLMDataPolicyError):
+                client.check_homework_text("real", pilot_v2=True)
+
+        cls.assert_not_called()
+
     @patch("src.ai_engine.provider_clients.httpx.Client")
     def test_openai_compatible_request_uses_json_mode(self, client_class):
         response = Mock()

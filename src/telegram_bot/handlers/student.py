@@ -1,11 +1,14 @@
-import os
+import asyncio
+import logging
+from io import BytesIO
 
-from config import ADMIN_TELEGRAM_ID
+from config import ADMIN_TELEGRAM_ID, QWEN_PILOT_V2_ENABLED
 from aiogram import Dispatcher, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from src.ai_engine.homework_checker import (
+    check_homework_image,
     check_homework_text,
     render_check_result_for_student,
 )
@@ -18,11 +21,11 @@ from src.repositories.pedagogical_decision_repository import (
 )
 from src.services.homework_service import format_homework_for_student
 from src.telegram_bot.states.student_states import StudentHomeworkCheckStates
-from src.services.vision_service import VisionService
 from src.services.ai_teacher_service import generate_ai_teacher_feedback
 
 
-UPLOAD_DIR = "uploads/homework_photos"
+logger = logging.getLogger(__name__)
+MAX_PILOT_PHOTO_BYTES = 5 * 1024 * 1024
 
 
 async def student_homework(message: Message):
@@ -69,41 +72,100 @@ async def student_photo_check(message: Message, state: FSMContext):
     await message.answer(
         "📸 Проверка решения\n\n"
         "Отправь фото решения или напиши решение текстом.\n\n"
-        "Пока фото только сохраняется, OCR подключим следующим шагом."
+        "Фото будет передано внешнему AI только для черновика, "
+        "а окончательное решение примет преподаватель."
     )
 
 
 async def student_receive_solution_photo(message: Message, state: FSMContext):
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    if not QWEN_PILOT_V2_ENABLED:
+        await state.clear()
+        await message.answer(
+            "🔒 Пилотная проверка фото сейчас выключена. "
+            "Решение нужно передать преподавателю."
+        )
+        return
 
     latest_assignment = HomeworkRepository.get_latest_for_student(
         student_id=message.from_user.id
     )
 
-    if latest_assignment:
-        HomeworkRepository.mark_as_submitted(
-            latest_assignment["student_homework_id"]
-        )
+    if not latest_assignment:
+        await state.clear()
+        await message.answer("Сначала открой домашнее задание.")
+        return
+
+    homework = next(
+        (
+            item
+            for item in HomeworkRepository.get_active()
+            if item["homework_id"] == latest_assignment["homework_id"]
+        ),
+        None,
+    )
+    if not homework:
+        await state.clear()
+        await message.answer("Не удалось найти активное задание.")
+        return
 
     photo = message.photo[-1]
-    file = await message.bot.get_file(photo.file_id)
+    if photo.file_size and photo.file_size > MAX_PILOT_PHOTO_BYTES:
+        await state.clear()
+        await message.answer("⛔ Фото должно быть не больше 5 Мбайт.")
+        return
 
-    file_path = os.path.join(
-        UPLOAD_DIR,
-        f"{message.from_user.id}_{photo.file_unique_id}.jpg"
+    HomeworkRepository.mark_as_submitted(
+        latest_assignment["student_homework_id"]
     )
+    buffer = BytesIO()
+    try:
+        await message.bot.download(photo, destination=buffer)
+        image_bytes = buffer.getvalue()
+    finally:
+        buffer.close()
 
-    await message.bot.download_file(file.file_path, file_path)
-    vision_result = VisionService().analyze_homework_photo(file_path)
-
-    await state.clear()
-
-    await message.answer(
-    "✅ Фото решения получено и обработано.\n\n"
-    f"Provider: {vision_result.provider}\n"
-    f"Confidence: {vision_result.confidence}\n\n"
-    f"Распознанный текст:\n{vision_result.text}"
-    )
+    try:
+        result = await asyncio.to_thread(
+            check_homework_image,
+            image_bytes=image_bytes,
+            mime_type="image/jpeg",
+            task_text=format_homework_for_student(
+                homework["homework_data"]
+            ),
+            topic=homework["topic"],
+            provider_name="qwen",
+            pilot_v2=True,
+        )
+        await message.bot.send_photo(
+            chat_id=int(ADMIN_TELEGRAM_ID),
+            photo=photo.file_id,
+            caption=(
+                "🧑‍🏫 Пилот v2: требуется проверка преподавателя\n"
+                f"Тема: {homework['topic']}\n"
+                "Имя и Telegram ID программно в запрос AI не добавлялись."
+            ),
+        )
+        await message.bot.send_message(
+            chat_id=int(ADMIN_TELEGRAM_ID),
+            text=(
+                "Черновик Qwen — не отправлен ученику:\n\n"
+                f"{render_check_result_for_student(result)}"
+            ),
+        )
+    except Exception:
+        logger.exception("Qwen pilot v2 photo check failed")
+        await message.answer(
+            "🔴 Не удалось подготовить черновик проверки. "
+            "Фото нужно проверить преподавателю вручную."
+        )
+    else:
+        await message.answer(
+            "✅ Фото принято. AI подготовил черновик, но не вынес "
+            "окончательное решение. Преподаватель получил фото и "
+            "проверит результат."
+        )
+    finally:
+        await state.clear()
 
 
 async def student_receive_solution_text(
@@ -220,4 +282,4 @@ def register_student_handlers(dp: Dispatcher):
         F.text,
     )
     dp.message.register(student_progress, F.text == "📊 Мой прогресс")
-    dp.message.register(student_question, F.text == "❓ Задать вопрос")
+    dp.message.register(student_question, F.text == "❓ Задать вопрос")

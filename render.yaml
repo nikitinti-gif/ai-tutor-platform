@@ -40,6 +40,8 @@ services:
         value: GIGACHAT_API_PERS
       - key: QWEN_MODEL
         value: qwen3.6-35b-a3b
+      - key: QWEN_PILOT_V2_ENABLED
+        value: "false"
       - key: DATABASE_URL
         sync: false
       - key: WEBHOOK_SECRET

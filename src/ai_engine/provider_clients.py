@@ -53,6 +53,7 @@ class HomeworkTextProvider(Protocol):
         task_text: str | None = None,
         topic: str | None = None,
         synthetic_test: bool = False,
+        pilot_v2: bool = False,
     ) -> str: ...
 
 
@@ -94,8 +95,10 @@ class OpenAICompatibleHomeworkClient:
         task_text: str | None = None,
         topic: str | None = None,
         synthetic_test: bool = False,
+        pilot_v2: bool = False,
     ) -> str:
-        if not synthetic_test:
+        pilot_allowed = pilot_v2 and self.provider_name == QWEN_PROVIDER
+        if not synthetic_test and not pilot_allowed:
             raise LLMDataPolicyError(
                 f"{self.provider_name} разрешён только для "
                 "синтетических тестовых примеров."
@@ -163,8 +166,9 @@ class QwenHomeworkClient(OpenAICompatibleHomeworkClient):
         image_bytes: bytes,
         mime_type: str,
         synthetic_test: bool = False,
+        pilot_v2: bool = False,
     ) -> str:
-        if not synthetic_test:
+        if not synthetic_test and not pilot_v2:
             raise LLMDataPolicyError(
                 "qwen разрешён только для синтетических "
                 "тестовых изображений."

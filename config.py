@@ -7,6 +7,10 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID")
+QWEN_PILOT_V2_ENABLED = os.getenv(
+    "QWEN_PILOT_V2_ENABLED",
+    "false",
+).strip().lower() in {"1", "true", "yes", "on"}
 BOT_MODE = os.getenv("BOT_MODE", "polling").strip().lower()
 WEBHOOK_BASE_URL = (
     os.getenv("WEBHOOK_BASE_URL")
@@ -22,6 +26,11 @@ PORT = int(os.getenv("PORT", "10000"))
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN не найден в .env")
+
+if QWEN_PILOT_V2_ENABLED and not ADMIN_TELEGRAM_ID:
+    raise ValueError(
+        "Для QWEN_PILOT_V2_ENABLED нужен ADMIN_TELEGRAM_ID"
+    )
 
 if BOT_MODE not in {"polling", "webhook"}:
     raise ValueError("BOT_MODE должен быть polling или webhook")

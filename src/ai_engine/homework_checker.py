@@ -47,8 +47,10 @@ def check_homework_image(
     topic: str | None = None,
     synthetic_test: bool = False,
     provider_name: str = "gemini",
+    pilot_v2: bool = False,
 ) -> dict:
-    if not synthetic_test:
+    pilot_allowed = pilot_v2 and provider_name == "qwen"
+    if not synthetic_test and not pilot_allowed:
         return {
             "status": "unclear",
             "confidence": 0.0,
@@ -69,10 +71,15 @@ def check_homework_image(
             raise ValueError(
                 f"Провайдер {provider_name} не поддерживает изображения."
             )
+    transcription_kwargs = {
+        "image_bytes": image_bytes,
+        "mime_type": mime_type,
+        "synthetic_test": synthetic_test,
+    }
+    if pilot_allowed:
+        transcription_kwargs["pilot_v2"] = True
     raw_transcription = client.transcribe_homework_image(
-        image_bytes=image_bytes,
-        mime_type=mime_type,
-        synthetic_test=True,
+        **transcription_kwargs
     )
     transcription = parse_image_transcription_response(raw_transcription)
 
@@ -94,12 +101,15 @@ def check_homework_image(
             "image_transcription": transcription["transcription"],
         }
 
-    raw_response = client.check_homework_text(
-        text=transcription["transcription"],
-        task_text=task_text,
-        topic=topic,
-        synthetic_test=True,
-    )
+    check_kwargs = {
+        "text": transcription["transcription"],
+        "task_text": task_text,
+        "topic": topic,
+        "synthetic_test": synthetic_test,
+    }
+    if pilot_allowed:
+        check_kwargs["pilot_v2"] = True
+    raw_response = client.check_homework_text(**check_kwargs)
     result = parse_homework_check_response(raw_response)
     result["image_legibility"] = transcription["legibility"]
     result["image_transcription"] = transcription["transcription"]
