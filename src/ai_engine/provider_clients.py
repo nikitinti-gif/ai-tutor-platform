@@ -41,8 +41,8 @@ DEFAULT_GIGACHAT_BASE_URL = (
     "https://gigachat.devices.sberbank.ru/api/v1"
 )
 DEFAULT_QWEN_MODEL = "qwen3.6-35b-a3b"
-DEFAULT_KIMI_MODEL = "kimi-k2.6"
-DEFAULT_KIMI_BASE_URL = "https://api.moonshot.ai/v1"
+DEFAULT_KIMI_MODEL = "moonshotai/kimi-k2.6:free"
+DEFAULT_KIMI_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MINIMAX_MODEL = "MiniMax-M3"
 DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 SUPPORTED_QWEN_IMAGE_MIME_TYPES = {
@@ -551,10 +551,10 @@ def create_text_provider(provider_name: str) -> HomeworkTextProvider:
     if normalized == KIMI_PROVIDER:
         return QwenHomeworkClient(
             provider_name=KIMI_PROVIDER,
-            api_key=os.getenv("MOONSHOT_API_KEY", ""),
+            api_key=os.getenv("OPENROUTER_API_KEY", ""),
             model=os.getenv("KIMI_MODEL", DEFAULT_KIMI_MODEL),
             base_url=os.getenv(
-                "MOONSHOT_BASE_URL",
+                "OPENROUTER_BASE_URL",
                 DEFAULT_KIMI_BASE_URL,
             ),
             response_format={

@@ -76,6 +76,13 @@ async def run_gemini_evaluation(bot: Bot, chat_id: int) -> None:
                     "Gemini evaluation failed for %s",
                     case["id"],
                 )
+                if "429" in str(error) or "quota" in str(error).lower():
+                    await bot.send_message(
+                        chat_id,
+                        f"⛔ {provider_label}: исчерпан лимит или баланс. "
+                        "Оценка остановлена после первой ошибки 429.",
+                    )
+                    return
                 mismatches.append(
                     f"• {case['id']}: API {type(error).__name__}"
                 )
@@ -275,6 +282,13 @@ async def run_gigachat_evaluation(bot: Bot, chat_id: int) -> None:
                     "GigaChat Pro evaluation failed for %s",
                     case["id"],
                 )
+                if "429" in str(error) or "quota" in str(error).lower():
+                    await bot.send_message(
+                        chat_id,
+                        f"⛔ {provider_label}: исчерпан лимит или баланс. "
+                        "Оценка остановлена после первой ошибки 429.",
+                    )
+                    return
                 mismatches.append(
                     f"{case['id']}: API {type(error).__name__}"
                 )

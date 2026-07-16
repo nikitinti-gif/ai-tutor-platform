@@ -318,8 +318,8 @@ class ProviderClientsTest(unittest.TestCase):
     @patch.dict(
         os.environ,
         {
-            "MOONSHOT_API_KEY": "moonshot-key",
-            "KIMI_MODEL": "kimi-k2.6",
+            "OPENROUTER_API_KEY": "openrouter-key",
+            "KIMI_MODEL": "moonshotai/kimi-k2.6:free",
         },
         clear=False,
     )
@@ -328,10 +328,10 @@ class ProviderClientsTest(unittest.TestCase):
 
         self.assertIsInstance(client, QwenHomeworkClient)
         self.assertEqual(client.provider_name, "kimi")
-        self.assertEqual(client.model, "kimi-k2.6")
+        self.assertEqual(client.model, "moonshotai/kimi-k2.6:free")
         self.assertEqual(
             client.url,
-            "https://api.moonshot.ai/v1/chat/completions",
+            "https://openrouter.ai/api/v1/chat/completions",
         )
 
     @patch("src.ai_engine.provider_clients.httpx.Client")
