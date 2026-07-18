@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from io import BytesIO
 from uuid import uuid4
 
@@ -8,12 +10,14 @@ from aiogram.types import Message
 from config import ADMIN_TELEGRAM_ID
 from src.core.roles import ROLE_PARENT
 from src.repositories.user_repository import UserRepository
+from src.repositories.submission_repository import SubmissionRepository
 from src.services.parent_report_service import generate_parent_report
 from src.services.photo_quality_service import assess_homework_photo
 from src.telegram_bot.states.student_states import ParentSubmissionStates
 
 
 MAX_PARENT_PHOTO_BYTES = 5 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 async def parent_start_submission(message: Message, state: FSMContext):
@@ -71,17 +75,60 @@ async def parent_receive_homework_photo(
         return
 
     submission_id = f"sub_{uuid4().hex[:12]}"
-    await message.bot.send_photo(
-        chat_id=int(ADMIN_TELEGRAM_ID),
-        photo=photo.file_id,
-        caption=(
-            "📥 Новая работа от родителя\n"
-            f"Номер: {submission_id}\n"
-            "Качество фото: принято\n"
-            f"Размер: {quality.width}×{quality.height}\n"
-            "AI-анализ пока не запускался."
-        ),
-    )
+    submission = {
+        "submission_id": submission_id,
+        "parent_telegram_id": message.from_user.id,
+        "student_telegram_id": None,
+        "telegram_file_id": photo.file_id,
+        "telegram_file_unique_id": photo.file_unique_id,
+        "status": "accepted",
+        "photo_width": quality.width,
+        "photo_height": quality.height,
+        "quality_metrics": {
+            "brightness": round(quality.brightness, 2),
+            "contrast": round(quality.contrast, 2),
+            "sharpness": round(quality.sharpness, 2),
+        },
+    }
+    try:
+        await asyncio.to_thread(SubmissionRepository.create, submission)
+    except Exception:
+        logger.exception("Parent submission was not saved: %s", submission_id)
+        await message.answer(
+            "🔴 Не удалось сохранить работу. Попробуйте отправить фото "
+            "ещё раз через несколько минут."
+        )
+        return
+
+    try:
+        await message.bot.send_photo(
+            chat_id=int(ADMIN_TELEGRAM_ID),
+            photo=photo.file_id,
+            caption=(
+                "📥 Новая работа от родителя\n"
+                f"Номер: {submission_id}\n"
+                "Качество фото: принято\n"
+                f"Размер: {quality.width}×{quality.height}\n"
+                "Очередь: PostgreSQL\n"
+                "AI-анализ пока не запускался."
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Teacher was not notified about submission: %s",
+            submission_id,
+        )
+    else:
+        try:
+            await asyncio.to_thread(
+                SubmissionRepository.mark_teacher_notified,
+                submission_id,
+            )
+        except Exception:
+            logger.exception(
+                "Teacher notification was not marked: %s",
+                submission_id,
+            )
 
     await state.clear()
     await message.answer(
