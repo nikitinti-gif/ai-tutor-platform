@@ -20,6 +20,7 @@ def _ensure_submissions_table(connection) -> None:
             submission_id TEXT PRIMARY KEY,
             parent_telegram_id BIGINT NOT NULL,
             student_telegram_id BIGINT,
+            is_synthetic BOOLEAN NOT NULL DEFAULT FALSE,
             telegram_file_id TEXT NOT NULL,
             telegram_file_unique_id TEXT NOT NULL,
             status TEXT NOT NULL,
@@ -38,6 +39,12 @@ def _ensure_submissions_table(connection) -> None:
                 )
             )
         )
+        """
+    )
+    connection.execute(
+        """
+        ALTER TABLE homework_submissions
+        ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT FALSE
         """
     )
     connection.execute(
@@ -73,6 +80,7 @@ def create_homework_submission(database_url: str, submission: dict) -> dict:
                 submission_id,
                 parent_telegram_id,
                 student_telegram_id,
+                is_synthetic,
                 telegram_file_id,
                 telegram_file_unique_id,
                 status,
@@ -82,13 +90,14 @@ def create_homework_submission(database_url: str, submission: dict) -> dict:
                 created_at,
                 updated_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
             )
             """,
             (
                 record["submission_id"],
                 record["parent_telegram_id"],
                 record.get("student_telegram_id"),
+                bool(record.get("is_synthetic", False)),
                 record["telegram_file_id"],
                 record["telegram_file_unique_id"],
                 record["status"],

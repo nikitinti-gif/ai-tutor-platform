@@ -4,6 +4,7 @@ from aiogram import Dispatcher, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from config import ADMIN_TELEGRAM_ID
 from src.core.roles import ROLE_STUDENT, ROLE_TEACHER
 from src.repositories.family_link_repository import FamilyLinkRepository
 from src.repositories.user_repository import UserRepository
@@ -12,8 +13,13 @@ from src.services.homework_service import (
     generate_homework_by_topic,
     format_homework_for_student,
 )
-from src.services.family_link_service import generate_link_code, hash_link_code
+from src.services.family_link_service import (
+    generate_link_code,
+    hash_link_code,
+    make_synthetic_student_id,
+)
 from src.telegram_bot.states.student_states import (
+    ParentFamilyLinkStates,
     TeacherFamilyLinkStates,
     TeacherHomeworkStates,
 )
@@ -36,6 +42,46 @@ async def teacher_students(message: Message):
         text += f"{index}. {student['full_name']} — Telegram ID: {student['telegram_id']}\n"
 
     await message.answer(text)
+
+
+def is_admin(message: Message) -> bool:
+    return bool(
+        message.from_user
+        and ADMIN_TELEGRAM_ID
+        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+
+
+async def admin_start_synthetic_family(
+    message: Message,
+    state: FSMContext,
+):
+    if not is_admin(message):
+        await message.answer("⛔ Пилотный режим доступен только администратору.")
+        return
+
+    code = generate_link_code()
+    synthetic_student_id = make_synthetic_student_id(message.from_user.id)
+    try:
+        await asyncio.to_thread(
+            FamilyLinkRepository.save_code,
+            hash_link_code(code),
+            synthetic_student_id,
+            message.from_user.id,
+        )
+    except Exception:
+        await message.answer(
+            "🔴 Не удалось создать тестовую семью. Попробуйте позже."
+        )
+        return
+
+    await state.set_state(ParentFamilyLinkStates.waiting_link_code)
+    await message.answer(
+        "🧪 Создан синтетический ученик.\n\n"
+        f"Одноразовый код: {code}\n\n"
+        "Отправьте этот код следующим сообщением. Он действует 30 минут "
+        "и будет использован только один раз."
+    )
 
 
 async def teacher_start_family_link(message: Message, state: FSMContext):
@@ -150,6 +196,10 @@ async def teacher_week_summary(message: Message):
 
 
 def register_teacher_handlers(dp: Dispatcher):
+    dp.message.register(
+        admin_start_synthetic_family,
+        F.text == "🧪 Тестовая семья",
+    )
     dp.message.register(teacher_students, F.text == "👨‍🎓 Ученики")
     dp.message.register(
         teacher_start_family_link,

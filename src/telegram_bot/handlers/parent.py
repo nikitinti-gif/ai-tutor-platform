@@ -13,7 +13,10 @@ from src.repositories.family_link_repository import FamilyLinkRepository
 from src.repositories.user_repository import UserRepository
 from src.repositories.submission_repository import SubmissionRepository
 from src.services.parent_report_service import generate_parent_report
-from src.services.family_link_service import hash_link_code
+from src.services.family_link_service import (
+    hash_link_code,
+    is_synthetic_student_id,
+)
 from src.services.photo_quality_service import assess_homework_photo
 from src.telegram_bot.states.student_states import (
     ParentFamilyLinkStates,
@@ -23,6 +26,14 @@ from src.telegram_bot.states.student_states import (
 
 MAX_PARENT_PHOTO_BYTES = 5 * 1024 * 1024
 logger = logging.getLogger(__name__)
+
+
+def is_admin(message: Message) -> bool:
+    return bool(
+        message.from_user
+        and ADMIN_TELEGRAM_ID
+        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
 
 
 async def parent_start_family_link(message: Message, state: FSMContext):
@@ -77,7 +88,7 @@ async def parent_receive_family_link_code(
 
 async def parent_start_submission(message: Message, state: FSMContext):
     user = UserRepository.get_by_telegram_id(message.from_user.id)
-    if not user or user.get("role") != ROLE_PARENT:
+    if (not user or user.get("role") != ROLE_PARENT) and not is_admin(message):
         await message.answer("⛔ Загрузка доступна только родителю.")
         return
     if not ADMIN_TELEGRAM_ID:
@@ -159,6 +170,7 @@ async def parent_receive_homework_photo(
         "submission_id": submission_id,
         "parent_telegram_id": message.from_user.id,
         "student_telegram_id": student_id,
+        "is_synthetic": is_synthetic_student_id(student_id),
         "telegram_file_id": photo.file_id,
         "telegram_file_unique_id": photo.file_unique_id,
         "status": "accepted",
@@ -190,6 +202,8 @@ async def parent_receive_homework_photo(
                 "Качество фото: принято\n"
                 f"Размер: {quality.width}×{quality.height}\n"
                 "Очередь: PostgreSQL\n"
+                "Данные: "
+                f"{'синтетические' if is_synthetic_student_id(student_id) else 'пилотные'}\n"
                 "AI-анализ пока не запускался."
             ),
         )
@@ -234,7 +248,10 @@ def register_parent_handlers(dp: Dispatcher):
     )
     dp.message.register(
         parent_start_submission,
-        F.text == "📷 Сдать работу ребёнка",
+        F.text.in_({
+            "📷 Сдать работу ребёнка",
+            "🧪 Сдать тестовую работу",
+        }),
     )
     dp.message.register(
         parent_receive_homework_photo,

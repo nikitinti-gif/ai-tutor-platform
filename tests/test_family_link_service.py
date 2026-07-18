@@ -4,6 +4,8 @@ from src.services.family_link_service import (
     LINK_CODE_ALPHABET,
     generate_link_code,
     hash_link_code,
+    is_synthetic_student_id,
+    make_synthetic_student_id,
     normalize_link_code,
 )
 
@@ -27,6 +29,13 @@ class FamilyLinkServiceTest(unittest.TestCase):
     def test_invalid_code_is_rejected(self):
         with self.assertRaises(ValueError):
             hash_link_code("short")
+
+    def test_synthetic_student_id_is_negative_and_stable(self):
+        student_id = make_synthetic_student_id(123456)
+
+        self.assertEqual(student_id, -123456)
+        self.assertTrue(is_synthetic_student_id(student_id))
+        self.assertFalse(is_synthetic_student_id(123456))
 
 
 if __name__ == "__main__":

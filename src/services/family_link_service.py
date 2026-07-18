@@ -24,3 +24,13 @@ def hash_link_code(code: str) -> str:
     if any(character not in LINK_CODE_ALPHABET for character in normalized):
         raise ValueError("Код привязки содержит недопустимые символы.")
     return hashlib.sha256(normalized.encode("ascii")).hexdigest()
+
+
+def make_synthetic_student_id(admin_telegram_id: int) -> int:
+    if not isinstance(admin_telegram_id, int) or admin_telegram_id == 0:
+        raise ValueError("Некорректный Telegram ID администратора.")
+    return -abs(admin_telegram_id)
+
+
+def is_synthetic_student_id(student_telegram_id: int) -> bool:
+    return isinstance(student_telegram_id, int) and student_telegram_id < 0
