@@ -7,3 +7,7 @@ class TeacherHomeworkStates(StatesGroup):
 
 class StudentHomeworkCheckStates(StatesGroup):
     waiting_solution_text = State()
+
+
+class ParentSubmissionStates(StatesGroup):
+    waiting_homework_photo = State()
