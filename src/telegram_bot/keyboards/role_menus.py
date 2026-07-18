@@ -14,6 +14,7 @@ student_menu = ReplyKeyboardMarkup(
 
 parent_menu = ReplyKeyboardMarkup(
     keyboard=[
+        [KeyboardButton(text="🔗 Привязать ребёнка")],
         [KeyboardButton(text="📷 Сдать работу ребёнка")],
         [KeyboardButton(text="📊 Прогресс ребёнка")],
         [KeyboardButton(text="📄 Отчёт за неделю")],
@@ -26,6 +27,7 @@ parent_menu = ReplyKeyboardMarkup(
 teacher_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="👨‍🎓 Ученики")],
+        [KeyboardButton(text="🔗 Код для родителя")],
         [KeyboardButton(text="📚 Выдать ДЗ")],
         [KeyboardButton(text="📸 Проверки ИИ")],
         [KeyboardButton(text="📊 Сводка недели")],
