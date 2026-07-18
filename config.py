@@ -11,6 +11,18 @@ QWEN_PILOT_V2_ENABLED = os.getenv(
     "QWEN_PILOT_V2_ENABLED",
     "false",
 ).strip().lower() in {"1", "true", "yes", "on"}
+SYNTHETIC_GEMINI_WORKER_ENABLED = os.getenv(
+    "SYNTHETIC_GEMINI_WORKER_ENABLED",
+    "false",
+).strip().lower() in {"1", "true", "yes", "on"}
+SYNTHETIC_WORKER_INTERVAL_SECONDS = max(
+    5,
+    int(os.getenv("SYNTHETIC_WORKER_INTERVAL_SECONDS", "15")),
+)
+SYNTHETIC_WORKER_MAX_ATTEMPTS = max(
+    1,
+    min(int(os.getenv("SYNTHETIC_WORKER_MAX_ATTEMPTS", "2")), 3),
+)
 BOT_MODE = os.getenv("BOT_MODE", "polling").strip().lower()
 WEBHOOK_BASE_URL = (
     os.getenv("WEBHOOK_BASE_URL")
@@ -30,6 +42,11 @@ if not BOT_TOKEN:
 if QWEN_PILOT_V2_ENABLED and not ADMIN_TELEGRAM_ID:
     raise ValueError(
         "Для QWEN_PILOT_V2_ENABLED нужен ADMIN_TELEGRAM_ID"
+    )
+
+if SYNTHETIC_GEMINI_WORKER_ENABLED and not ADMIN_TELEGRAM_ID:
+    raise ValueError(
+        "Для SYNTHETIC_GEMINI_WORKER_ENABLED нужен ADMIN_TELEGRAM_ID"
     )
 
 if BOT_MODE not in {"polling", "webhook"}:

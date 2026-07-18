@@ -25,6 +25,12 @@ def _mark_teacher_notified(database_url: str, submission_id: str) -> None:
     mark_teacher_notified(database_url, submission_id)
 
 
+def _submission_storage_function(name: str):
+    from src.database import submission_storage
+
+    return getattr(submission_storage, name)
+
+
 class SubmissionRepository:
     @staticmethod
     def create(submission: dict) -> dict:
@@ -33,3 +39,40 @@ class SubmissionRepository:
     @staticmethod
     def mark_teacher_notified(submission_id: str) -> None:
         _mark_teacher_notified(_database_url(), submission_id)
+
+    @staticmethod
+    def claim_next_synthetic(max_attempts: int) -> dict | None:
+        return _submission_storage_function(
+            "claim_next_synthetic_submission"
+        )(_database_url(), max_attempts)
+
+    @staticmethod
+    def save_analysis(submission_id: str, result: dict) -> None:
+        _submission_storage_function("save_submission_analysis")(
+            _database_url(), submission_id, result
+        )
+
+    @staticmethod
+    def release_or_fail(
+        submission_id: str,
+        error_message: str,
+        max_attempts: int,
+    ) -> None:
+        _submission_storage_function("release_or_fail_submission")(
+            _database_url(),
+            submission_id,
+            error_message,
+            max_attempts,
+        )
+
+    @staticmethod
+    def get_pending_analysis_notification() -> dict | None:
+        return _submission_storage_function(
+            "get_pending_analysis_notification"
+        )(_database_url())
+
+    @staticmethod
+    def mark_analysis_notified(submission_id: str) -> None:
+        _submission_storage_function("mark_analysis_notified")(
+            _database_url(), submission_id
+        )

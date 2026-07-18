@@ -17,7 +17,9 @@ from config import (
     WEBHOOK_BASE_URL,
     WEBHOOK_PATH,
     WEBHOOK_SECRET,
+    SYNTHETIC_GEMINI_WORKER_ENABLED,
 )
+from src.services.submission_worker import run_synthetic_submission_worker
 from src.telegram_bot.handlers.registration import register_registration_handlers
 from src.telegram_bot.handlers.student import register_student_handlers
 from src.telegram_bot.handlers.parent import register_parent_handlers
@@ -37,6 +39,7 @@ def create_dispatcher() -> Dispatcher:
     register_student_handlers(dp)
     register_parent_handlers(dp)
     register_teacher_handlers(dp)
+    dp.startup.register(schedule_submission_worker)
 
     return dp
 
@@ -78,6 +81,16 @@ async def set_telegram_webhook_with_retry(bot: Bot) -> None:
 
 async def schedule_telegram_webhook(bot: Bot) -> None:
     task = asyncio.create_task(set_telegram_webhook_with_retry(bot))
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
+
+
+async def schedule_submission_worker(bot: Bot) -> None:
+    if not SYNTHETIC_GEMINI_WORKER_ENABLED:
+        logger.info("Synthetic Gemini worker is disabled.")
+        return
+
+    task = asyncio.create_task(run_synthetic_submission_worker(bot))
     background_tasks.add(task)
     task.add_done_callback(background_tasks.discard)
 

@@ -48,6 +48,50 @@ class SubmissionRepositoryTest(unittest.TestCase):
             "sub_test",
         )
 
+    @patch("src.repositories.submission_repository._submission_storage_function")
+    def test_claim_only_routes_synthetic_queue(self, storage_function):
+        claim = storage_function.return_value
+        claim.return_value = {"submission_id": "sub_test"}
+        with patch.dict(
+            os.environ,
+            {"DATABASE_URL": "postgresql://example/test"},
+            clear=True,
+        ):
+            result = SubmissionRepository.claim_next_synthetic(2)
+
+        self.assertEqual(result["submission_id"], "sub_test")
+        storage_function.assert_called_once_with(
+            "claim_next_synthetic_submission"
+        )
+        claim.assert_called_once_with("postgresql://example/test", 2)
+
+    @patch("src.repositories.submission_repository._submission_storage_function")
+    def test_failed_processing_is_released_with_attempt_limit(
+        self,
+        storage_function,
+    ):
+        release = storage_function.return_value
+        with patch.dict(
+            os.environ,
+            {"DATABASE_URL": "postgresql://example/test"},
+            clear=True,
+        ):
+            SubmissionRepository.release_or_fail(
+                "sub_test",
+                "temporary error",
+                2,
+            )
+
+        storage_function.assert_called_once_with(
+            "release_or_fail_submission"
+        )
+        release.assert_called_once_with(
+            "postgresql://example/test",
+            "sub_test",
+            "temporary error",
+            2,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
