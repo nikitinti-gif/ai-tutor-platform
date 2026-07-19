@@ -4,6 +4,7 @@ from src.ai_engine.parser import (
 )
 from src.ai_engine.llm_client import LLMClient
 from src.ai_engine.provider_clients import create_text_provider
+from src.ai_engine.schemas import enforce_error_evidence
 
 
 def check_homework_text(
@@ -36,8 +37,7 @@ def check_homework_text(
         synthetic_test=True,
     )
     result = parse_homework_check_response(raw_response)
-
-    return result
+    return enforce_error_evidence(result, text)
 
 
 def check_homework_image(
@@ -111,6 +111,7 @@ def check_homework_image(
         check_kwargs["pilot_v2"] = True
     raw_response = client.check_homework_text(**check_kwargs)
     result = parse_homework_check_response(raw_response)
+    result = enforce_error_evidence(result, transcription["transcription"])
     result["image_legibility"] = transcription["legibility"]
     result["image_transcription"] = transcription["transcription"]
 
