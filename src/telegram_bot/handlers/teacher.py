@@ -13,6 +13,7 @@ from aiogram.types import (
 from config import ADMIN_TELEGRAM_ID
 from src.core.roles import ROLE_STUDENT, ROLE_TEACHER
 from src.repositories.family_link_repository import FamilyLinkRepository
+from src.repositories.learning_dna_repository import LearningDNARepository
 from src.repositories.submission_repository import SubmissionRepository
 from src.repositories.user_repository import UserRepository
 from src.repositories.homework_repository import HomeworkRepository
@@ -29,6 +30,7 @@ from src.telegram_bot.states.student_states import (
     ParentFamilyLinkStates,
     TeacherFamilyLinkStates,
     TeacherHomeworkStates,
+    TeacherLearningDNAStates,
     TeacherSubmissionReviewStates,
 )
 from src.services.assignment_service import assign_homework_to_all_students
@@ -39,6 +41,7 @@ from src.services.teacher_submission_queue_service import (
     format_teacher_submission_detail,
     format_teacher_submission_queue,
 )
+from src.services.learning_dna_service import format_learning_dna_for_teacher
 
 
 logger = logging.getLogger(__name__)
@@ -334,6 +337,46 @@ async def teacher_complete_submission(callback: CallbackQuery):
     )
 
 
+async def teacher_start_learning_dna(message: Message, state: FSMContext):
+    teacher = UserRepository.get_by_telegram_id(message.from_user.id)
+    if (
+        not teacher or teacher.get("role") != ROLE_TEACHER
+    ) and not is_admin(message):
+        await message.answer("⛔ ДНК доступна только преподавателю.")
+        return
+
+    await state.set_state(TeacherLearningDNAStates.waiting_student_id)
+    await message.answer(
+        "🧬 Отправьте Telegram ID ученика.\n\n"
+        "Для синтетического ученика возьмите ID из карточки работы."
+    )
+
+
+async def teacher_show_learning_dna(message: Message, state: FSMContext):
+    try:
+        student_id = int((message.text or "").strip())
+    except ValueError:
+        await message.answer("Введите числовой Telegram ID ученика.")
+        return
+
+    try:
+        dna = await asyncio.to_thread(LearningDNARepository.get, student_id)
+    except Exception:
+        logger.exception("Teacher could not load DNA for %s", student_id)
+        await message.answer("🔴 Не удалось загрузить ДНК. Попробуйте позже.")
+        return
+
+    if not dna:
+        await message.answer(
+            "ДНК для этого ученика пока не создана. "
+            "Сначала завершите хотя бы одну проверенную работу."
+        )
+        return
+
+    await state.clear()
+    await message.answer(format_learning_dna_for_teacher(dna))
+
+
 async def teacher_week_summary(message: Message):
     await message.answer(
         "📊 Сводка недели\n\n"
@@ -371,6 +414,15 @@ def register_teacher_handlers(dp: Dispatcher):
     dp.callback_query.register(
         teacher_complete_submission,
         F.data.startswith("complete_submission:"),
+    )
+    dp.message.register(
+        teacher_start_learning_dna,
+        F.text == "🧬 ДНК ученика",
+    )
+    dp.message.register(
+        teacher_show_learning_dna,
+        TeacherLearningDNAStates.waiting_student_id,
+        F.text,
     )
     dp.message.register(teacher_week_summary, F.text == "📊 Сводка недели")
     dp.message.register(teacher_homework_status, F.text == "📊 Статус домашнего задания")
