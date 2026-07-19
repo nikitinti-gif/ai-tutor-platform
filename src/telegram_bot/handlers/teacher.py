@@ -187,7 +187,9 @@ async def teacher_receive_homework_topic(message: Message, state: FSMContext):
 
 async def teacher_ai_checks(message: Message):
     teacher = UserRepository.get_by_telegram_id(message.from_user.id)
-    if not teacher or teacher.get("role") != ROLE_TEACHER:
+    if (
+        not teacher or teacher.get("role") != ROLE_TEACHER
+    ) and not is_admin(message):
         await message.answer("⛔ Очередь доступна только преподавателю.")
         return
 
