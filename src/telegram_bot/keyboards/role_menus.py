@@ -32,6 +32,7 @@ teacher_menu = ReplyKeyboardMarkup(
         [KeyboardButton(text="🔗 Код для родителя")],
         [KeyboardButton(text="📚 Выдать ДЗ")],
         [KeyboardButton(text="📸 Проверки ИИ")],
+        [KeyboardButton(text="🔎 Открыть работу")],
         [KeyboardButton(text="📊 Сводка недели")],
         [KeyboardButton(text="📊 Статус домашнего задания")]
     ],

@@ -30,6 +30,13 @@ def _analysis_summary(analysis: object) -> str | None:
     return f"AI: {status}, уверенность {confidence:.2f}"
 
 
+def _format_confidence(value: object) -> str:
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return "0.00"
+
+
 def format_teacher_submission_queue(submissions: list[dict]) -> str:
     if not submissions:
         return "📸 Очередь работ пуста."
@@ -70,4 +77,54 @@ def format_teacher_submission_queue(submissions: list[dict]) -> str:
     lines.append(
         "Бесплатный Gemini автоматически обрабатывает только 🧪 synthetic."
     )
+    return "\n".join(lines)
+
+
+def _clip(value: object, limit: int) -> str:
+    text = str(value or "—")
+    return text if len(text) <= limit else f"{text[:limit - 1]}…"
+
+
+def format_teacher_submission_detail(submission: dict) -> str:
+    data_label = (
+        "🧪 Синтетическая работа"
+        if submission.get("is_synthetic")
+        else "👤 Реальная работа"
+    )
+    status = submission.get("status", "unknown")
+    lines = [
+        data_label,
+        "",
+        f"Номер: {submission.get('submission_id', '—')}",
+        f"Статус: {STATUS_LABELS.get(status, status)}",
+        f"Ученик ID: {submission.get('student_telegram_id') or 'не привязан'}",
+        f"Размер: {submission.get('photo_width', '—')}×{submission.get('photo_height', '—')}",
+        f"Принято: {_format_time(submission.get('created_at'))}",
+    ]
+
+    analysis = submission.get("analysis_result")
+    if not isinstance(analysis, dict):
+        lines.extend(["", "AI-анализ не запускался."])
+    else:
+        lines.extend([
+            "",
+            f"AI-статус: {analysis.get('status', 'unknown')}",
+            f"Уверенность: {_format_confidence(analysis.get('confidence'))}",
+            f"Тип ошибки: {analysis.get('error_type') or '—'}",
+            "",
+            "Транскрипция:",
+            _clip(analysis.get("image_transcription"), 1000),
+            "",
+            "Анализ:",
+            _clip(analysis.get("feedback"), 900),
+            "",
+            "Рекомендация:",
+            _clip(analysis.get("hint"), 600),
+        ])
+
+    if submission.get("last_error"):
+        lines.extend([
+            "",
+            f"Техническая ошибка: {_clip(submission['last_error'], 300)}",
+        ])
     return "\n".join(lines)

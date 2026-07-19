@@ -9,6 +9,10 @@ class TeacherFamilyLinkStates(StatesGroup):
     waiting_student_id = State()
 
 
+class TeacherSubmissionReviewStates(StatesGroup):
+    waiting_submission_id = State()
+
+
 class StudentHomeworkCheckStates(StatesGroup):
     waiting_solution_text = State()
 

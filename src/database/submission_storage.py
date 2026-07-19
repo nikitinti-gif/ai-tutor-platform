@@ -34,6 +34,7 @@ def _ensure_submissions_table(connection) -> None:
             teacher_notified_at TIMESTAMPTZ,
             analysis_notified_at TIMESTAMPTZ,
             processed_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
             updated_at TIMESTAMPTZ NOT NULL,
             CONSTRAINT homework_submissions_status_check CHECK (
                 status IN (
@@ -66,6 +67,12 @@ def _ensure_submissions_table(connection) -> None:
         """
         ALTER TABLE homework_submissions
         ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ
+        """
+    )
+    connection.execute(
+        """
+        ALTER TABLE homework_submissions
+        ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ
         """
     )
     connection.execute(
@@ -314,3 +321,71 @@ def list_teacher_submissions(
         }
         for row in rows
     ]
+
+
+def get_teacher_submission(
+    database_url: str,
+    submission_id: str,
+) -> dict | None:
+    with psycopg.connect(database_url) as connection:
+        _ensure_submissions_table(connection)
+        row = connection.execute(
+            """
+            SELECT
+                submission_id,
+                parent_telegram_id,
+                student_telegram_id,
+                is_synthetic,
+                telegram_file_id,
+                status,
+                photo_width,
+                photo_height,
+                processing_attempts,
+                last_error,
+                analysis_result,
+                created_at,
+                processed_at,
+                completed_at
+            FROM homework_submissions
+            WHERE submission_id = %s
+            """,
+            (submission_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "submission_id": row[0],
+        "parent_telegram_id": row[1],
+        "student_telegram_id": row[2],
+        "is_synthetic": row[3],
+        "telegram_file_id": row[4],
+        "status": row[5],
+        "photo_width": row[6],
+        "photo_height": row[7],
+        "processing_attempts": row[8],
+        "last_error": row[9],
+        "analysis_result": row[10],
+        "created_at": row[11],
+        "processed_at": row[12],
+        "completed_at": row[13],
+    }
+
+
+def complete_teacher_submission(
+    database_url: str,
+    submission_id: str,
+) -> bool:
+    now = datetime.now(timezone.utc)
+    with psycopg.connect(database_url) as connection:
+        _ensure_submissions_table(connection)
+        row = connection.execute(
+            """
+            UPDATE homework_submissions
+            SET status = 'completed', completed_at = %s, updated_at = %s
+            WHERE submission_id = %s
+              AND status IN ('accepted', 'teacher_review', 'failed')
+            RETURNING submission_id
+            """,
+            (now, now, submission_id),
+        ).fetchone()
+    return bool(row)

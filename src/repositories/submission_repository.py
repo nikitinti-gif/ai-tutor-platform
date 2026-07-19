@@ -82,3 +82,15 @@ class SubmissionRepository:
         return _submission_storage_function("list_teacher_submissions")(
             _database_url(), limit
         )
+
+    @staticmethod
+    def get_for_teacher(submission_id: str) -> dict | None:
+        return _submission_storage_function("get_teacher_submission")(
+            _database_url(), submission_id
+        )
+
+    @staticmethod
+    def complete(submission_id: str) -> bool:
+        return _submission_storage_function("complete_teacher_submission")(
+            _database_url(), submission_id
+        )

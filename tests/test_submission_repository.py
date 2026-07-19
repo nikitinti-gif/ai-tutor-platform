@@ -110,6 +110,42 @@ class SubmissionRepositoryTest(unittest.TestCase):
             10,
         )
 
+    @patch("src.repositories.submission_repository._submission_storage_function")
+    def test_teacher_can_open_submission(self, storage_function):
+        get_submission = storage_function.return_value
+        get_submission.return_value = {"submission_id": "sub_test"}
+        with patch.dict(
+            os.environ,
+            {"DATABASE_URL": "postgresql://example/test"},
+            clear=True,
+        ):
+            result = SubmissionRepository.get_for_teacher("sub_test")
+
+        self.assertEqual(result["submission_id"], "sub_test")
+        storage_function.assert_called_once_with("get_teacher_submission")
+        get_submission.assert_called_once_with(
+            "postgresql://example/test",
+            "sub_test",
+        )
+
+    @patch("src.repositories.submission_repository._submission_storage_function")
+    def test_teacher_can_complete_submission(self, storage_function):
+        complete = storage_function.return_value
+        complete.return_value = True
+        with patch.dict(
+            os.environ,
+            {"DATABASE_URL": "postgresql://example/test"},
+            clear=True,
+        ):
+            result = SubmissionRepository.complete("sub_test")
+
+        self.assertTrue(result)
+        storage_function.assert_called_once_with("complete_teacher_submission")
+        complete.assert_called_once_with(
+            "postgresql://example/test",
+            "sub_test",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
