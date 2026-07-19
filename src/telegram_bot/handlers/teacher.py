@@ -295,7 +295,7 @@ async def teacher_complete_submission(callback: CallbackQuery):
 
     submission_id = callback.data.split(":", maxsplit=1)[1]
     try:
-        completed = await asyncio.to_thread(
+        completion = await asyncio.to_thread(
             SubmissionRepository.complete,
             submission_id,
         )
@@ -307,7 +307,7 @@ async def teacher_complete_submission(callback: CallbackQuery):
         await callback.answer("Ошибка сохранения.", show_alert=True)
         return
 
-    if not completed:
+    if not completion.get("completed"):
         await callback.answer(
             "Работу нельзя завершить в текущем статусе.",
             show_alert=True,
@@ -316,8 +316,21 @@ async def teacher_complete_submission(callback: CallbackQuery):
 
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Проверка завершена.")
+    if completion.get("dna_updated"):
+        summary = completion.get("dna_summary") or {}
+        dna_message = (
+            "🧬 ДНК знаний обновлена.\n"
+            f"Сигналов: {summary.get('signals', '—')}\n"
+            f"Следующий фокус: {summary.get('next_focus') or 'не определён'}"
+        )
+    else:
+        dna_message = (
+            "🧬 ДНК не изменена: нет привязанного ученика "
+            "или AI-анализа."
+        )
     await callback.message.answer(
-        f"✅ Работа {submission_id} переведена в статус completed."
+        f"✅ Работа {submission_id} переведена в статус completed.\n"
+        f"{dna_message}"
     )
 
 

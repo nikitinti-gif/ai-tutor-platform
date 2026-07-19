@@ -31,6 +31,20 @@ def _submission_storage_function(name: str):
     return getattr(submission_storage, name)
 
 
+def _complete_with_learning_dna(
+    database_url: str,
+    submission_id: str,
+) -> dict:
+    from src.database.learning_dna_storage import (
+        complete_submission_with_learning_dna,
+    )
+
+    return complete_submission_with_learning_dna(
+        database_url,
+        submission_id,
+    )
+
+
 class SubmissionRepository:
     @staticmethod
     def create(submission: dict) -> dict:
@@ -90,7 +104,8 @@ class SubmissionRepository:
         )
 
     @staticmethod
-    def complete(submission_id: str) -> bool:
-        return _submission_storage_function("complete_teacher_submission")(
-            _database_url(), submission_id
+    def complete(submission_id: str) -> dict:
+        return _complete_with_learning_dna(
+            _database_url(),
+            submission_id,
         )

@@ -128,10 +128,12 @@ class SubmissionRepositoryTest(unittest.TestCase):
             "sub_test",
         )
 
-    @patch("src.repositories.submission_repository._submission_storage_function")
-    def test_teacher_can_complete_submission(self, storage_function):
-        complete = storage_function.return_value
-        complete.return_value = True
+    @patch("src.repositories.submission_repository._complete_with_learning_dna")
+    def test_teacher_can_complete_submission(self, complete):
+        complete.return_value = {
+            "completed": True,
+            "dna_updated": True,
+        }
         with patch.dict(
             os.environ,
             {"DATABASE_URL": "postgresql://example/test"},
@@ -139,8 +141,8 @@ class SubmissionRepositoryTest(unittest.TestCase):
         ):
             result = SubmissionRepository.complete("sub_test")
 
-        self.assertTrue(result)
-        storage_function.assert_called_once_with("complete_teacher_submission")
+        self.assertTrue(result["completed"])
+        self.assertTrue(result["dna_updated"])
         complete.assert_called_once_with(
             "postgresql://example/test",
             "sub_test",
