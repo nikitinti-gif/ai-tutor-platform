@@ -76,3 +76,9 @@ class SubmissionRepository:
         _submission_storage_function("mark_analysis_notified")(
             _database_url(), submission_id
         )
+
+    @staticmethod
+    def list_for_teacher(limit: int = 10) -> list[dict]:
+        return _submission_storage_function("list_teacher_submissions")(
+            _database_url(), limit
+        )

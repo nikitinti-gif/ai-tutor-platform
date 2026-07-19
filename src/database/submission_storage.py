@@ -272,3 +272,45 @@ def mark_analysis_notified(database_url: str, submission_id: str) -> None:
             """,
             (now, now, submission_id),
         )
+
+
+def list_teacher_submissions(
+    database_url: str,
+    limit: int = 10,
+) -> list[dict]:
+    safe_limit = max(1, min(int(limit), 50))
+    with psycopg.connect(database_url) as connection:
+        _ensure_submissions_table(connection)
+        rows = connection.execute(
+            """
+            SELECT
+                submission_id,
+                student_telegram_id,
+                is_synthetic,
+                status,
+                processing_attempts,
+                last_error,
+                analysis_result,
+                created_at,
+                processed_at
+            FROM homework_submissions
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (safe_limit,),
+        ).fetchall()
+
+    return [
+        {
+            "submission_id": row[0],
+            "student_telegram_id": row[1],
+            "is_synthetic": row[2],
+            "status": row[3],
+            "processing_attempts": row[4],
+            "last_error": row[5],
+            "analysis_result": row[6],
+            "created_at": row[7],
+            "processed_at": row[8],
+        }
+        for row in rows
+    ]

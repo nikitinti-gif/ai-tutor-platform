@@ -92,6 +92,24 @@ class SubmissionRepositoryTest(unittest.TestCase):
             2,
         )
 
+    @patch("src.repositories.submission_repository._submission_storage_function")
+    def test_teacher_queue_routes_to_postgres(self, storage_function):
+        list_submissions = storage_function.return_value
+        list_submissions.return_value = [{"submission_id": "sub_test"}]
+        with patch.dict(
+            os.environ,
+            {"DATABASE_URL": "postgresql://example/test"},
+            clear=True,
+        ):
+            result = SubmissionRepository.list_for_teacher(10)
+
+        self.assertEqual(result[0]["submission_id"], "sub_test")
+        storage_function.assert_called_once_with("list_teacher_submissions")
+        list_submissions.assert_called_once_with(
+            "postgresql://example/test",
+            10,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

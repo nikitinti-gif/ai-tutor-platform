@@ -7,6 +7,7 @@ from aiogram.types import Message
 from config import ADMIN_TELEGRAM_ID
 from src.core.roles import ROLE_STUDENT, ROLE_TEACHER
 from src.repositories.family_link_repository import FamilyLinkRepository
+from src.repositories.submission_repository import SubmissionRepository
 from src.repositories.user_repository import UserRepository
 from src.repositories.homework_repository import HomeworkRepository
 from src.services.homework_service import (
@@ -26,6 +27,9 @@ from src.telegram_bot.states.student_states import (
 from src.services.assignment_service import assign_homework_to_all_students
 from src.services.teacher_dashboard_service import (
     generate_teacher_dashboard,
+)
+from src.services.teacher_submission_queue_service import (
+    format_teacher_submission_queue,
 )
 
 
@@ -182,10 +186,23 @@ async def teacher_receive_homework_topic(message: Message, state: FSMContext):
 
 
 async def teacher_ai_checks(message: Message):
-    await message.answer(
-        "📸 Проверки ИИ\n\n"
-        "Здесь будут ответы, которые требуют ручной проверки."
-    )
+    teacher = UserRepository.get_by_telegram_id(message.from_user.id)
+    if not teacher or teacher.get("role") != ROLE_TEACHER:
+        await message.answer("⛔ Очередь доступна только преподавателю.")
+        return
+
+    try:
+        submissions = await asyncio.to_thread(
+            SubmissionRepository.list_for_teacher,
+            10,
+        )
+    except Exception:
+        await message.answer(
+            "🔴 Не удалось загрузить очередь. Попробуйте через несколько минут."
+        )
+        return
+
+    await message.answer(format_teacher_submission_queue(submissions))
 
 
 async def teacher_week_summary(message: Message):
