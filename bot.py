@@ -64,6 +64,7 @@ async def set_telegram_webhook_with_retry(bot: Bot) -> None:
             await bot.set_webhook(
                 f"{WEBHOOK_BASE_URL}{WEBHOOK_PATH}",
                 secret_token=WEBHOOK_SECRET,
+                allowed_updates=["message", "callback_query"],
             )
             logger.info("Telegram webhook зарегистрирован.")
             return

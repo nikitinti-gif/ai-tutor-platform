@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from aiogram import Dispatcher, F
 from aiogram.fsm.context import FSMContext
@@ -38,6 +39,9 @@ from src.services.teacher_submission_queue_service import (
     format_teacher_submission_detail,
     format_teacher_submission_queue,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 async def teacher_students(message: Message):
@@ -275,6 +279,11 @@ async def teacher_open_submission(
 
 
 async def teacher_complete_submission(callback: CallbackQuery):
+    logger.info(
+        "Teacher completion callback received: user=%s data=%s",
+        callback.from_user.id,
+        callback.data,
+    )
     user = UserRepository.get_by_telegram_id(callback.from_user.id)
     callback_is_admin = bool(
         ADMIN_TELEGRAM_ID
@@ -291,6 +300,10 @@ async def teacher_complete_submission(callback: CallbackQuery):
             submission_id,
         )
     except Exception:
+        logger.exception(
+            "Teacher could not complete submission: %s",
+            submission_id,
+        )
         await callback.answer("Ошибка сохранения.", show_alert=True)
         return
 
