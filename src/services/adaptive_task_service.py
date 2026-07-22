@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import uuid4
 
 
 SYSTEMS_OF_NUMERATION_TASKS = [
@@ -18,7 +19,10 @@ SYSTEMS_OF_NUMERATION_TASKS = [
             "11010₂ = 16 + 8 + 2 = 26₁₀; во втором разряде слева "
             "стоит единица с весом 8."
         ),
-        "purpose": "Отделить реальную ошибку от корректного разложения.",
+        "purpose": (
+            "Проверить понимание соответствия двоичных разрядов степеням "
+            "двойки и умение находить пропущенный вес."
+        ),
     },
     {
         "level": "Сложный",
@@ -49,6 +53,7 @@ def build_adaptive_task_draft(dna: dict) -> dict:
         "status": "teacher_draft",
         "created_by": "verified_adaptive_template_v1",
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "draft_token": uuid4().hex[:16],
     }
 
 

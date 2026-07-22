@@ -15,6 +15,7 @@ from src.core.roles import ROLE_STUDENT, ROLE_TEACHER
 from src.repositories.family_link_repository import FamilyLinkRepository
 from src.repositories.learning_dna_repository import LearningDNARepository
 from src.repositories.submission_repository import SubmissionRepository
+from src.repositories.adaptive_task_repository import AdaptiveTaskRepository
 from src.repositories.user_repository import UserRepository
 from src.repositories.homework_repository import HomeworkRepository
 from src.services.homework_service import (
@@ -416,8 +417,77 @@ async def teacher_create_adaptive_draft(callback: CallbackQuery):
         return
 
     await callback.answer("Черновик создан.")
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="✅ Подтвердить и сохранить",
+            callback_data=(
+                f"confirm_adaptive:{student_id}:{draft['draft_token']}"
+            ),
+        ),
+        InlineKeyboardButton(
+            text="✏️ Отменить",
+            callback_data="cancel_adaptive",
+        ),
+    ]])
     await callback.message.answer(
-        format_adaptive_task_draft_for_teacher(draft)
+        format_adaptive_task_draft_for_teacher(draft),
+        reply_markup=keyboard,
+    )
+
+
+async def teacher_confirm_adaptive_draft(callback: CallbackQuery):
+    teacher = UserRepository.get_by_telegram_id(callback.from_user.id)
+    callback_is_admin = bool(
+        ADMIN_TELEGRAM_ID
+        and str(callback.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+    if (not teacher or teacher.get("role") != ROLE_TEACHER) and not callback_is_admin:
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    try:
+        _, raw_student_id, draft_token = callback.data.split(":", maxsplit=2)
+        student_id = int(raw_student_id)
+        dna = await asyncio.to_thread(LearningDNARepository.get, student_id)
+        if not dna:
+            await callback.answer("ДНК ученика не найдена.", show_alert=True)
+            return
+        draft = build_adaptive_task_draft(dna)
+        draft["draft_token"] = draft_token
+        saved = await asyncio.to_thread(
+            AdaptiveTaskRepository.save_confirmed,
+            draft,
+            callback.from_user.id,
+        )
+    except Exception:
+        logger.exception("Could not save adaptive task set")
+        await callback.answer("Не удалось сохранить набор.", show_alert=True)
+        return
+
+    await callback.answer("Набор сохранён.")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "✅ Диагностический набор подтверждён и сохранён.\n\n"
+        f"ID набора: {saved['task_set_id']}\n"
+        f"Ученик ID: {saved['student_id']}\n"
+        f"Тема: {saved['topic']}\n\n"
+        "Семье набор пока не отправлен."
+    )
+
+
+async def teacher_cancel_adaptive_draft(callback: CallbackQuery):
+    teacher = UserRepository.get_by_telegram_id(callback.from_user.id)
+    callback_is_admin = bool(
+        ADMIN_TELEGRAM_ID
+        and str(callback.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+    if (not teacher or teacher.get("role") != ROLE_TEACHER) and not callback_is_admin:
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+    await callback.answer("Черновик отменён.")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "✏️ Черновик отменён. Набор не сохранён и семье не отправлен."
     )
 
 
@@ -462,6 +532,14 @@ def register_teacher_handlers(dp: Dispatcher):
     dp.callback_query.register(
         teacher_create_adaptive_draft,
         F.data.startswith("adaptive_draft:"),
+    )
+    dp.callback_query.register(
+        teacher_confirm_adaptive_draft,
+        F.data.startswith("confirm_adaptive:"),
+    )
+    dp.callback_query.register(
+        teacher_cancel_adaptive_draft,
+        F.data == "cancel_adaptive",
     )
     dp.message.register(
         teacher_start_learning_dna,

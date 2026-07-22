@@ -21,6 +21,7 @@ class AdaptiveTaskServiceTest(unittest.TestCase):
             ["Лёгкий", "Средний", "Сложный"],
         )
         self.assertTrue(all(task["teacher_answer"] for task in draft["tasks"]))
+        self.assertEqual(len(draft["draft_token"]), 16)
 
     def test_unknown_topic_does_not_generate_placeholder_tasks(self):
         with self.assertRaisesRegex(ValueError, "нет проверенного шаблона"):
@@ -42,6 +43,7 @@ class AdaptiveTaskServiceTest(unittest.TestCase):
         self.assertIn("Средний уровень", text)
         self.assertIn("Сложный уровень", text)
         self.assertIn("никому не отправлен", text)
+        self.assertIn("степеням двойки", text)
 
 
 if __name__ == "__main__":
