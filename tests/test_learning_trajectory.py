@@ -31,8 +31,9 @@ class LearningTrajectoryTest(unittest.TestCase):
 
         changed = restore_next_focus_from_mastery(dna)
 
-        self.assertFalse(changed)
+        self.assertTrue(changed)
         self.assertEqual(dna["trajectory"]["next_focus"], "Основы логики")
+        self.assertEqual(dna["trajectory"]["next_focus_skill_id"], "logic.operations")
 
     def test_selects_topic_after_completed_one(self):
         self.assertEqual(

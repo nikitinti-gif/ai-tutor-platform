@@ -2,7 +2,13 @@ from datetime import datetime
 
 from src.learning_dna.profile import create_default_learning_dna
 from src.learning_dna.signals import build_learning_signal_from_check
-from src.learning_dna.trajectory import TOPIC_SEQUENCE, select_next_topic
+from src.learning_dna.trajectory import (
+    TOPIC_SEQUENCE,
+    migrate_trajectory_to_skill_graph,
+    select_next_focus_from_graph,
+    select_next_topic,
+)
+from src.skills.skill_graph import get_skill_name, migrate_legacy_focus
 from src.skills.skill_engine import update_skill_after_check
 
 
@@ -13,8 +19,9 @@ def restore_next_focus_from_mastery(dna: dict) -> bool:
     Existing teacher-selected or error-driven focuses are never overwritten.
     """
     trajectory = dna.setdefault("trajectory", {})
-    if trajectory.get("next_focus"):
-        return False
+    changed = migrate_trajectory_to_skill_graph(dna)
+    if trajectory.get("next_focus_skill_id"):
+        return changed
 
     topic_mastery = dna.get("topic_mastery") or {}
     mastered_topics = {
@@ -23,7 +30,7 @@ def restore_next_focus_from_mastery(dna: dict) -> bool:
         if isinstance(mastery, dict) and mastery.get("mastered")
     }
     if not mastered_topics:
-        return False
+        return changed
 
     next_topic = None
     for topic in reversed(TOPIC_SEQUENCE):
@@ -32,10 +39,11 @@ def restore_next_focus_from_mastery(dna: dict) -> bool:
             break
 
     if not next_topic:
-        return False
+        return changed
 
     trajectory["next_focus"] = next_topic
     dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    migrate_trajectory_to_skill_graph(dna)
     return True
 
 
@@ -86,6 +94,19 @@ def update_learning_dna_after_check(current_dna: dict | None, student_id: int, c
         dna["trajectory"]["recommendations"].append("Нужна ручная проверка преподавателя.")
     
     dna = update_skill_after_check(dna, check_result)
+    completed_skill = migrate_legacy_focus(topic)
+    if isinstance(mastery, dict) and mastery.get("topic_mastered") and completed_skill:
+        state = dna.setdefault("skills", {}).setdefault(completed_skill, {})
+        state.update({
+            "skill_id": completed_skill,
+            "mastered": True,
+            "mastery_level": 100,
+            "evidence_count": max(2, int(state.get("evidence_count", 0) or 0)),
+            "difficulty_max": "exam_level",
+        })
+        next_skill = select_next_focus_from_graph(dna)
+        dna["trajectory"]["next_focus_skill_id"] = next_skill
+        dna["trajectory"]["next_focus"] = get_skill_name(next_skill) if next_skill else None
     dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
 
     return dna
