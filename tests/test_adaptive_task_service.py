@@ -72,6 +72,42 @@ class AdaptiveTaskServiceTest(unittest.TestCase):
         self.assertNotIn("110111₂", text)
         self.assertNotIn("Цель:", text)
 
+    def test_builds_verified_information_coding_levels_for_next_focus(self):
+        draft = build_adaptive_task_draft(
+            {
+                "student_id": -42,
+                "trajectory": {"next_focus": "Кодирование информации"},
+            }
+        )
+
+        self.assertEqual(draft["topic"], "Кодирование информации")
+        self.assertEqual(
+            [task["level"] for task in draft["tasks"]],
+            ["Лёгкий", "Средний", "Сложный"],
+        )
+        self.assertIn("40 символов", draft["tasks"][0]["task"])
+        self.assertIn("62,5 Кбайт", draft["tasks"][1]["teacher_answer"])
+        self.assertIn("64 цвета", draft["tasks"][2]["teacher_answer"])
+        self.assertTrue(all(task["purpose"] for task in draft["tasks"]))
+
+    def test_information_coding_family_render_hides_verified_answers(self):
+        task_set = build_adaptive_task_draft(
+            {
+                "student_id": -42,
+                "trajectory": {"next_focus": "Кодирование информации"},
+            }
+        )
+        task_set["task_set_id"] = "diag_coding"
+
+        text = format_adaptive_task_set_for_family(task_set)
+
+        self.assertIn("алфавита", text)
+        self.assertIn("Номер набора: diag_coding", text)
+        self.assertNotIn("160 бит = 20 байт", text)
+        self.assertNotIn("62,5 Кбайт", text)
+        self.assertNotIn("64 цвета", text)
+        self.assertNotIn("Цель:", text)
+
     def test_teacher_render_marks_draft_as_unsent(self):
         draft = build_adaptive_task_draft(
             {
