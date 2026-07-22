@@ -96,5 +96,26 @@ def build_homework_image_transcription_prompt() -> str:
 """.strip()
 
 
+def build_diagnostic_level_prompt(topic: str, tasks: list[dict], student_solution: str) -> str:
+    level_codes = ("easy", "medium", "hard")
+    task_lines = "\n".join(
+        f"{index}. level={level_codes[index - 1]} ({task['level']})\nЗадание: {task['task']}\nЭталон: {task['teacher_answer']}"
+        for index, task in enumerate(tasks, start=1)
+    )
+    return f"""
+Ты проверяешь диагностический набор по информатике, тема: {topic}.
+Оцени КАЖДЫЙ уровень независимо: easy, medium, hard.
+Не засчитывай уровень по ответу на другое задание. evidence должен содержать
+короткий фрагмент ответа ученика, на котором основан вывод. Если ответа на
+уровень нет или он неразборчив, используй unclear. Верни только JSON.
+
+ЗАДАНИЯ И ЭТАЛОНЫ:
+{task_lines}
+
+ОТВЕТ УЧЕНИКА:
+{student_solution}
+""".strip()
+
+
 # Временная совместимость со старым кодом.
 HOMEWORK_CHECK_PROMPT = HOMEWORK_CHECK_SYSTEM_PROMPT

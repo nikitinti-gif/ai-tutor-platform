@@ -66,6 +66,75 @@ IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA = {
     "additionalProperties": False,
 }
 
+DIAGNOSTIC_LEVEL_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "level_results": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "level": {"type": "string", "enum": ["easy", "medium", "hard"]},
+                    "status": {"type": "string", "enum": sorted(HOMEWORK_CHECK_STATUSES)},
+                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    "evidence": {"type": "string"},
+                    "feedback": {"type": "string"},
+                },
+                "required": ["level", "status", "confidence", "evidence", "feedback"],
+                "additionalProperties": False,
+            },
+        },
+        "knowledge_boundary": {"type": ["string", "null"]},
+        "recommended_action": {"type": "string"},
+    },
+    "required": ["level_results", "knowledge_boundary", "recommended_action"],
+    "additionalProperties": False,
+}
+
+
+def validate_diagnostic_level_result(data: dict, topic: str | None = None) -> dict:
+    if not isinstance(data, dict):
+        data = {}
+    received = data.get("level_results")
+    by_level = {
+        item.get("level"): item
+        for item in received or []
+        if isinstance(item, dict) and item.get("level") in {"easy", "medium", "hard"}
+    }
+    levels = []
+    for level in ("easy", "medium", "hard"):
+        item = by_level.get(level, {})
+        status = item.get("status")
+        if status not in HOMEWORK_CHECK_STATUSES:
+            status = "unclear"
+        levels.append({
+            "level": level,
+            "status": status,
+            "confidence": _bounded_confidence(item.get("confidence")),
+            "evidence": _clean_optional_string(item.get("evidence")) or "",
+            "feedback": _clean_optional_string(item.get("feedback")) or "Требуется проверка преподавателя.",
+        })
+    passed = [item["status"] == "correct" and item["confidence"] >= 0.85 for item in levels]
+    overall = "correct" if all(passed) else ("unclear" if any(item["status"] == "unclear" for item in levels) else "has_error")
+    confidence = min(item["confidence"] for item in levels)
+    return {
+        "status": overall,
+        "confidence": confidence,
+        "feedback": "Диагностические уровни проверены раздельно.",
+        "hint": _clean_optional_string(data.get("recommended_action")) or "Преподавателю нужно подтвердить диагностический вывод.",
+        "error_type": None if overall == "correct" else "diagnostic_level_gap",
+        "topic": topic,
+        "needs_teacher_review": True,
+        "level_results": levels,
+        "knowledge_boundary": _clean_optional_string(data.get("knowledge_boundary")),
+        "diagnostic_mastery": {
+            "base": passed[0], "application": passed[1], "transfer": passed[2],
+            "topic_mastered": all(passed),
+        },
+    }
+
 
 def default_homework_check_result() -> dict:
     return {

@@ -9,10 +9,12 @@ from src.ai_engine.prompts import (
     HOMEWORK_CHECK_SYSTEM_PROMPT,
     build_homework_check_prompt,
     build_homework_image_transcription_prompt,
+    build_diagnostic_level_prompt,
 )
 from src.ai_engine.schemas import (
     HOMEWORK_CHECK_RESPONSE_SCHEMA,
     IMAGE_TRANSCRIPTION_RESPONSE_SCHEMA,
+    DIAGNOSTIC_LEVEL_RESPONSE_SCHEMA,
 )
 
 
@@ -210,6 +212,18 @@ class LLMClient:
             )
 
         return response.text
+
+    def check_diagnostic_levels(self, *, topic: str, tasks: list[dict], student_solution: str, synthetic_test: bool = False) -> str:
+        if not synthetic_test:
+            raise LLMDataPolicyError("Gemini разрешён только для синтетических диагностических работ.")
+        interaction = self.client.interactions.create(
+            model=self.model,
+            input=build_diagnostic_level_prompt(topic, tasks, student_solution),
+            response_format={"type": "text", "mime_type": "application/json", "schema": DIAGNOSTIC_LEVEL_RESPONSE_SCHEMA},
+        )
+        if not interaction.output_text:
+            raise LLMResponseError("Gemini не вернул раздельную диагностику.")
+        return interaction.output_text
 
 
 def ask_llm(prompt: str) -> str:

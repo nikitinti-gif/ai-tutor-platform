@@ -9,7 +9,7 @@ from config import (
     SYNTHETIC_WORKER_INTERVAL_SECONDS,
     SYNTHETIC_WORKER_MAX_ATTEMPTS,
 )
-from src.ai_engine.homework_checker import check_homework_image
+from src.ai_engine.homework_checker import check_homework_image, check_diagnostic_transcription
 from src.repositories.submission_repository import SubmissionRepository
 from src.repositories.adaptive_task_repository import AdaptiveTaskRepository
 
@@ -27,6 +27,13 @@ def format_analysis_for_teacher(submission_id: str, result: dict) -> str:
     error_type = _clip(result.get("error_type"), 120)
     feedback = _clip(result.get("feedback"), 1000)
     hint = _clip(result.get("hint"), 700)
+    level_text = ""
+    if result.get("level_results"):
+        labels = {"easy": "Лёгкий", "medium": "Средний", "hard": "Сложный"}
+        level_text = "\n\nДиагностика по уровням:\n" + "\n".join(
+            f"• {labels[item['level']]}: {item['status']} ({item['confidence']:.2f})"
+            for item in result["level_results"]
+        ) + f"\nГраница незнания: {result.get('knowledge_boundary') or 'не обнаружена'}"
     return (
         "🤖 Gemini обработал синтетическую работу\n\n"
         f"Номер: {submission_id}\n"
@@ -35,7 +42,7 @@ def format_analysis_for_teacher(submission_id: str, result: dict) -> str:
         f"Тип ошибки: {error_type}\n\n"
         f"Транскрипция:\n{transcription}\n\n"
         f"Анализ:\n{feedback}\n\n"
-        f"Рекомендация:\n{hint}\n\n"
+        f"Рекомендация:\n{hint}{level_text}\n\n"
         "Результат отправлен только преподавателю."
     )
 
@@ -69,6 +76,7 @@ async def process_next_synthetic_submission(bot: Bot) -> bool:
 
         task_text = None
         topic = "Синтетический пилот"
+        task_set = None
         if submission.get("task_set_id"):
             task_set = await asyncio.to_thread(
                 AdaptiveTaskRepository.get, submission["task_set_id"]
@@ -89,6 +97,15 @@ async def process_next_synthetic_submission(bot: Bot) -> bool:
             synthetic_test=True,
             provider_name="gemini",
         )
+        if task_set and result.get("image_legibility") == "readable":
+            diagnostic = await asyncio.to_thread(
+                check_diagnostic_transcription,
+                student_solution=result["image_transcription"], topic=topic,
+                tasks=task_set["tasks"], synthetic_test=True,
+            )
+            diagnostic["image_legibility"] = result["image_legibility"]
+            diagnostic["image_transcription"] = result["image_transcription"]
+            result = diagnostic
         await asyncio.to_thread(
             SubmissionRepository.save_analysis,
             submission_id,

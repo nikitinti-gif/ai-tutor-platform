@@ -25,6 +25,24 @@ def update_learning_dna_after_check(current_dna: dict | None, student_id: int, c
         dna["memory"]["last_successes"].append(signal)
         dna["motivation"]["xp"] += 25
 
+    mastery = check_result.get("diagnostic_mastery")
+    if isinstance(mastery, dict) and topic != "unknown":
+        dna.setdefault("topic_mastery", {})[topic] = {
+            "base": bool(mastery.get("base")),
+            "application": bool(mastery.get("application")),
+            "transfer": bool(mastery.get("transfer")),
+            "mastered": bool(mastery.get("topic_mastered")),
+            "knowledge_boundary": check_result.get("knowledge_boundary"),
+        }
+        if mastery.get("topic_mastered"):
+            if dna["trajectory"].get("next_focus") == topic:
+                dna["trajectory"]["next_focus"] = None
+            dna["trajectory"]["recommendations"].append(
+                f"Тема «{topic}» подтверждённо освоена на трёх уровнях. Перейти к следующей теме."
+            )
+        else:
+            dna["trajectory"]["next_focus"] = topic
+
     if signal["type"] == "unclear":
         dna["trajectory"]["recommendations"].append("Нужна ручная проверка преподавателя.")
     

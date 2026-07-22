@@ -5,6 +5,8 @@ from src.ai_engine.parser import (
 from src.ai_engine.llm_client import LLMClient
 from src.ai_engine.provider_clients import create_text_provider
 from src.ai_engine.schemas import enforce_error_evidence
+from src.ai_engine.schemas import validate_diagnostic_level_result
+import json
 
 
 def check_homework_text(
@@ -138,3 +140,16 @@ def render_check_result_for_student(result: dict) -> str:
         f"{result['feedback']}\n\n"
         f"💡 {result['hint']}"
     )
+
+
+def check_diagnostic_transcription(*, student_solution: str, topic: str, tasks: list[dict], synthetic_test: bool = False) -> dict:
+    client = LLMClient()
+    raw = client.check_diagnostic_levels(
+        topic=topic, tasks=tasks, student_solution=student_solution,
+        synthetic_test=synthetic_test,
+    )
+    try:
+        data = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        data = {}
+    return validate_diagnostic_level_result(data, topic)
