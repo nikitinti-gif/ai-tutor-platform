@@ -195,6 +195,70 @@ LOGIC_BASICS_TASKS = [
 ]
 
 
+ALGORITHM_TRACING_TASKS = [
+    {
+        "level": "Лёгкий",
+        "task": (
+            "Дана последовательность команд:\n"
+            "x := 4\n"
+            "x := x + 3\n"
+            "x := 2 * x - 1\n"
+            "Какое значение будет у переменной x после выполнения всех команд? "
+            "Запиши значения x после каждой строки."
+        ),
+        "teacher_answer": "После команд x принимает значения 4, 7, 13. Ответ: 13.",
+        "purpose": (
+            "Проверить базовую пошаговую трассировку линейного алгоритма и "
+            "последовательное обновление значения переменной."
+        ),
+    },
+    {
+        "level": "Средний",
+        "task": (
+            "Определи результат выполнения алгоритма:\n"
+            "s := 0\n"
+            "для i от 1 до 5:\n"
+            "    если i чётное, то s := s + 2 * i\n"
+            "    иначе s := s + i\n"
+            "Какое значение получит s? Составь таблицу со столбцами i и s."
+        ),
+        "teacher_answer": (
+            "Значения s после итераций i = 1, 2, 3, 4, 5: "
+            "1, 5, 8, 16, 21. Ответ: 21."
+        ),
+        "purpose": (
+            "Проверить трассировку цикла с ветвлением и различение значения "
+            "счётчика до и после очередной итерации."
+        ),
+    },
+    {
+        "level": "Сложный",
+        "task": (
+            "Алгоритм должен подсчитать количество цифр в положительном целом "
+            "числе n:\n"
+            "count := 0\n"
+            "пока n > 10:\n"
+            "    n := n div 10\n"
+            "    count := count + 1\n"
+            "Ученик утверждает, что алгоритм работает для любого положительного n. "
+            "Найди ошибку, приведи минимальный контрпример, исправь условие цикла "
+            "и протрассируй исправленный алгоритм для n = 100."
+        ),
+        "teacher_answer": (
+            "Ошибка: условие n > 10 прекращает цикл при n = 10, не учитывая "
+            "последнюю цифру, а начальное count = 0 не учитывает оставшуюся цифру. "
+            "Минимальный контрпример — n = 1: результат 0 вместо 1. Один корректный "
+            "вариант: count := 0; пока n > 0: n := n div 10; count := count + 1. "
+            "Для 100 значения (n, count): (100, 0), (10, 1), (1, 2), (0, 3)."
+        ),
+        "purpose": (
+            "Проверить обнаружение граничного случая, исправление условия цикла "
+            "и доказательство результата полной трассировкой."
+        ),
+    },
+]
+
+
 VERIFIED_TASK_TEMPLATES = {
     "Системы счисления": SYSTEMS_OF_NUMERATION_TASKS,
     "Арифметические операции в системах счисления": (
@@ -202,6 +266,7 @@ VERIFIED_TASK_TEMPLATES = {
     ),
     "Кодирование информации": INFORMATION_CODING_TASKS,
     "Основы логики": LOGIC_BASICS_TASKS,
+    "Алгоритмы и исполнители": ALGORITHM_TRACING_TASKS,
 }
 
 TOPIC_SKILL_IDS = {
@@ -209,19 +274,25 @@ TOPIC_SKILL_IDS = {
     "Арифметические операции в системах счисления": "number_systems.binary_arithmetic",
     "Кодирование информации": "information.units_conversion",
     "Основы логики": "logic.operations",
+    "Алгоритмы и исполнители": "algorithms.tracing",
 }
+
+SKILL_TOPICS = {skill_id: topic for topic, skill_id in TOPIC_SKILL_IDS.items()}
 
 
 def build_adaptive_task_draft(dna: dict) -> dict:
-    topic = (dna.get("trajectory") or {}).get("next_focus")
+    trajectory = dna.get("trajectory") or {}
+    skill_id = trajectory.get("next_focus_skill_id")
+    topic = SKILL_TOPICS.get(skill_id) or trajectory.get("next_focus")
+    skill_id = skill_id or TOPIC_SKILL_IDS.get(topic)
     tasks = VERIFIED_TASK_TEMPLATES.get(topic)
-    if tasks is None:
+    if tasks is None or skill_id is None:
         raise ValueError("Для этой темы пока нет проверенного шаблона заданий.")
 
     return {
         "student_id": dna.get("student_id"),
         "topic": topic,
-        "skill_id": TOPIC_SKILL_IDS[topic],
+        "skill_id": skill_id,
         "tasks": [dict(task) for task in tasks],
         "status": "teacher_draft",
         "created_by": "verified_adaptive_template_v1",

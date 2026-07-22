@@ -144,6 +144,58 @@ class AdaptiveTaskServiceTest(unittest.TestCase):
         self.assertNotIn("x = 7 и x = 9", text)
         self.assertNotIn("Цель:", text)
 
+    def test_builds_algorithm_tracing_levels_from_atomic_skill_id(self):
+        draft = build_adaptive_task_draft(
+            {
+                "student_id": -5173759212,
+                "trajectory": {
+                    "next_focus": "Алгоритмы и исполнители",
+                    "next_focus_skill_id": "algorithms.tracing",
+                },
+            }
+        )
+
+        self.assertEqual(draft["topic"], "Алгоритмы и исполнители")
+        self.assertEqual(draft["skill_id"], "algorithms.tracing")
+        self.assertEqual(
+            [task["level"] for task in draft["tasks"]],
+            ["Лёгкий", "Средний", "Сложный"],
+        )
+        self.assertIn("x := 4", draft["tasks"][0]["task"])
+        self.assertIn("таблицу", draft["tasks"][1]["task"])
+        self.assertIn("контрпример", draft["tasks"][2]["task"])
+
+    def test_atomic_skill_id_is_authoritative_over_stale_topic_name(self):
+        draft = build_adaptive_task_draft(
+            {
+                "trajectory": {
+                    "next_focus": "Устаревшее название",
+                    "next_focus_skill_id": "algorithms.tracing",
+                }
+            }
+        )
+
+        self.assertEqual(draft["topic"], "Алгоритмы и исполнители")
+        self.assertEqual(draft["skill_id"], "algorithms.tracing")
+
+    def test_algorithm_tracing_family_render_hides_answers(self):
+        task_set = build_adaptive_task_draft(
+            {
+                "trajectory": {
+                    "next_focus_skill_id": "algorithms.tracing",
+                }
+            }
+        )
+        task_set["task_set_id"] = "diag_algorithms"
+
+        text = format_adaptive_task_set_for_family(task_set)
+
+        self.assertIn("n = 100", text)
+        self.assertIn("Номер набора: diag_algorithms", text)
+        self.assertNotIn("Ответ: 13", text)
+        self.assertNotIn("(0, 3)", text)
+        self.assertNotIn("Цель:", text)
+
     def test_teacher_render_marks_draft_as_unsent(self):
         draft = build_adaptive_task_draft(
             {
