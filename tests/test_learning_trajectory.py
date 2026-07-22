@@ -41,6 +41,24 @@ class LearningTrajectoryTest(unittest.TestCase):
             "Арифметические операции в системах счисления",
         )
 
+    def test_repairs_zero_attempts_for_legacy_three_level_mastery(self):
+        dna = {
+            "skills": {"logic.operations": {
+                "skill_id": "logic.operations", "attempts": 0,
+                "successes": 0, "evidence_count": 0, "mastered": True,
+            }},
+            "topic_mastery": {"Основы логики": {
+                "base": True, "application": True, "transfer": True,
+                "mastered": True,
+            }},
+            "trajectory": {"next_focus": "Алгоритмы и исполнители"},
+        }
+        self.assertTrue(restore_next_focus_from_mastery(dna))
+        skill = dna["skills"]["logic.operations"]
+        self.assertEqual(skill["attempts"], 3)
+        self.assertEqual(skill["successes"], 3)
+        self.assertEqual(skill["evidence_count"], 3)
+
     def test_skips_already_mastered_topics(self):
         mastery = {
             "Арифметические операции в системах счисления": {"mastered": True},

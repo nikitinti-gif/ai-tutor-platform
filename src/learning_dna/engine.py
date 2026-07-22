@@ -97,11 +97,17 @@ def update_learning_dna_after_check(current_dna: dict | None, student_id: int, c
     completed_skill = migrate_legacy_focus(topic)
     if isinstance(mastery, dict) and mastery.get("topic_mastered") and completed_skill:
         state = dna.setdefault("skills", {}).setdefault(completed_skill, {})
+        passed_levels = sum(
+            bool(mastery.get(level))
+            for level in ("base", "application", "transfer")
+        )
         state.update({
             "skill_id": completed_skill,
             "mastered": True,
             "mastery_level": 100,
-            "evidence_count": max(2, int(state.get("evidence_count", 0) or 0)),
+            "evidence_count": max(passed_levels, int(state.get("evidence_count", 0) or 0)),
+            "attempts": max(passed_levels, int(state.get("attempts", 0) or 0)),
+            "successes": max(passed_levels, int(state.get("successes", 0) or 0)),
             "difficulty_max": "exam_level",
         })
         next_skill = select_next_focus_from_graph(dna)

@@ -3,10 +3,12 @@ def build_learning_signal_from_check(check_result: dict) -> dict:
     error_type = check_result.get("error_type")
     topic = check_result.get("topic")
     confidence = check_result.get("confidence", 0.0)
+    skill_id = check_result.get("skill_id")
 
     if status == "correct":
         return {
             "type": "success",
+            "skill_id": skill_id,
             "topic": topic or "unknown",
             "signal": "Ученик успешно справился с заданием.",
             "confidence": confidence,
@@ -16,6 +18,7 @@ def build_learning_signal_from_check(check_result: dict) -> dict:
     if status == "has_error":
         return {
             "type": "mistake",
+            "skill_id": skill_id,
             "topic": topic or "unknown",
             "error_type": error_type or "unknown_error",
             "signal": "Обнаружена учебная ошибка, которую нужно закрепить.",
@@ -25,6 +28,7 @@ def build_learning_signal_from_check(check_result: dict) -> dict:
 
     return {
         "type": "unclear",
+        "skill_id": skill_id,
         "topic": topic or "unknown",
         "signal": "Решение не удалось уверенно проверить.",
         "confidence": confidence,

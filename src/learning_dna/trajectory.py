@@ -54,15 +54,23 @@ def migrate_trajectory_to_skill_graph(dna: dict) -> bool:
         if not skill_id or not isinstance(mastery, dict):
             continue
         state = skill_states.setdefault(skill_id, {"skill_id": skill_id})
-        if mastery.get("mastered") and not state.get("mastered"):
-            state.update({
+        if mastery.get("mastered"):
+            passed_levels = sum(
+                bool(mastery.get(level))
+                for level in ("base", "application", "transfer")
+            )
+            repaired = {
                 "mastered": True,
                 "mastery_level": 100,
-                "evidence_count": max(2, int(state.get("evidence_count", 0) or 0)),
+                "evidence_count": max(passed_levels, int(state.get("evidence_count", 0) or 0)),
+                "attempts": max(passed_levels, int(state.get("attempts", 0) or 0)),
+                "successes": max(passed_levels, int(state.get("successes", 0) or 0)),
                 "difficulty_max": "exam_level",
                 "migrated_from_topic": legacy_topic,
-            })
-            changed = True
+            }
+            if any(state.get(key) != value for key, value in repaired.items()):
+                state.update(repaired)
+                changed = True
     return changed
 
 

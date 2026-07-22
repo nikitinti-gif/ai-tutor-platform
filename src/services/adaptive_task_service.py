@@ -204,6 +204,13 @@ VERIFIED_TASK_TEMPLATES = {
     "Основы логики": LOGIC_BASICS_TASKS,
 }
 
+TOPIC_SKILL_IDS = {
+    "Системы счисления": "number_systems.base_conversion",
+    "Арифметические операции в системах счисления": "number_systems.binary_arithmetic",
+    "Кодирование информации": "information.units_conversion",
+    "Основы логики": "logic.operations",
+}
+
 
 def build_adaptive_task_draft(dna: dict) -> dict:
     topic = (dna.get("trajectory") or {}).get("next_focus")
@@ -214,6 +221,7 @@ def build_adaptive_task_draft(dna: dict) -> dict:
     return {
         "student_id": dna.get("student_id"),
         "topic": topic,
+        "skill_id": TOPIC_SKILL_IDS[topic],
         "tasks": [dict(task) for task in tasks],
         "status": "teacher_draft",
         "created_by": "verified_adaptive_template_v1",

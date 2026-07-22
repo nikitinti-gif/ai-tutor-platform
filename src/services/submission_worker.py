@@ -103,6 +103,7 @@ async def process_next_synthetic_submission(bot: Bot) -> bool:
                 student_solution=result["image_transcription"], topic=topic,
                 tasks=task_set["tasks"], synthetic_test=True,
             )
+            diagnostic["skill_id"] = task_set.get("skill_id")
             diagnostic["image_legibility"] = result["image_legibility"]
             diagnostic["image_transcription"] = result["image_transcription"]
             result = diagnostic

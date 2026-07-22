@@ -38,8 +38,10 @@ def update_skill_after_check(dna: dict, check_result: dict) -> dict:
 
     skill = dna["skills"][skill_id]
 
-    skill["attempts"] += 1
-    skill["evidence_count"] = skill.get("evidence_count", 0) + 1
+    level_results = check_result.get("level_results")
+    evidence = level_results if isinstance(level_results, list) and level_results else [check_result]
+    skill["attempts"] += len(evidence)
+    skill["evidence_count"] = skill.get("evidence_count", 0) + len(evidence)
     skill["last_evidence_at"] = datetime.now().isoformat(timespec="seconds")
 
     difficulty = check_result.get("difficulty") or check_result.get("diagnostic_level")
@@ -49,16 +51,20 @@ def update_skill_after_check(dna: dict, check_result: dict) -> dict:
     if difficulty_rank.get(difficulty, 0) > difficulty_rank.get(previous, 0):
         skill["difficulty_max"] = difficulty
 
-    if check_result.get("status") == "correct":
-        skill["successes"] += 1
-        skill["skill_level"] = min(100, skill["skill_level"] + 5)
-        skill["skill_confidence"] = min(100, skill["skill_confidence"] + 10)
+    correct_count = sum(item.get("status") == "correct" for item in evidence)
+    mistake_count = sum(item.get("status") == "has_error" for item in evidence)
+    unclear_count = len(evidence) - correct_count - mistake_count
+    skill["successes"] += correct_count
+    skill["mistakes"] += mistake_count
+
+    if correct_count == len(evidence):
+        skill["skill_level"] = min(100, skill["skill_level"] + 5 * correct_count)
+        skill["skill_confidence"] = min(100, skill["skill_confidence"] + 10 * correct_count)
         skill["trend"] = "up"
-        skill["mastery_level"] = min(100, skill.get("mastery_level", 0) + 20)
+        skill["mastery_level"] = min(100, skill.get("mastery_level", 0) + 20 * correct_count)
 
     elif check_result.get("status") == "has_error":
-        skill["mistakes"] += 1
-        skill["skill_level"] = max(0, skill["skill_level"] - 4)
+        skill["skill_level"] = max(0, skill["skill_level"] - 4 * max(1, mistake_count))
         skill["skill_confidence"] = min(100, skill["skill_confidence"] + 8)
         skill["trend"] = "down"
         skill["mastery_level"] = max(0, skill.get("mastery_level", 0) - 10)
@@ -66,7 +72,7 @@ def update_skill_after_check(dna: dict, check_result: dict) -> dict:
         if error_type and error_type not in skill["error_types"]:
             skill["error_types"].append(error_type)
 
-    else:
+    elif unclear_count:
         skill["skill_confidence"] = max(0, skill["skill_confidence"] - 5)
         skill["trend"] = "uncertain"
 

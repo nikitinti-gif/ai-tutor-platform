@@ -47,6 +47,10 @@ class DiagnosticLevelCheckTest(unittest.TestCase):
             "Арифметические операции в системах счисления",
         )
         self.assertTrue(updated["topic_mastery"]["Системы счисления"]["mastered"])
+        skill = updated["skills"]["number_systems.base_conversion"]
+        self.assertEqual(skill["attempts"], 3)
+        self.assertEqual(skill["successes"], 3)
+        self.assertNotIn("general_learning", updated["skills"])
 
     def test_gap_keeps_topic_as_focus(self):
         result = update_learning_dna_after_check(None, 1, {
