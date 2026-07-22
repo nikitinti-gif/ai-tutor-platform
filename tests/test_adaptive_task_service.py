@@ -108,6 +108,42 @@ class AdaptiveTaskServiceTest(unittest.TestCase):
         self.assertNotIn("64 цвета", text)
         self.assertNotIn("Цель:", text)
 
+    def test_builds_verified_logic_basics_levels_for_next_focus(self):
+        draft = build_adaptive_task_draft(
+            {
+                "student_id": -42,
+                "trajectory": {"next_focus": "Основы логики"},
+            }
+        )
+
+        self.assertEqual(draft["topic"], "Основы логики")
+        self.assertEqual(
+            [task["level"] for task in draft["tasks"]],
+            ["Лёгкий", "Средний", "Сложный"],
+        )
+        self.assertIn("¬A ∧ (B ∨ C)", draft["tasks"][0]["task"])
+        self.assertIn("F = 1 только", draft["tasks"][1]["teacher_answer"])
+        self.assertIn("x = 7 и x = 9", draft["tasks"][2]["teacher_answer"])
+        self.assertTrue(all(task["purpose"] for task in draft["tasks"]))
+
+    def test_logic_basics_family_render_hides_verified_answers(self):
+        task_set = build_adaptive_task_draft(
+            {
+                "student_id": -42,
+                "trajectory": {"next_focus": "Основы логики"},
+            }
+        )
+        task_set["task_set_id"] = "diag_logic"
+
+        text = format_adaptive_task_set_for_family(task_set)
+
+        self.assertIn("таблицу истинности", text)
+        self.assertIn("Номер набора: diag_logic", text)
+        self.assertNotIn("1 ∧ 1 = 1", text)
+        self.assertNotIn("F = 1 только", text)
+        self.assertNotIn("x = 7 и x = 9", text)
+        self.assertNotIn("Цель:", text)
+
     def test_teacher_render_marks_draft_as_unsent(self):
         draft = build_adaptive_task_draft(
             {
