@@ -28,7 +28,7 @@ class DiagnosticLevelCheckTest(unittest.TestCase):
         self.assertTrue(result["diagnostic_mastery"]["topic_mastered"])
         self.assertEqual([x["level"] for x in result["level_results"]], ["easy", "medium", "hard"])
 
-    def test_confirmed_mastery_clears_old_focus(self):
+    def test_confirmed_mastery_selects_next_curriculum_topic(self):
         current = {
             "student_id": 1, "signals": [], "skills": {},
             "memory": {"last_topics": [], "last_errors": [], "last_successes": []},
@@ -42,7 +42,10 @@ class DiagnosticLevelCheckTest(unittest.TestCase):
                 "topic_mastered": True,
             }, "knowledge_boundary": None,
         })
-        self.assertIsNone(updated["trajectory"]["next_focus"])
+        self.assertEqual(
+            updated["trajectory"]["next_focus"],
+            "Арифметические операции в системах счисления",
+        )
         self.assertTrue(updated["topic_mastery"]["Системы счисления"]["mastered"])
 
     def test_gap_keeps_topic_as_focus(self):

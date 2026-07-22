@@ -2,6 +2,7 @@ from datetime import datetime
 
 from src.learning_dna.profile import create_default_learning_dna
 from src.learning_dna.signals import build_learning_signal_from_check
+from src.learning_dna.trajectory import select_next_topic
 from src.skills.skill_engine import update_skill_after_check
 
 
@@ -35,10 +36,15 @@ def update_learning_dna_after_check(current_dna: dict | None, student_id: int, c
             "knowledge_boundary": check_result.get("knowledge_boundary"),
         }
         if mastery.get("topic_mastered"):
-            if dna["trajectory"].get("next_focus") == topic:
-                dna["trajectory"]["next_focus"] = None
+            next_topic = select_next_topic(topic, dna["topic_mastery"])
+            dna["trajectory"]["next_focus"] = next_topic
             dna["trajectory"]["recommendations"].append(
-                f"Тема «{topic}» подтверждённо освоена на трёх уровнях. Перейти к следующей теме."
+                f"Тема «{topic}» подтверждённо освоена на трёх уровнях. "
+                + (
+                    f"Следующая тема: «{next_topic}»."
+                    if next_topic
+                    else "Следующую тему выбирает преподаватель."
+                )
             )
         else:
             dna["trajectory"]["next_focus"] = topic
