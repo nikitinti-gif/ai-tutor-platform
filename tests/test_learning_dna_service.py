@@ -32,7 +32,50 @@ class LearningDNAServiceTest(unittest.TestCase):
         self.assertIn("Условные операторы (1)", text)
         self.assertIn("Системы счисления (1)", text)
         self.assertIn("Следующий фокус: Системы счисления", text)
-        self.assertIn("general_learning: уровень 46", text)
+        self.assertIn("Общий прогресс обучения: уровень 46", text)
+        self.assertIn("тренд снижается", text)
+        self.assertNotIn("general_learning", text)
+
+    def test_teacher_card_uses_russian_atomic_skill_names(self):
+        text = format_learning_dna_for_teacher(
+            {
+                "student_id": -42,
+                "signals": [],
+                "skills": {
+                    "information.units_conversion": {
+                        "skill_level": 0,
+                        "attempts": 3,
+                        "trend": "unknown",
+                    },
+                    "logic.operations": {
+                        "skill_level": 71,
+                        "attempts": 6,
+                        "trend": "up",
+                    },
+                    "number_systems.base_conversion": {
+                        "skill_level": 0,
+                        "attempts": 3,
+                        "trend": "stable",
+                    },
+                    "number_systems.binary_arithmetic": {
+                        "skill_level": 0,
+                        "attempts": 3,
+                        "trend": "uncertain",
+                    },
+                },
+                "trajectory": {},
+            }
+        )
+
+        self.assertIn("Единицы измерения информации", text)
+        self.assertIn("Логические операции", text)
+        self.assertIn("Перевод между системами счисления", text)
+        self.assertIn("Двоичная арифметика и побитовые операции", text)
+        self.assertIn("тренд растёт", text)
+        self.assertIn("тренд стабильный", text)
+        self.assertIn("тренд неустойчивый", text)
+        self.assertIn("тренд пока не определён", text)
+        self.assertNotIn("logic.operations", text)
 
     def test_empty_profile_is_explicit(self):
         text = format_learning_dna_for_teacher(

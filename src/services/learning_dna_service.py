@@ -1,5 +1,31 @@
 from collections import Counter
 
+from src.skills.skill_graph import get_skill
+
+
+SERVICE_SKILL_NAMES = {
+    "general_learning": "Общий прогресс обучения",
+}
+
+TREND_NAMES = {
+    "up": "растёт",
+    "down": "снижается",
+    "stable": "стабильный",
+    "uncertain": "неустойчивый",
+    "unknown": "пока не определён",
+}
+
+
+def _skill_name(skill_id: str) -> str:
+    if skill_id in SERVICE_SKILL_NAMES:
+        return SERVICE_SKILL_NAMES[skill_id]
+    skill = get_skill(skill_id)
+    return skill["name"] if skill else "Неизвестный навык"
+
+
+def _trend_name(trend: str) -> str:
+    return TREND_NAMES.get(trend, "пока не определён")
+
 
 def _topic_counts(signals: list[dict], signal_type: str) -> Counter:
     return Counter(
@@ -32,9 +58,10 @@ def format_learning_dna_for_teacher(dna: dict) -> str:
     skill_lines = []
     for skill_id, skill in sorted(skills.items()):
         skill_lines.append(
-            f"• {skill_id}: уровень {skill.get('skill_level', 0)}, "
+            f"• {_skill_name(skill_id)}: "
+            f"уровень {skill.get('skill_level', 0)}, "
             f"попыток {skill.get('attempts', 0)}, "
-            f"тренд {skill.get('trend', 'unknown')}"
+            f"тренд {_trend_name(skill.get('trend', 'unknown'))}"
         )
     skills_text = "\n".join(skill_lines) or "• данных пока нет"
 
