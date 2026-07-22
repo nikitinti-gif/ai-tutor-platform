@@ -30,6 +30,48 @@ class AdaptiveTaskServiceTest(unittest.TestCase):
                 {"trajectory": {"next_focus": "Неизвестная тема"}}
             )
 
+    def test_builds_verified_arithmetic_levels_for_next_focus(self):
+        draft = build_adaptive_task_draft(
+            {
+                "student_id": -42,
+                "trajectory": {
+                    "next_focus": "Арифметические операции в системах счисления"
+                },
+            }
+        )
+
+        self.assertEqual(
+            draft["topic"], "Арифметические операции в системах счисления"
+        )
+        self.assertEqual(
+            [task["level"] for task in draft["tasks"]],
+            ["Лёгкий", "Средний", "Сложный"],
+        )
+        self.assertIn("1011₂ + 0110₂", draft["tasks"][0]["task"])
+        self.assertIn("26 − 11 = 15", draft["tasks"][1]["teacher_answer"])
+        self.assertIn("110111₂", draft["tasks"][2]["teacher_answer"])
+        self.assertTrue(all(task["purpose"] for task in draft["tasks"]))
+
+    def test_arithmetic_family_render_hides_verified_answers(self):
+        task_set = build_adaptive_task_draft(
+            {
+                "student_id": -42,
+                "trajectory": {
+                    "next_focus": "Арифметические операции в системах счисления"
+                },
+            }
+        )
+        task_set["task_set_id"] = "diag_arithmetic"
+
+        text = format_adaptive_task_set_for_family(task_set)
+
+        self.assertIn("1011₂ + 0110₂", text)
+        self.assertIn("Номер набора: diag_arithmetic", text)
+        self.assertNotIn("10001₂ (11 + 6 = 17)", text)
+        self.assertNotIn("26 − 11 = 15", text)
+        self.assertNotIn("110111₂", text)
+        self.assertNotIn("Цель:", text)
+
     def test_teacher_render_marks_draft_as_unsent(self):
         draft = build_adaptive_task_draft(
             {
