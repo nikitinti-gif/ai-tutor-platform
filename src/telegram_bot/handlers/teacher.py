@@ -14,6 +14,7 @@ from config import ADMIN_TELEGRAM_ID
 from src.core.roles import ROLE_STUDENT, ROLE_TEACHER
 from src.repositories.family_link_repository import FamilyLinkRepository
 from src.repositories.learning_dna_repository import LearningDNARepository
+from src.learning_dna.engine import restore_next_focus_from_mastery
 from src.repositories.submission_repository import SubmissionRepository
 from src.repositories.adaptive_task_repository import AdaptiveTaskRepository
 from src.repositories.user_repository import UserRepository
@@ -379,6 +380,18 @@ async def teacher_show_learning_dna(message: Message, state: FSMContext):
         )
         return
 
+    if restore_next_focus_from_mastery(dna):
+        try:
+            dna = await asyncio.to_thread(
+                LearningDNARepository.save,
+                student_id,
+                dna,
+            ) or dna
+        except Exception:
+            logger.exception("Teacher could not persist repaired DNA for %s", student_id)
+            await message.answer("🔴 Не удалось обновить траекторию. Попробуйте позже.")
+            return
+
     await state.clear()
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(
@@ -408,6 +421,12 @@ async def teacher_create_adaptive_draft(callback: CallbackQuery):
         if not dna:
             await callback.answer("ДНК ученика не найдена.", show_alert=True)
             return
+        if restore_next_focus_from_mastery(dna):
+            dna = await asyncio.to_thread(
+                LearningDNARepository.save,
+                student_id,
+                dna,
+            ) or dna
         draft = build_adaptive_task_draft(dna)
     except ValueError as error:
         await callback.answer(str(error), show_alert=True)

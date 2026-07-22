@@ -1,9 +1,39 @@
 import unittest
 
+from src.learning_dna.engine import restore_next_focus_from_mastery
 from src.learning_dna.trajectory import select_next_topic
 
 
 class LearningTrajectoryTest(unittest.TestCase):
+    def test_restores_missing_focus_for_legacy_mastered_profile(self):
+        dna = {
+            "trajectory": {"next_focus": None, "recommendations": []},
+            "topic_mastery": {
+                "Системы счисления": {"mastered": True},
+            },
+        }
+
+        changed = restore_next_focus_from_mastery(dna)
+
+        self.assertTrue(changed)
+        self.assertEqual(
+            dna["trajectory"]["next_focus"],
+            "Арифметические операции в системах счисления",
+        )
+
+    def test_does_not_overwrite_existing_focus(self):
+        dna = {
+            "trajectory": {"next_focus": "Основы логики"},
+            "topic_mastery": {
+                "Системы счисления": {"mastered": True},
+            },
+        }
+
+        changed = restore_next_focus_from_mastery(dna)
+
+        self.assertFalse(changed)
+        self.assertEqual(dna["trajectory"]["next_focus"], "Основы логики")
+
     def test_selects_topic_after_completed_one(self):
         self.assertEqual(
             select_next_topic("Системы счисления"),

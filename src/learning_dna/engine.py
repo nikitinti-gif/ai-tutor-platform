@@ -2,8 +2,41 @@ from datetime import datetime
 
 from src.learning_dna.profile import create_default_learning_dna
 from src.learning_dna.signals import build_learning_signal_from_check
-from src.learning_dna.trajectory import select_next_topic
+from src.learning_dna.trajectory import TOPIC_SEQUENCE, select_next_topic
 from src.skills.skill_engine import update_skill_after_check
+
+
+def restore_next_focus_from_mastery(dna: dict) -> bool:
+    """Restore a missing next focus for profiles saved by an older release.
+
+    Returns True only when the profile was changed and must be persisted.
+    Existing teacher-selected or error-driven focuses are never overwritten.
+    """
+    trajectory = dna.setdefault("trajectory", {})
+    if trajectory.get("next_focus"):
+        return False
+
+    topic_mastery = dna.get("topic_mastery") or {}
+    mastered_topics = {
+        topic
+        for topic, mastery in topic_mastery.items()
+        if isinstance(mastery, dict) and mastery.get("mastered")
+    }
+    if not mastered_topics:
+        return False
+
+    next_topic = None
+    for topic in reversed(TOPIC_SEQUENCE):
+        if topic in mastered_topics:
+            next_topic = select_next_topic(topic, topic_mastery)
+            break
+
+    if not next_topic:
+        return False
+
+    trajectory["next_focus"] = next_topic
+    dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    return True
 
 
 def update_learning_dna_after_check(current_dna: dict | None, student_id: int, check_result: dict) -> dict:
