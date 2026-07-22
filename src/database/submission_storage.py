@@ -48,6 +48,19 @@ def _ensure_submissions_table(connection) -> None:
     connection.execute(
         """
         ALTER TABLE homework_submissions
+        ADD COLUMN IF NOT EXISTS task_set_id TEXT
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS homework_submissions_task_set_unique_idx
+        ON homework_submissions (task_set_id)
+        WHERE task_set_id IS NOT NULL
+        """
+    )
+    connection.execute(
+        """
+        ALTER TABLE homework_submissions
         ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT FALSE
         """
     )
@@ -102,6 +115,26 @@ def create_homework_submission(database_url: str, submission: dict) -> dict:
 
     with psycopg.connect(database_url) as connection:
         _ensure_submissions_table(connection)
+        task_set_id = record.get("task_set_id")
+        if task_set_id:
+            task_set = connection.execute(
+                """
+                SELECT student_telegram_id, sent_to_parent_id, status
+                FROM adaptive_task_sets
+                WHERE task_set_id = %s
+                FOR UPDATE
+                """,
+                (task_set_id,),
+            ).fetchone()
+            if not task_set:
+                raise ValueError("Диагностический набор не найден.")
+            if (
+                int(task_set[0]) != int(record["student_telegram_id"])
+                or int(task_set[1]) != int(record["parent_telegram_id"])
+            ):
+                raise ValueError("Диагностический набор принадлежит другой семье.")
+            if task_set[2] != "sent":
+                raise ValueError("Решение по этому набору уже принято.")
         connection.execute(
             """
             INSERT INTO homework_submissions (
@@ -115,10 +148,11 @@ def create_homework_submission(database_url: str, submission: dict) -> dict:
                 photo_width,
                 photo_height,
                 quality_metrics,
+                task_set_id,
                 created_at,
                 updated_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s
             )
             """,
             (
@@ -132,10 +166,20 @@ def create_homework_submission(database_url: str, submission: dict) -> dict:
                 record["photo_width"],
                 record["photo_height"],
                 quality_metrics,
+                task_set_id,
                 record["created_at"],
                 record["updated_at"],
             ),
         )
+        if task_set_id:
+            connection.execute(
+                """
+                UPDATE adaptive_task_sets
+                SET status = 'submitted'
+                WHERE task_set_id = %s AND status = 'sent'
+                """,
+                (task_set_id,),
+            )
 
     return record
 
@@ -184,7 +228,8 @@ def claim_next_synthetic_submission(
                 submission.submission_id,
                 submission.student_telegram_id,
                 submission.telegram_file_id,
-                submission.processing_attempts
+                submission.processing_attempts,
+                submission.task_set_id
             """,
             (max_attempts, now),
         ).fetchone()
@@ -195,6 +240,7 @@ def claim_next_synthetic_submission(
         "student_telegram_id": row[1],
         "telegram_file_id": row[2],
         "processing_attempts": row[3],
+        "task_set_id": row[4],
     }
 
 
@@ -299,7 +345,8 @@ def list_teacher_submissions(
                 last_error,
                 analysis_result,
                 created_at,
-                processed_at
+                processed_at,
+                task_set_id
             FROM homework_submissions
             ORDER BY created_at DESC
             LIMIT %s
@@ -318,6 +365,7 @@ def list_teacher_submissions(
             "analysis_result": row[6],
             "created_at": row[7],
             "processed_at": row[8],
+            "task_set_id": row[9],
         }
         for row in rows
     ]
@@ -345,7 +393,8 @@ def get_teacher_submission(
                 analysis_result,
                 created_at,
                 processed_at,
-                completed_at
+                completed_at,
+                task_set_id
             FROM homework_submissions
             WHERE submission_id = %s
             """,
@@ -368,6 +417,7 @@ def get_teacher_submission(
         "created_at": row[11],
         "processed_at": row[12],
         "completed_at": row[13],
+        "task_set_id": row[14],
     }
 
 

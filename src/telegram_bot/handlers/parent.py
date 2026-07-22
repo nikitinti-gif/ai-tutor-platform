@@ -5,11 +5,12 @@ from uuid import uuid4
 
 from aiogram import Dispatcher, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from config import ADMIN_TELEGRAM_ID
 from src.core.roles import ROLE_PARENT
 from src.repositories.family_link_repository import FamilyLinkRepository
+from src.repositories.adaptive_task_repository import AdaptiveTaskRepository
 from src.repositories.user_repository import UserRepository
 from src.repositories.submission_repository import SubmissionRepository
 from src.services.parent_report_service import generate_parent_report
@@ -121,12 +122,57 @@ async def parent_start_submission(message: Message, state: FSMContext):
     )
 
 
+async def parent_start_adaptive_submission(
+    callback: CallbackQuery,
+    state: FSMContext,
+):
+    task_set_id = callback.data.split(":", maxsplit=1)[1]
+    user = UserRepository.get_by_telegram_id(callback.from_user.id)
+    if (not user or user.get("role") != ROLE_PARENT) and not is_admin(callback):
+        await callback.answer("Загрузка доступна только семье.", show_alert=True)
+        return
+
+    try:
+        task_set = await asyncio.to_thread(
+            AdaptiveTaskRepository.get, task_set_id
+        )
+    except Exception:
+        logger.exception("Adaptive task set could not be loaded: %s", task_set_id)
+        await callback.answer("Набор временно недоступен.", show_alert=True)
+        return
+
+    if not task_set or task_set.get("parent_id") != callback.from_user.id:
+        await callback.answer("Этот набор недоступен вашему аккаунту.", show_alert=True)
+        return
+    if task_set.get("status") != "sent":
+        message = (
+            "Решение по этому набору уже отправлено."
+            if task_set.get("status") == "submitted"
+            else "Набор пока нельзя сдавать."
+        )
+        await callback.answer(message, show_alert=True)
+        return
+
+    await state.set_state(ParentSubmissionStates.waiting_homework_photo)
+    await state.update_data(
+        student_telegram_id=task_set["student_id"],
+        task_set_id=task_set_id,
+    )
+    await callback.answer()
+    await callback.message.answer(
+        f"📷 Отправьте одно фото решения по набору {task_set_id}.\n\n"
+        "На снимке должны быть видны ответы на лёгкое, среднее и сложное "
+        "задания. Подпишите уровни 1, 2 и 3."
+    )
+
+
 async def parent_receive_homework_photo(
     message: Message,
     state: FSMContext,
 ):
     state_data = await state.get_data()
     student_id = state_data.get("student_telegram_id")
+    task_set_id = state_data.get("task_set_id")
     if not isinstance(student_id, int):
         await state.clear()
         await message.answer(
@@ -181,6 +227,7 @@ async def parent_receive_homework_photo(
             "contrast": round(quality.contrast, 2),
             "sharpness": round(quality.sharpness, 2),
         },
+        "task_set_id": task_set_id,
     }
     try:
         await asyncio.to_thread(SubmissionRepository.create, submission)
@@ -199,6 +246,7 @@ async def parent_receive_homework_photo(
             caption=(
                 "📥 Новая работа от родителя\n"
                 f"Номер: {submission_id}\n"
+                f"Диагностический набор: {task_set_id or 'не указан'}\n"
                 "Качество фото: принято\n"
                 f"Размер: {quality.width}×{quality.height}\n"
                 "Очередь: PostgreSQL\n"
@@ -225,8 +273,12 @@ async def parent_receive_homework_photo(
             )
 
     await state.clear()
+    diagnostic_line = (
+        f"Диагностический набор: {task_set_id}\n" if task_set_id else ""
+    )
     await message.answer(
         "✅ Работа принята.\n"
+        f"{diagnostic_line}"
         "Ожидайте проверки преподавателя."
     )
 
@@ -237,6 +289,10 @@ async def parent_report(message: Message):
 
 
 def register_parent_handlers(dp: Dispatcher):
+    dp.callback_query.register(
+        parent_start_adaptive_submission,
+        F.data.startswith("submit_adaptive:"),
+    )
     dp.message.register(
         parent_start_family_link,
         F.text == "🔗 Привязать ребёнка",

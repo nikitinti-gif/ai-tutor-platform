@@ -548,7 +548,14 @@ async def teacher_send_adaptive_to_family(callback: CallbackQuery):
             await callback.answer("С учеником не связан родитель.", show_alert=True)
             return
         await callback.bot.send_message(
-            parent_id, format_adaptive_task_set_for_family(task_set)
+            parent_id,
+            format_adaptive_task_set_for_family(task_set),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="📷 Отправить решение",
+                    callback_data=f"submit_adaptive:{task_set_id}",
+                )
+            ]]),
         )
         marked = await asyncio.to_thread(
             AdaptiveTaskRepository.mark_sent, task_set_id, parent_id

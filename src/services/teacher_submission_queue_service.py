@@ -64,6 +64,7 @@ def format_teacher_submission_queue(submissions: list[dict]) -> str:
             f"{index}. {item.get('submission_id', '—')}",
             f"   {data_label} · {status_label}",
             f"   Ученик ID: {item.get('student_telegram_id') or 'не привязан'}",
+            f"   Набор: {item.get('task_set_id') or 'общая работа'}",
             f"   Принято: {_format_time(item.get('created_at'))}",
         ])
         analysis_summary = _analysis_summary(item.get("analysis_result"))
@@ -98,6 +99,7 @@ def format_teacher_submission_detail(submission: dict) -> str:
         f"Номер: {submission.get('submission_id', '—')}",
         f"Статус: {STATUS_LABELS.get(status, status)}",
         f"Ученик ID: {submission.get('student_telegram_id') or 'не привязан'}",
+        f"Диагностический набор: {submission.get('task_set_id') or 'не указан'}",
         f"Размер: {submission.get('photo_width', '—')}×{submission.get('photo_height', '—')}",
         f"Принято: {_format_time(submission.get('created_at'))}",
     ]

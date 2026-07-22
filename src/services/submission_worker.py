@@ -11,6 +11,7 @@ from config import (
 )
 from src.ai_engine.homework_checker import check_homework_image
 from src.repositories.submission_repository import SubmissionRepository
+from src.repositories.adaptive_task_repository import AdaptiveTaskRepository
 
 
 logger = logging.getLogger(__name__)
@@ -66,12 +67,25 @@ async def process_next_synthetic_submission(bot: Bot) -> bool:
         if not image_bytes:
             raise ValueError("Telegram вернул пустое изображение.")
 
+        task_text = None
+        topic = "Синтетический пилот"
+        if submission.get("task_set_id"):
+            task_set = await asyncio.to_thread(
+                AdaptiveTaskRepository.get, submission["task_set_id"]
+            )
+            if task_set:
+                topic = task_set["topic"]
+                task_text = "\n".join(
+                    f"{index}. {task['level']}: {task['task']}"
+                    for index, task in enumerate(task_set["tasks"], start=1)
+                )
+
         result = await asyncio.to_thread(
             check_homework_image,
             image_bytes=image_bytes,
             mime_type="image/jpeg",
-            task_text=None,
-            topic="Синтетический пилот",
+            task_text=task_text,
+            topic=topic,
             synthetic_test=True,
             provider_name="gemini",
         )
