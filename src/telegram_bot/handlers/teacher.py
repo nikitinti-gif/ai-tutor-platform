@@ -42,6 +42,10 @@ from src.services.teacher_submission_queue_service import (
     format_teacher_submission_queue,
 )
 from src.services.learning_dna_service import format_learning_dna_for_teacher
+from src.services.adaptive_task_service import (
+    build_adaptive_task_draft,
+    format_adaptive_task_draft_for_teacher,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -374,7 +378,47 @@ async def teacher_show_learning_dna(message: Message, state: FSMContext):
         return
 
     await state.clear()
-    await message.answer(format_learning_dna_for_teacher(dna))
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(
+            text="📝 Создать задания по уровням",
+            callback_data=f"adaptive_draft:{student_id}",
+        )]]
+    )
+    await message.answer(
+        format_learning_dna_for_teacher(dna),
+        reply_markup=keyboard,
+    )
+
+
+async def teacher_create_adaptive_draft(callback: CallbackQuery):
+    teacher = UserRepository.get_by_telegram_id(callback.from_user.id)
+    callback_is_admin = bool(
+        ADMIN_TELEGRAM_ID
+        and str(callback.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+    if (not teacher or teacher.get("role") != ROLE_TEACHER) and not callback_is_admin:
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+
+    try:
+        student_id = int(callback.data.split(":", maxsplit=1)[1])
+        dna = await asyncio.to_thread(LearningDNARepository.get, student_id)
+        if not dna:
+            await callback.answer("ДНК ученика не найдена.", show_alert=True)
+            return
+        draft = build_adaptive_task_draft(dna)
+    except ValueError as error:
+        await callback.answer(str(error), show_alert=True)
+        return
+    except Exception:
+        logger.exception("Could not build adaptive draft")
+        await callback.answer("Ошибка создания черновика.", show_alert=True)
+        return
+
+    await callback.answer("Черновик создан.")
+    await callback.message.answer(
+        format_adaptive_task_draft_for_teacher(draft)
+    )
 
 
 async def teacher_week_summary(message: Message):
@@ -414,6 +458,10 @@ def register_teacher_handlers(dp: Dispatcher):
     dp.callback_query.register(
         teacher_complete_submission,
         F.data.startswith("complete_submission:"),
+    )
+    dp.callback_query.register(
+        teacher_create_adaptive_draft,
+        F.data.startswith("adaptive_draft:"),
     )
     dp.message.register(
         teacher_start_learning_dna,
