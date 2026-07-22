@@ -75,3 +75,19 @@ def format_adaptive_task_draft_for_teacher(draft: dict) -> str:
         + "\n\n".join(sections)
         + "\n\nЧерновик пока не сохранён и никому не отправлен."
     )
+
+
+def format_adaptive_task_set_for_family(task_set: dict) -> str:
+    sections = []
+    for index, task in enumerate(task_set["tasks"], start=1):
+        sections.append(
+            f"{index}. {task['level']} уровень\n"
+            f"Задание: {task['task']}"
+        )
+    return (
+        "📝 Диагностические задания\n\n"
+        f"Тема: {task_set['topic']}\n"
+        "Выполните все три задания и отправьте фотографию решения.\n\n"
+        + "\n\n".join(sections)
+        + f"\n\nНомер набора: {task_set['task_set_id']}"
+    )

@@ -3,6 +3,7 @@ import unittest
 from src.services.adaptive_task_service import (
     build_adaptive_task_draft,
     format_adaptive_task_draft_for_teacher,
+    format_adaptive_task_set_for_family,
 )
 
 
@@ -44,6 +45,22 @@ class AdaptiveTaskServiceTest(unittest.TestCase):
         self.assertIn("Сложный уровень", text)
         self.assertIn("никому не отправлен", text)
         self.assertIn("степеням двойки", text)
+
+    def test_family_render_hides_answers_purposes_and_dna(self):
+        task_set = build_adaptive_task_draft({
+            "student_id": -42,
+            "trajectory": {"next_focus": "Системы счисления"},
+        })
+        task_set["task_set_id"] = "diag_test"
+
+        text = format_adaptive_task_set_for_family(task_set)
+
+        self.assertIn("10101₂", text)
+        self.assertIn("Номер набора: diag_test", text)
+        self.assertNotIn("Ответ для преподавателя", text)
+        self.assertNotIn("21₁₀", text)
+        self.assertNotIn("Цель:", text)
+        self.assertNotIn("ДНК", text)
 
 
 if __name__ == "__main__":

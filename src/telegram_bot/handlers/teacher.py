@@ -46,6 +46,7 @@ from src.services.learning_dna_service import format_learning_dna_for_teacher
 from src.services.adaptive_task_service import (
     build_adaptive_task_draft,
     format_adaptive_task_draft_for_teacher,
+    format_adaptive_task_set_for_family,
 )
 
 
@@ -471,8 +472,108 @@ async def teacher_confirm_adaptive_draft(callback: CallbackQuery):
         f"ID набора: {saved['task_set_id']}\n"
         f"Ученик ID: {saved['student_id']}\n"
         f"Тема: {saved['topic']}\n\n"
-        "Семье набор пока не отправлен."
+        "Семье набор пока не отправлен.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="📤 Подготовить отправку семье",
+                callback_data=f"preview_adaptive:{saved['task_set_id']}",
+            )
+        ]]),
     )
+
+
+def _teacher_can_manage(callback: CallbackQuery, task_set: dict | None = None) -> bool:
+    teacher = UserRepository.get_by_telegram_id(callback.from_user.id)
+    callback_is_admin = bool(
+        ADMIN_TELEGRAM_ID and str(callback.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+    has_role = bool(teacher and teacher.get("role") == ROLE_TEACHER)
+    owns_set = not task_set or task_set["teacher_id"] == callback.from_user.id
+    return callback_is_admin or (has_role and owns_set)
+
+
+async def teacher_preview_adaptive_delivery(callback: CallbackQuery):
+    task_set_id = callback.data.split(":", maxsplit=1)[1]
+    try:
+        task_set = await asyncio.to_thread(AdaptiveTaskRepository.get, task_set_id)
+    except Exception:
+        logger.exception("Could not load adaptive task set %s", task_set_id)
+        await callback.answer("Не удалось загрузить набор.", show_alert=True)
+        return
+    if not task_set or not _teacher_can_manage(callback, task_set):
+        await callback.answer("Набор не найден или недостаточно прав.", show_alert=True)
+        return
+    if task_set["status"] == "sent":
+        await callback.answer("Этот набор уже отправлен семье.", show_alert=True)
+        return
+    if task_set["status"] != "confirmed":
+        await callback.answer("Набор пока нельзя отправить.", show_alert=True)
+        return
+
+    parent_id = await asyncio.to_thread(
+        FamilyLinkRepository.get_parent_id, task_set["student_id"]
+    )
+    if parent_id is None:
+        await callback.answer("С учеником не связан родитель.", show_alert=True)
+        return
+
+    await callback.answer("Предпросмотр готов.")
+    await callback.message.answer(
+        "👁 Предпросмотр сообщения семье\n\n"
+        + format_adaptive_task_set_for_family(task_set),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="✅ Отправить семье",
+                callback_data=f"send_adaptive:{task_set_id}",
+            ),
+            InlineKeyboardButton(text="✏️ Отменить", callback_data="cancel_delivery"),
+        ]]),
+    )
+
+
+async def teacher_send_adaptive_to_family(callback: CallbackQuery):
+    task_set_id = callback.data.split(":", maxsplit=1)[1]
+    try:
+        task_set = await asyncio.to_thread(AdaptiveTaskRepository.get, task_set_id)
+        if not task_set or not _teacher_can_manage(callback, task_set):
+            await callback.answer("Набор не найден или недостаточно прав.", show_alert=True)
+            return
+        if task_set["status"] == "sent":
+            await callback.answer("Этот набор уже отправлен семье.", show_alert=True)
+            return
+        parent_id = await asyncio.to_thread(
+            FamilyLinkRepository.get_parent_id, task_set["student_id"]
+        )
+        if parent_id is None:
+            await callback.answer("С учеником не связан родитель.", show_alert=True)
+            return
+        await callback.bot.send_message(
+            parent_id, format_adaptive_task_set_for_family(task_set)
+        )
+        marked = await asyncio.to_thread(
+            AdaptiveTaskRepository.mark_sent, task_set_id, parent_id
+        )
+        if not marked:
+            logger.warning("Adaptive set %s sent but status was already changed", task_set_id)
+    except Exception:
+        logger.exception("Could not deliver adaptive task set %s", task_set_id)
+        await callback.answer("Отправка не выполнена. Попробуйте позже.", show_alert=True)
+        return
+
+    await callback.answer("Набор отправлен семье.")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        f"✅ Набор {task_set_id} отправлен семье.\nСтатус: sent"
+    )
+
+
+async def teacher_cancel_adaptive_delivery(callback: CallbackQuery):
+    if not _teacher_can_manage(callback):
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+    await callback.answer("Отправка отменена.")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer("✏️ Отправка отменена. Набор остался в статусе confirmed.")
 
 
 async def teacher_cancel_adaptive_draft(callback: CallbackQuery):
@@ -540,6 +641,18 @@ def register_teacher_handlers(dp: Dispatcher):
     dp.callback_query.register(
         teacher_cancel_adaptive_draft,
         F.data == "cancel_adaptive",
+    )
+    dp.callback_query.register(
+        teacher_preview_adaptive_delivery,
+        F.data.startswith("preview_adaptive:"),
+    )
+    dp.callback_query.register(
+        teacher_send_adaptive_to_family,
+        F.data.startswith("send_adaptive:"),
+    )
+    dp.callback_query.register(
+        teacher_cancel_adaptive_delivery,
+        F.data == "cancel_delivery",
     )
     dp.message.register(
         teacher_start_learning_dna,

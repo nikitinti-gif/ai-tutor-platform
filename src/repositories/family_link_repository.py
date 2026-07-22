@@ -32,6 +32,11 @@ def _get_student_id(*args, **kwargs) -> int | None:
     return get_linked_student_id(*args, **kwargs)
 
 
+def _get_parent_id(*args, **kwargs) -> int | None:
+    from src.database.family_link_storage import get_linked_parent_id
+    return get_linked_parent_id(*args, **kwargs)
+
+
 class FamilyLinkRepository:
     @staticmethod
     def save_code(
@@ -60,3 +65,7 @@ class FamilyLinkRepository:
     @staticmethod
     def get_student_id(parent_telegram_id: int) -> int | None:
         return _get_student_id(_database_url(), parent_telegram_id)
+
+    @staticmethod
+    def get_parent_id(student_telegram_id: int) -> int | None:
+        return _get_parent_id(_database_url(), student_telegram_id)

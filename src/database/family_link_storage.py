@@ -121,3 +121,17 @@ def get_linked_student_id(
             (parent_telegram_id,),
         ).fetchone()
     return int(row[0]) if row else None
+
+
+def get_linked_parent_id(database_url: str, student_telegram_id: int) -> int | None:
+    with psycopg.connect(database_url) as connection:
+        _ensure_family_link_tables(connection)
+        row = connection.execute(
+            """
+            SELECT parent_telegram_id FROM parent_student_links
+            WHERE student_telegram_id = %s
+            ORDER BY linked_at DESC LIMIT 1
+            """,
+            (student_telegram_id,),
+        ).fetchone()
+    return int(row[0]) if row else None
