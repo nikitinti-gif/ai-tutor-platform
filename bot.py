@@ -56,7 +56,7 @@ async def health_check(_: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "mode": BOT_MODE})
 
 
-async def log_outbound_location(_: Bot) -> None:
+async def log_outbound_location() -> None:
     """Log the public egress location without exposing the service IP."""
     timeout = aiohttp.ClientTimeout(total=10)
 
