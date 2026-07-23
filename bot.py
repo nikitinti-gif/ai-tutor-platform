@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 
+import aiohttp
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramAPIError
@@ -39,6 +40,7 @@ def create_dispatcher() -> Dispatcher:
     register_student_handlers(dp)
     register_parent_handlers(dp)
     register_teacher_handlers(dp)
+    dp.startup.register(log_outbound_location)
     dp.startup.register(schedule_submission_worker)
 
     return dp
@@ -52,6 +54,28 @@ async def run_polling() -> None:
 
 async def health_check(_: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "mode": BOT_MODE})
+
+
+async def log_outbound_location(_: Bot) -> None:
+    """Log the public egress location without exposing the service IP."""
+    timeout = aiohttp.ClientTimeout(total=10)
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get("https://ipinfo.io/json") as response:
+                response.raise_for_status()
+                payload = await response.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as error:
+        logger.warning("Outbound location check failed: %s", error)
+        return
+
+    logger.info(
+        "Outbound location: country=%s, region=%s, city=%s, timezone=%s",
+        payload.get("country", "unknown"),
+        payload.get("region", "unknown"),
+        payload.get("city", "unknown"),
+        payload.get("timezone", "unknown"),
+    )
 
 
 async def set_telegram_webhook_with_retry(bot: Bot) -> None:
