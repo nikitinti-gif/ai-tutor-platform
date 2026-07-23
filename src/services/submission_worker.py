@@ -34,6 +34,16 @@ def format_analysis_for_teacher(submission_id: str, result: dict) -> str:
             f"• {labels[item['level']]}: {item['status']} ({item['confidence']:.2f})"
             for item in result["level_results"]
         ) + f"\nГраница незнания: {result.get('knowledge_boundary') or 'не обнаружена'}"
+    recheck_labels = {
+        "confirmed": "заключение подтверждено повторной проверкой",
+        "disagreement": "проверки разошлись — нужна проверка преподавателя",
+    }
+    recheck_text = ""
+    if result.get("recheck_status") in recheck_labels:
+        recheck_text = (
+            "\nПовторная проверка: "
+            f"{recheck_labels[result['recheck_status']]}"
+        )
     return (
         "🤖 Gemini обработал синтетическую работу\n\n"
         f"Номер: {submission_id}\n"
@@ -42,7 +52,7 @@ def format_analysis_for_teacher(submission_id: str, result: dict) -> str:
         f"Тип ошибки: {error_type}\n\n"
         f"Транскрипция:\n{transcription}\n\n"
         f"Анализ:\n{feedback}\n\n"
-        f"Рекомендация:\n{hint}{level_text}\n\n"
+        f"Рекомендация:\n{hint}{level_text}{recheck_text}\n\n"
         "Результат отправлен только преподавателю."
     )
 

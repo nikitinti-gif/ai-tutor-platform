@@ -31,6 +31,9 @@ class ImageHomeworkCheckerTest(unittest.TestCase):
             "topic": "Циклы Python"
         }
         """
+        client.critically_recheck_homework.return_value = (
+            client.check_homework_text.return_value
+        )
         client_class.return_value = client
 
         result = check_homework_image(
@@ -103,6 +106,9 @@ class ImageHomeworkCheckerTest(unittest.TestCase):
             "topic": "Циклы Python"
         }
         """
+        client.critically_recheck_homework.return_value = (
+            client.check_homework_text.return_value
+        )
         factory.return_value = client
 
         result = check_homework_image(
@@ -139,6 +145,9 @@ class ImageHomeworkCheckerTest(unittest.TestCase):
             "topic": "Условия"
         }
         """
+        client.critically_recheck_homework.return_value = (
+            client.check_homework_text.return_value
+        )
         factory.return_value = client
 
         result = check_homework_image(

@@ -12,6 +12,50 @@ from src.ai_engine.homework_checker import check_homework_text
 
 class HomeworkCheckerTest(unittest.TestCase):
     @patch("src.ai_engine.homework_checker.create_text_provider")
+    def test_critical_recheck_disagreement_requires_teacher(
+        self,
+        provider_factory,
+    ):
+        client = Mock()
+        client.check_homework_text.return_value = """
+        {
+            "status": "correct",
+            "confidence": 0.92,
+            "feedback": "Верно.",
+            "hint": "Продолжай.",
+            "error_type": null,
+            "topic": "Циклы",
+            "error_evidence": null,
+            "error_explanation": null
+        }
+        """
+        client.critically_recheck_homework.return_value = """
+        {
+            "status": "has_error",
+            "confidence": 0.98,
+            "feedback": "Есть ошибка.",
+            "hint": "Пересчитай четвёртую строку.",
+            "error_type": "calculation_error",
+            "topic": "Циклы",
+            "error_evidence": "4 | 12",
+            "error_explanation": "При i=4 нужно прибавить 8, а не 4."
+        }
+        """
+        provider_factory.return_value = client
+
+        result = check_homework_text(
+            text="1 | 1\n2 | 5\n3 | 8\n4 | 12\n5 | 17",
+            task_text="Построй таблицу значений.",
+            topic="Циклы",
+            synthetic_test=True,
+        )
+
+        self.assertEqual(result["status"], "unclear")
+        self.assertEqual(result["error_type"], "ai_check_disagreement")
+        self.assertEqual(result["recheck_status"], "disagreement")
+        self.assertTrue(result["needs_teacher_review"])
+
+    @patch("src.ai_engine.homework_checker.create_text_provider")
     def test_valid_provider_json_is_parsed(self, provider_factory):
         client = Mock()
         client.check_homework_text.return_value = """
@@ -26,6 +70,9 @@ class HomeworkCheckerTest(unittest.TestCase):
             "error_explanation": "Правая граница range не включается."
         }
         """
+        client.critically_recheck_homework.return_value = (
+            client.check_homework_text.return_value
+        )
         provider_factory.return_value = client
 
         result = check_homework_text(
@@ -56,6 +103,7 @@ class HomeworkCheckerTest(unittest.TestCase):
     ):
         client = Mock()
         client.check_homework_text.return_value = "not json"
+        client.critically_recheck_homework.return_value = "not json"
         provider_factory.return_value = client
 
         result = check_homework_text(
@@ -90,6 +138,9 @@ class HomeworkCheckerTest(unittest.TestCase):
             "topic": "Циклы"
         }
         """
+        client.critically_recheck_homework.return_value = (
+            client.check_homework_text.return_value
+        )
         provider_factory.return_value = client
 
         result = check_homework_text(
@@ -119,6 +170,9 @@ class HomeworkCheckerTest(unittest.TestCase):
             "error_explanation": "Указана неверная сумма."
         }
         """
+        client.critically_recheck_homework.return_value = (
+            client.check_homework_text.return_value
+        )
         provider_factory.return_value = client
 
         result = check_homework_text(
@@ -148,6 +202,9 @@ class HomeworkCheckerTest(unittest.TestCase):
             "error_explanation": "Слагаемое 8 относится к нулевому разряду, а слагаемое 4 пропущено."
         }
         """
+        client.critically_recheck_homework.return_value = (
+            client.check_homework_text.return_value
+        )
         provider_factory.return_value = client
 
         result = check_homework_text(

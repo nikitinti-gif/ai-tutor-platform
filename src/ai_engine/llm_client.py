@@ -10,6 +10,8 @@ from src.ai_engine.prompts import (
     build_homework_check_prompt,
     build_homework_image_transcription_prompt,
     build_diagnostic_level_prompt,
+    build_homework_critical_review_prompt,
+    build_diagnostic_critical_review_prompt,
 )
 from src.ai_engine.schemas import (
     HOMEWORK_CHECK_RESPONSE_SCHEMA,
@@ -223,6 +225,68 @@ class LLMClient:
         )
         if not interaction.output_text:
             raise LLMResponseError("Gemini не вернул раздельную диагностику.")
+        return interaction.output_text
+
+    def critically_recheck_homework(
+        self,
+        *,
+        text: str,
+        task_text: str | None,
+        topic: str | None,
+        first_result: str,
+        synthetic_test: bool = False,
+    ) -> str:
+        if not synthetic_test:
+            raise LLMDataPolicyError(
+                "Gemini разрешён только для синтетических тестовых примеров."
+            )
+        interaction = self.client.interactions.create(
+            model=self.model,
+            input=build_homework_critical_review_prompt(
+                task_text=task_text or "",
+                student_solution=text,
+                topic=topic,
+                first_result=first_result,
+            ),
+            response_format={
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": HOMEWORK_CHECK_RESPONSE_SCHEMA,
+            },
+        )
+        if not interaction.output_text:
+            raise LLMResponseError("Gemini не вернул критическую перепроверку.")
+        return interaction.output_text
+
+    def critically_recheck_diagnostic(
+        self,
+        *,
+        topic: str,
+        tasks: list[dict],
+        student_solution: str,
+        first_result: str,
+        synthetic_test: bool = False,
+    ) -> str:
+        if not synthetic_test:
+            raise LLMDataPolicyError(
+                "Gemini разрешён только для синтетических диагностических работ."
+            )
+        interaction = self.client.interactions.create(
+            model=self.model,
+            input=build_diagnostic_critical_review_prompt(
+                topic=topic,
+                tasks=tasks,
+                student_solution=student_solution,
+                first_result=first_result,
+            ),
+            response_format={
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": DIAGNOSTIC_LEVEL_RESPONSE_SCHEMA,
+            },
+        )
+        if not interaction.output_text:
+            raise LLMResponseError("Gemini не вернул критическую диагностику.")
         return interaction.output_text
 
 
