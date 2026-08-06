@@ -27,3 +27,7 @@ class ParentSubmissionStates(StatesGroup):
 
 class ParentFamilyLinkStates(StatesGroup):
     waiting_link_code = State()
+
+
+class StudentEgeExamStates(StatesGroup):
+    waiting_answer = State()

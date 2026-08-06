@@ -20,7 +20,7 @@ from src.repositories.pedagogical_decision_repository import (
     PedagogicalDecisionRepository,
 )
 from src.services.homework_service import format_homework_for_student
-from src.telegram_bot.states.student_states import StudentHomeworkCheckStates
+from src.telegram_bot.states.student_states import StudentHomeworkCheckStates, StudentEgeExamStates
 from src.services.ai_teacher_service import generate_ai_teacher_feedback
 
 
@@ -268,7 +268,50 @@ async def student_question(message: Message):
     )
 
 
+async def start_ege_exam(message: Message, state: FSMContext):
+    from src.services.ege_exam_service import ExamAttempt, render_task
+
+    attempt = ExamAttempt()
+    await state.set_state(StudentEgeExamStates.waiting_answer)
+    await state.update_data(ege_attempt=attempt.to_dict())
+    await message.answer(
+        "🎓 Открытый вариант КЕГЭ-2026\n\n"
+        "27 заданий, проверка кратких ответов без AI и без списания API.\n\n"
+        + render_task(1)
+    )
+
+
+async def receive_ege_answer(message: Message, state: FSMContext):
+    from src.services.ege_exam_service import (
+        ExamAttempt, render_summary, render_task, submit_answer,
+    )
+
+    data = await state.get_data()
+    attempt = ExamAttempt.from_dict(data.get("ege_attempt"))
+    result = submit_answer(attempt, message.text or "")
+
+    if attempt.finished:
+        await state.clear()
+        await message.answer(f"{result.message}\n\n{render_summary(attempt)}")
+        return
+
+    await state.update_data(ege_attempt=attempt.to_dict())
+    await message.answer(f"{result.message}\n\n{render_task(attempt.current_task)}")
+
+
+async def cancel_ege_exam(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("КЕГЭ-вариант остановлен. Запустить заново: /ege2026")
+
+
 def register_student_handlers(dp: Dispatcher):
+    dp.message.register(cancel_ege_exam, F.text == "/cancel_ege")
+    dp.message.register(start_ege_exam, F.text.in_({"/ege2026", "🎓 Пройти КЕГЭ"}))
+    dp.message.register(
+        receive_ege_answer,
+        StudentEgeExamStates.waiting_answer,
+        F.text,
+    )
     dp.message.register(student_homework, F.text == "📚 Моё ДЗ")
     dp.message.register(student_photo_check, F.text == "📸 Проверить решение")
     dp.message.register(
