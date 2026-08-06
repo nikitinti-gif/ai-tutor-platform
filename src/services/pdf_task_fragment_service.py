@@ -36,7 +36,7 @@ class PdfTaskFragmentService:
         pdf_path: str | Path,
         cache_dir: str | Path,
         pdf_url: str | None = None,
-        zoom: float = 1.15,
+        zoom: float = 2.0,
         margin_top: float = 8.0,
         margin_bottom: float = 10.0,
         index_path: str | Path | None = None,
@@ -111,7 +111,7 @@ class PdfTaskFragmentService:
 
     def _pdf_fingerprint(self) -> str:
         stat = self.pdf_path.stat()
-        raw = f"v4-map:{stat.st_size}:{stat.st_mtime_ns}:{self.zoom}".encode()
+        raw = f"v5-hq-doc:{stat.st_size}:{stat.st_mtime_ns}:{self.zoom}".encode()
         return hashlib.sha256(raw).hexdigest()
 
     @staticmethod
@@ -284,11 +284,12 @@ class PdfTaskFragmentService:
                     f"Фрагмент задания {task_number} получился слишком мал."
                 )
 
-            # Limit output width to roughly 1100 px. This is readable in
-            # Telegram and keeps peak memory safely below the Render limit.
-            max_width_px = 1100.0
+            # Render a sharper fragment while keeping peak memory bounded.
+            # The PNG is sent as a Telegram document, so Telegram does not
+            # recompress it as a photo.
+            max_width_px = 1800.0
             safe_zoom = min(self.zoom, max_width_px / max(1.0, clip.width))
-            safe_zoom = max(0.8, safe_zoom)
+            safe_zoom = max(1.0, safe_zoom)
 
             pixmap = page.get_pixmap(
                 matrix=fitz.Matrix(safe_zoom, safe_zoom),
