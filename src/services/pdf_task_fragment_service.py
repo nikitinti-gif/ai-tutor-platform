@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import fitz  # PyMuPDF
-from PIL import Image
 
 
 class TaskFragmentError(RuntimeError):
@@ -36,7 +35,7 @@ class PdfTaskFragmentService:
         pdf_path: str | Path,
         cache_dir: str | Path,
         pdf_url: str | None = None,
-        zoom: float = 1.8,
+        zoom: float = 1.15,
         margin_top: float = 8.0,
         margin_bottom: float = 10.0,
     ) -> None:
@@ -142,6 +141,13 @@ class PdfTaskFragmentService:
         return sorted(candidates, key=lambda item: (item.page_index, item.y))[0]
 
     def _render_task(self, task_number: int, output_path: Path) -> None:
+        """Render a memory-bounded fragment.
+
+        Render only the page containing the task start. This avoids keeping
+        several large bitmaps in memory on 512 MB Render instances. If a task
+        continues on the next page, the bot still provides the official PDF
+        link as a fallback.
+        """
         with fitz.open(self.pdf_path) as document:
             start = self._find_anchor(document, task_number)
             end = (
@@ -150,48 +156,33 @@ class PdfTaskFragmentService:
                 else None
             )
 
-            if end and (end.page_index < start.page_index or (
-                end.page_index == start.page_index and end.y <= start.y
-            )):
-                raise TaskFragmentError("Некорректно определены границы задания.")
+            page = document[start.page_index]
+            top = max(0.0, start.y - self.margin_top)
+            if end and end.page_index == start.page_index:
+                bottom = min(page.rect.height, end.y - self.margin_bottom)
+            else:
+                bottom = page.rect.height - 28.0
 
-            images: list[Image.Image] = []
-            last_page = end.page_index if end else start.page_index
-            for page_index in range(start.page_index, last_page + 1):
-                page = document[page_index]
-                top = start.y - self.margin_top if page_index == start.page_index else 28.0
-                if end and page_index == end.page_index:
-                    bottom = end.y - self.margin_bottom
-                else:
-                    bottom = page.rect.height - 28.0
-
-                top = max(0.0, top)
-                bottom = min(page.rect.height, bottom)
-                if bottom - top < 40:
-                    continue
-
-                clip = fitz.Rect(18.0, top, page.rect.width - 18.0, bottom)
-                pixmap = page.get_pixmap(
-                    matrix=fitz.Matrix(self.zoom, self.zoom),
-                    clip=clip,
-                    alpha=False,
+            if bottom - top < 40:
+                raise TaskFragmentError(
+                    f"Фрагмент задания {task_number} получился пустым."
                 )
-                image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-                images.append(image)
 
-            if not images:
-                raise TaskFragmentError(f"Фрагмент задания {task_number} получился пустым.")
+            clip = fitz.Rect(18.0, top, page.rect.width - 18.0, bottom)
 
-            width = max(image.width for image in images)
-            height = sum(image.height for image in images)
-            combined = Image.new("RGB", (width, height), "white")
-            y_offset = 0
+            # Limit output width to roughly 1100 px. This is readable in
+            # Telegram and keeps peak memory safely below the Render limit.
+            max_width_px = 1100.0
+            safe_zoom = min(self.zoom, max_width_px / max(1.0, clip.width))
+            safe_zoom = max(0.8, safe_zoom)
+
+            pixmap = page.get_pixmap(
+                matrix=fitz.Matrix(safe_zoom, safe_zoom),
+                clip=clip,
+                alpha=False,
+                colorspace=fitz.csRGB,
+            )
             try:
-                for image in images:
-                    combined.paste(image, (0, y_offset))
-                    y_offset += image.height
-                combined.save(output_path, format="PNG", optimize=True)
+                pixmap.save(output_path)
             finally:
-                combined.close()
-                for image in images:
-                    image.close()
+                del pixmap
