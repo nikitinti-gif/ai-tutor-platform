@@ -3,7 +3,7 @@ from pathlib import Path
 import fitz
 from PIL import Image
 
-from src.services.pdf_task_fragment_service import PdfTaskFragmentService
+from pdf_task_fragment_service import PdfTaskFragmentService
 
 
 def _make_pdf(path: Path) -> None:
@@ -30,8 +30,8 @@ def test_extracts_and_caches_task_fragment(tmp_path: Path):
     assert first == second
     assert first.exists()
     with Image.open(first) as image:
-        assert image.width > 500
-        assert 400 < image.height < 900
+        assert image.width > 300
+        assert 180 < image.height < 600
 
 
 def test_rejects_invalid_number(tmp_path: Path):

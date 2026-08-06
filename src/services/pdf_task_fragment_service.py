@@ -108,7 +108,7 @@ class PdfTaskFragmentService:
 
     def _pdf_fingerprint(self) -> str:
         stat = self.pdf_path.stat()
-        raw = f"{stat.st_size}:{stat.st_mtime_ns}:{self.zoom}".encode()
+        raw = f"v3:{stat.st_size}:{stat.st_mtime_ns}:{self.zoom}".encode()
         return hashlib.sha256(raw).hexdigest()
 
     @staticmethod
@@ -120,25 +120,71 @@ class PdfTaskFragmentService:
 
     def _find_anchor(self, document: fitz.Document, number: int) -> TaskAnchor:
         candidates: list[TaskAnchor] = []
+        marker = str(number)
+
         for page_index in range(document.page_count):
             page = document[page_index]
             height = page.rect.height
-            for block in page.get_text("blocks"):
-                x0, y0, x1, y1, text, *_ = block
-                if y0 < 35 or y0 > height - 35:
+            page_dict = page.get_text("dict")
+
+            for block in page_dict.get("blocks", []):
+                if block.get("type") != 0:
                     continue
-                # Task numbers in FIPI layouts are near the left edge.
-                if x0 > page.rect.width * 0.32:
-                    continue
-                if self._is_task_marker(str(text), number):
+                for line in block.get("lines", []):
+                    spans = line.get("spans", [])
+                    text = "".join(str(span.get("text", "")) for span in spans).strip()
+                    if not re.match(rf"^{re.escape(marker)}(?:[.)]|\s)", text):
+                        continue
+
+                    x0, y0, x1, y1 = line.get("bbox", (0, 0, 0, 0))
+                    if y0 < 35 or y0 > height - 45:
+                        continue
+                    # FIPI task markers are standalone and very close to the
+                    # left page margin. This rejects row/column numbers in tables.
+                    if x0 > 82:
+                        continue
                     candidates.append(TaskAnchor(page_index, max(0.0, y0)))
 
         if not candidates:
             raise TaskFragmentError(f"Не удалось найти начало задания {number} в PDF.")
 
-        # Page headers can contain numbers. Prefer the lowest-left candidate with
-        # enough page content below it; in normal KIM PDFs this is the task marker.
         return sorted(candidates, key=lambda item: (item.page_index, item.y))[0]
+
+    @staticmethod
+    def _content_rect(page: fitz.Page, top: float, hard_bottom: float) -> fitz.Rect:
+        boxes: list[fitz.Rect] = []
+
+        for block in page.get_text("blocks"):
+            x0, y0, x1, y1, text, *_ = block
+            text_norm = " ".join(str(text).split()).lower()
+            if y1 <= top or y0 >= hard_bottom:
+                continue
+            if y0 > page.rect.height - 55:
+                continue
+            if "федеральная служба" in text_norm or "© 2026" in text_norm:
+                continue
+            boxes.append(fitz.Rect(x0, y0, x1, y1))
+
+        for drawing in page.get_drawings():
+            rect = drawing.get("rect")
+            if rect and rect.y1 > top and rect.y0 < hard_bottom:
+                boxes.append(fitz.Rect(rect))
+
+        for image in page.get_images(full=True):
+            try:
+                for rect in page.get_image_rects(image[0]):
+                    if rect.y1 > top and rect.y0 < hard_bottom:
+                        boxes.append(fitz.Rect(rect))
+            except Exception:
+                continue
+
+        if not boxes:
+            return fitz.Rect(18.0, top, page.rect.width - 18.0, hard_bottom)
+
+        left = max(0.0, min(box.x0 for box in boxes) - 14.0)
+        right = min(page.rect.width, max(box.x1 for box in boxes) + 14.0)
+        bottom = min(hard_bottom, max(box.y1 for box in boxes) + 14.0)
+        return fitz.Rect(left, max(0.0, top - 5.0), right, bottom)
 
     def _render_task(self, task_number: int, output_path: Path) -> None:
         """Render a memory-bounded fragment.
@@ -168,7 +214,11 @@ class PdfTaskFragmentService:
                     f"Фрагмент задания {task_number} получился пустым."
                 )
 
-            clip = fitz.Rect(18.0, top, page.rect.width - 18.0, bottom)
+            clip = self._content_rect(page, top, bottom)
+            if clip.height < 40 or clip.width < 80:
+                raise TaskFragmentError(
+                    f"Фрагмент задания {task_number} получился слишком мал."
+                )
 
             # Limit output width to roughly 1100 px. This is readable in
             # Telegram and keeps peak memory safely below the Render limit.
