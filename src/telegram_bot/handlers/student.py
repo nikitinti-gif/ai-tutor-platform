@@ -269,7 +269,7 @@ async def student_question(message: Message):
 
 
 async def _send_ege_task(message: Message, task_number: int) -> None:
-    """Send an automatically cropped PDF fragment and the text prompt."""
+    """Send an automatically cropped high-resolution PDF fragment."""
     from src.ai_engine.ege_open_variant_2026 import (
         OFFICIAL_PDF_URL,
         get_open_variant_task,
@@ -282,17 +282,24 @@ async def _send_ege_task(message: Message, task_number: int) -> None:
 
     service = PdfTaskFragmentService(
         pdf_path="assets/ege_2026/variant.pdf",
-        cache_dir="cache/ege_2026",
+        cache_dir="cache/ege_2026_high_quality",
         pdf_url=OFFICIAL_PDF_URL,
+        zoom=2.0,
     )
     task = get_open_variant_task(task_number)
     try:
         fragment_path = await asyncio.to_thread(
             service.get_fragment, task_number, page_hint=task.pdf_page
         )
-        await message.answer_photo(
-            photo=FSInputFile(fragment_path),
-            caption=f"🖼 Фрагмент задания {task_number}",
+        await message.answer_document(
+            document=FSInputFile(
+                fragment_path,
+                filename=f"ege_2026_task_{task_number:02d}.png",
+            ),
+            caption=(
+                f"🔍 Задание {task_number} в полном качестве.\n"
+                "Откройте файл, чтобы увеличить текст."
+            ),
         )
     except TaskFragmentError as exc:
         logger.warning("EGE PDF fragment failed for task %s: %s", task_number, exc)
