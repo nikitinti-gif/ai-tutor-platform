@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass, field, replace
 from src.ai_engine.ege_open_variant_2026 import (
     EgeTask,
     OFFICIAL_FILES_URL,
-    OFFICIAL_PDF_URL,
     OPEN_VARIANT_2026,
 )
 from src.ai_engine.verification_engine import VerificationResult, verify_answer
@@ -59,29 +58,31 @@ def _progress_text(attempt: ExamAttempt) -> str:
     wrong_count = completed - attempt.correct_count - len(attempt.skipped)
     return (
         f"{_progress_bar(completed)} {completed}/{TOTAL_TASKS}\n"
-        f"✅ Верно: {attempt.correct_count}   "
-        f"❌ Ошибок: {max(0, wrong_count)}   "
-        f"⏭ Пропущено: {len(attempt.skipped)}"
+        f"✅ {attempt.correct_count}   "
+        f"❌ {max(0, wrong_count)}   "
+        f"⏭ {len(attempt.skipped)}"
     )
 
 
 def render_task(number: int) -> str:
     task = get_task(number)
-    links = f"\n\n📄 Полный PDF (стр. {task.pdf_page}): {OFFICIAL_PDF_URL}"
+    attachment_note = ""
     if task.attachment_required:
-        links += f"\n📎 Файлы варианта: {OFFICIAL_FILES_URL}"
+        attachment_note = (
+            "\n\n📎 Для выполнения нужен файл варианта:\n"
+            f"{OFFICIAL_FILES_URL}"
+        )
 
     return (
         "━━━━━━━━━━━━━━━━━━━━\n"
         "🎓 КЕГЭ 2026\n"
         f"Задание {number} из {TOTAL_TASKS}\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📚 Тема: {task.title}\n\n"
-        f"{task.statement}\n\n"
-        f"✍️ {task.prompt}"
-        f"{links}\n\n"
-        "Команды: /skip_ege — пропустить, "
-        "/finish_ege — завершить, /cancel_ege — отменить."
+        f"📚 {task.title}\n\n"
+        f"{task.statement}"
+        f"{attachment_note}\n\n"
+        f"✍️ {task.prompt}\n\n"
+        "/skip_ege · /finish_ege · /cancel_ege"
     )
 
 
@@ -96,10 +97,7 @@ def submit_answer(attempt: ExamAttempt, answer: str) -> VerificationResult:
     attempt.current_task += 1
 
     status = "✅ Верно!" if result.is_correct else "❌ Ответ неверный."
-    feedback = (
-        f"{status}\n\n"
-        f"📊 Прогресс\n{_progress_text(attempt)}"
-    )
+    feedback = f"{status}\n\n📊 {_progress_text(attempt)}"
     return replace(result, message=feedback)
 
 
@@ -139,10 +137,10 @@ def render_summary(attempt: ExamAttempt) -> str:
         "🏁 ВАРИАНТ ЗАВЕРШЁН\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"{level}\n\n"
-        f"✅ Верных ответов: {attempt.correct_count}\n"
+        f"✅ Верных: {attempt.correct_count}\n"
         f"📝 Проверено: {len(checked)} из {TOTAL_TASKS}\n"
         f"🎯 Точность: {accuracy}%\n\n"
-        f"❌ Неверные задания: {', '.join(wrong) if wrong else 'нет'}\n"
-        f"⏭ Пропущенные задания: {skipped}\n\n"
-        "Проверка выполнена локально: AI и Vision не использовались."
+        f"❌ Неверные: {', '.join(wrong) if wrong else 'нет'}\n"
+        f"⏭ Пропущенные: {skipped}\n\n"
+        "Проверка выполнена локально — без AI и Vision."
     )
