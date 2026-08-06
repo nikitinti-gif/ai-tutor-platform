@@ -42,6 +42,7 @@ def load_db():
             "learning_dna": {},
             "pedagogical_decisions": [],
             "student_homework": [],
+            "ege_sessions": {},
         }
 
     with open(DB_FILE, "r", encoding="utf-8") as file:
@@ -52,6 +53,7 @@ def load_db():
     db.setdefault("learning_dna", {})
     db.setdefault("pedagogical_decisions", [])
     db.setdefault("student_homework", [])
+    db.setdefault("ege_sessions", {})
     return db
 
 
@@ -121,6 +123,7 @@ def get_active_homework():
         if item.get("status") == "active"
     ]
 
+
 def get_learning_dna(student_id: int):
     db = load_db()
     return db["learning_dna"].get(str(student_id))
@@ -182,6 +185,7 @@ def get_synthetic_learning_checks():
     checks = db["learning_dna"].get(SYNTHETIC_CHECKS_KEY, [])
     return checks if isinstance(checks, list) else []
 
+
 def save_pedagogical_decision(student_id: int, decision_data: dict):
     db = load_db()
 
@@ -194,6 +198,7 @@ def save_pedagogical_decision(student_id: int, decision_data: dict):
     save_db(db)
 
     return record
+
 
 def create_student_homework(homework_id: str, student_id: int):
     db = load_db()
@@ -223,6 +228,7 @@ def get_student_homework_by_student_id(student_id: int):
         item for item in db["student_homework"]
         if item["student_id"] == student_id
     ]
+
 
 def update_student_homework_status(
     student_homework_id: str,
@@ -256,3 +262,29 @@ def get_latest_student_homework(student_id: int):
         return None
 
     return student_items[-1]
+
+
+def get_ege_session(student_id: int):
+    db = load_db()
+    session = db["ege_sessions"].get(str(student_id))
+    return session if isinstance(session, dict) else None
+
+
+def save_ege_session(student_id: int, attempt_data: dict, status: str = "in_progress"):
+    db = load_db()
+    record = {
+        "variant_id": "ege_open_2026",
+        "status": status,
+        "attempt": attempt_data,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    db["ege_sessions"][str(student_id)] = record
+    save_db(db)
+    return record
+
+
+def delete_ege_session(student_id: int):
+    db = load_db()
+    removed = db["ege_sessions"].pop(str(student_id), None)
+    save_db(db)
+    return removed
