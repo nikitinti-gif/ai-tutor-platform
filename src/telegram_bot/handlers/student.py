@@ -5,7 +5,7 @@ from io import BytesIO
 from config import ADMIN_TELEGRAM_ID, QWEN_PILOT_V2_ENABLED
 from aiogram import Dispatcher, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 
 from src.ai_engine.homework_checker import (
     check_homework_image,
@@ -268,6 +268,36 @@ async def student_question(message: Message):
     )
 
 
+async def _send_ege_task(message: Message, task_number: int) -> None:
+    """Send an automatically cropped PDF fragment and the text prompt."""
+    from src.ai_engine.ege_open_variant_2026 import OFFICIAL_PDF_URL
+    from src.services.ege_exam_service import render_task
+    from src.services.pdf_task_fragment_service import (
+        PdfTaskFragmentService,
+        TaskFragmentError,
+    )
+
+    service = PdfTaskFragmentService(
+        pdf_path="assets/ege_2026/variant.pdf",
+        cache_dir="cache/ege_2026",
+        pdf_url=OFFICIAL_PDF_URL,
+    )
+    try:
+        fragment_path = await asyncio.to_thread(service.get_fragment, task_number)
+        await message.answer_photo(
+            photo=FSInputFile(fragment_path),
+            caption=f"🖼 Фрагмент задания {task_number}",
+        )
+    except TaskFragmentError as exc:
+        logger.warning("EGE PDF fragment failed for task %s: %s", task_number, exc)
+        await message.answer(
+            "⚠️ Не удалось автоматически подготовить изображение задания. "
+            "Ниже отправляю текст условия."
+        )
+
+    await message.answer(render_task(task_number))
+
+
 async def start_ege_exam(message: Message, state: FSMContext):
     from src.services.ege_exam_service import ExamAttempt, render_task
 
@@ -276,9 +306,9 @@ async def start_ege_exam(message: Message, state: FSMContext):
     await state.update_data(ege_attempt=attempt.to_dict())
     await message.answer(
         "🎓 Открытый вариант КЕГЭ-2026\n\n"
-        "27 заданий, проверка кратких ответов без AI и без списания API.\n\n"
-        + render_task(1)
+        "27 заданий, проверка кратких ответов без AI и без списания API."
     )
+    await _send_ege_task(message, 1)
 
 
 async def receive_ege_answer(message: Message, state: FSMContext):
@@ -296,7 +326,8 @@ async def receive_ege_answer(message: Message, state: FSMContext):
         return
 
     await state.update_data(ege_attempt=attempt.to_dict())
-    await message.answer(f"{result.message}\n\n{render_task(attempt.current_task)}")
+    await message.answer(result.message)
+    await _send_ege_task(message, attempt.current_task)
 
 
 async def skip_ege_task(message: Message, state: FSMContext):
@@ -309,7 +340,8 @@ async def skip_ege_task(message: Message, state: FSMContext):
         await message.answer(f"⏭ Задание {skipped_number} пропущено.\n\n{render_summary(attempt)}")
         return
     await state.update_data(ege_attempt=attempt.to_dict())
-    await message.answer(f"⏭ Задание {skipped_number} пропущено.\n\n{render_task(attempt.current_task)}")
+    await message.answer(f"⏭ Задание {skipped_number} пропущено.")
+    await _send_ege_task(message, attempt.current_task)
 
 
 async def finish_ege_exam(message: Message, state: FSMContext):
