@@ -12,6 +12,11 @@ from src.ai_engine.homework_checker import (
     check_homework_text,
     render_check_result_for_student,
 )
+from src.database.json_storage import (
+    delete_ege_session,
+    get_ege_session,
+    save_ege_session,
+)
 from src.learning_dna.engine import update_learning_dna_after_check
 from src.pedagogy.engine import make_pedagogical_decision
 from src.repositories.homework_repository import HomeworkRepository
@@ -296,62 +301,85 @@ async def _send_ege_task(message: Message, task_number: int) -> None:
                 fragment_path,
                 filename=f"ege_2026_task_{task_number:02d}.png",
             ),
-            caption=(
-                f"🔍 Задание {task_number} в полном качестве.\n"
-                "Откройте файл, чтобы увеличить текст."
-            ),
+            caption=f"🔍 Задание {task_number} · полное качество",
         )
     except TaskFragmentError as exc:
         logger.warning("EGE PDF fragment failed for task %s: %s", task_number, exc)
         await message.answer(
-            "⚠️ Не удалось автоматически подготовить изображение задания. "
-            "Ниже отправляю текст условия."
+            "⚠️ Не удалось подготовить изображение. Ниже отправляю текст условия."
         )
 
     await message.answer(render_task(task_number))
 
 
 async def start_ege_exam(message: Message, state: FSMContext):
-    from src.services.ege_exam_service import ExamAttempt, render_task
+    from src.services.ege_exam_service import ExamAttempt
 
-    attempt = ExamAttempt()
+    saved = get_ege_session(message.from_user.id)
+    if saved and saved.get("status") == "in_progress":
+        attempt = ExamAttempt.from_dict(saved.get("attempt"))
+        intro = f"▶️ Продолжаем вариант с задания {attempt.current_task} из 27."
+    else:
+        attempt = ExamAttempt()
+        intro = (
+            "🎓 Открытый вариант КЕГЭ-2026\n\n"
+            "27 заданий. Проверка ответов локальная — без AI и расходов API."
+        )
+        save_ege_session(message.from_user.id, attempt.to_dict())
+
     await state.set_state(StudentEgeExamStates.waiting_answer)
     await state.update_data(ege_attempt=attempt.to_dict())
-    await message.answer(
-        "🎓 Открытый вариант КЕГЭ-2026\n\n"
-        "27 заданий, проверка кратких ответов без AI и без списания API."
-    )
-    await _send_ege_task(message, 1)
+    await message.answer(intro)
+    await _send_ege_task(message, attempt.current_task)
 
 
 async def receive_ege_answer(message: Message, state: FSMContext):
     from src.services.ege_exam_service import (
-        ExamAttempt, render_summary, render_task, submit_answer,
+        ExamAttempt, render_summary, submit_answer,
     )
 
     data = await state.get_data()
-    attempt = ExamAttempt.from_dict(data.get("ege_attempt"))
+    attempt_data = data.get("ege_attempt")
+    if not attempt_data:
+        saved = get_ege_session(message.from_user.id)
+        attempt_data = saved.get("attempt") if saved else None
+
+    attempt = ExamAttempt.from_dict(attempt_data)
     result = submit_answer(attempt, message.text or "")
 
     if attempt.finished:
+        delete_ege_session(message.from_user.id)
         await state.clear()
         await message.answer(f"{result.message}\n\n{render_summary(attempt)}")
         return
 
+    save_ege_session(message.from_user.id, attempt.to_dict())
     await state.update_data(ege_attempt=attempt.to_dict())
     await message.answer(result.message)
     await _send_ege_task(message, attempt.current_task)
 
 
 async def skip_ege_task(message: Message, state: FSMContext):
-    from src.services.ege_exam_service import ExamAttempt, render_summary, render_task, skip_task
+    from src.services.ege_exam_service import ExamAttempt, render_summary, skip_task
+
     data = await state.get_data()
-    attempt = ExamAttempt.from_dict(data.get("ege_attempt"))
+    attempt_data = data.get("ege_attempt")
+    if not attempt_data:
+        saved = get_ege_session(message.from_user.id)
+        attempt_data = saved.get("attempt") if saved else None
+
+    attempt = ExamAttempt.from_dict(attempt_data)
     skipped_number = skip_task(attempt)
+
     if attempt.finished:
+        delete_ege_session(message.from_user.id)
         await state.clear()
-        await message.answer(f"⏭ Задание {skipped_number} пропущено.\n\n{render_summary(attempt)}")
+        await message.answer(
+            f"⏭ Задание {skipped_number} пропущено.\n\n{render_summary(attempt)}"
+        )
         return
+
+    save_ege_session(message.from_user.id, attempt.to_dict())
     await state.update_data(ege_attempt=attempt.to_dict())
     await message.answer(f"⏭ Задание {skipped_number} пропущено.")
     await _send_ege_task(message, attempt.current_task)
@@ -359,15 +387,23 @@ async def skip_ege_task(message: Message, state: FSMContext):
 
 async def finish_ege_exam(message: Message, state: FSMContext):
     from src.services.ege_exam_service import ExamAttempt, render_summary
+
     data = await state.get_data()
-    attempt = ExamAttempt.from_dict(data.get("ege_attempt"))
+    attempt_data = data.get("ege_attempt")
+    if not attempt_data:
+        saved = get_ege_session(message.from_user.id)
+        attempt_data = saved.get("attempt") if saved else None
+
+    attempt = ExamAttempt.from_dict(attempt_data)
+    delete_ege_session(message.from_user.id)
     await state.clear()
     await message.answer(render_summary(attempt))
 
 
 async def cancel_ege_exam(message: Message, state: FSMContext):
+    delete_ege_session(message.from_user.id)
     await state.clear()
-    await message.answer("КЕГЭ-вариант отменён без сохранения. Запустить заново: /ege2026")
+    await message.answer("КЕГЭ-вариант отменён и удалён. Запустить заново: /ege2026")
 
 
 def register_student_handlers(dp: Dispatcher):
