@@ -7,6 +7,7 @@ No OCR, LLM, or Vision API is used.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -38,6 +39,7 @@ class PdfTaskFragmentService:
         zoom: float = 1.15,
         margin_top: float = 8.0,
         margin_bottom: float = 10.0,
+        index_path: str | Path | None = None,
     ) -> None:
         self.pdf_path = Path(pdf_path)
         self.cache_dir = Path(cache_dir)
@@ -45,8 +47,9 @@ class PdfTaskFragmentService:
         self.zoom = zoom
         self.margin_top = margin_top
         self.margin_bottom = margin_bottom
+        self.index_path = Path(index_path) if index_path else self.cache_dir / "fragment_index.json"
 
-    def get_fragment(self, task_number: int) -> Path:
+    def get_fragment(self, task_number: int, *, page_hint: int | None = None) -> Path:
         if not 1 <= task_number <= 27:
             raise ValueError("Номер задания должен быть от 1 до 27.")
 
@@ -62,7 +65,7 @@ class PdfTaskFragmentService:
 
         temp_output = cache_path.with_suffix(".tmp.png")
         try:
-            self._render_task(task_number, temp_output)
+            self._render_task(task_number, temp_output, page_hint=page_hint)
             temp_output.replace(cache_path)
             meta_path.write_text(fingerprint, encoding="utf-8")
         finally:
@@ -108,7 +111,7 @@ class PdfTaskFragmentService:
 
     def _pdf_fingerprint(self) -> str:
         stat = self.pdf_path.stat()
-        raw = f"v3:{stat.st_size}:{stat.st_mtime_ns}:{self.zoom}".encode()
+        raw = f"v4-map:{stat.st_size}:{stat.st_mtime_ns}:{self.zoom}".encode()
         return hashlib.sha256(raw).hexdigest()
 
     @staticmethod
@@ -118,37 +121,92 @@ class PdfTaskFragmentService:
             return False
         return bool(re.match(rf"^{number}(?:[.)]|\s|$)", normalized))
 
-    def _find_anchor(self, document: fitz.Document, number: int) -> TaskAnchor:
+    def _load_index(self) -> dict[str, dict[str, float | int]]:
+        try:
+            data = json.loads(self.index_path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return {}
+
+    def _save_index(self, data: dict[str, dict[str, float | int]]) -> None:
+        self.index_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.index_path.with_suffix(".tmp.json")
+        temporary.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        temporary.replace(self.index_path)
+
+    def _find_anchor_on_page(
+        self, document: fitz.Document, number: int, page_index: int
+    ) -> TaskAnchor:
+        if not 0 <= page_index < document.page_count:
+            raise TaskFragmentError(
+                f"Ожидаемая страница {page_index + 1} отсутствует в PDF."
+            )
+
+        page = document[page_index]
+        height = page.rect.height
         candidates: list[TaskAnchor] = []
         marker = str(number)
+        page_dict = page.get_text("dict")
 
-        for page_index in range(document.page_count):
-            page = document[page_index]
-            height = page.rect.height
-            page_dict = page.get_text("dict")
-
-            for block in page_dict.get("blocks", []):
-                if block.get("type") != 0:
+        for block in page_dict.get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                spans = line.get("spans", [])
+                text = "".join(str(span.get("text", "")) for span in spans).strip()
+                if not re.match(rf"^{re.escape(marker)}(?:[.)]|\s)", text):
                     continue
-                for line in block.get("lines", []):
-                    spans = line.get("spans", [])
-                    text = "".join(str(span.get("text", "")) for span in spans).strip()
-                    if not re.match(rf"^{re.escape(marker)}(?:[.)]|\s)", text):
-                        continue
-
-                    x0, y0, x1, y1 = line.get("bbox", (0, 0, 0, 0))
-                    if y0 < 35 or y0 > height - 45:
-                        continue
-                    # FIPI task markers are standalone and very close to the
-                    # left page margin. This rejects row/column numbers in tables.
-                    if x0 > 82:
-                        continue
-                    candidates.append(TaskAnchor(page_index, max(0.0, y0)))
+                x0, y0, _x1, _y1 = line.get("bbox", (0, 0, 0, 0))
+                if y0 < 35 or y0 > height - 45 or x0 > 82:
+                    continue
+                candidates.append(TaskAnchor(page_index, max(0.0, y0)))
 
         if not candidates:
-            raise TaskFragmentError(f"Не удалось найти начало задания {number} в PDF.")
+            # The page hint is authoritative. Some PDFs place the task number
+            # as vector graphics or have a broken text layer. In that case use
+            # the first meaningful content block rather than searching other pages.
+            meaningful = []
+            for block in page.get_text("blocks"):
+                x0, y0, x1, y1, text, *_ = block
+                normalized = " ".join(str(text).split()).lower()
+                if y0 < 35 or y0 > height - 55:
+                    continue
+                if "федеральная служба" in normalized or "© 2026" in normalized:
+                    continue
+                if normalized:
+                    meaningful.append(float(y0))
+            if meaningful:
+                return TaskAnchor(page_index, min(meaningful))
+            raise TaskFragmentError(
+                f"На ожидаемой странице {page_index + 1} не найдено содержимое задания {number}."
+            )
 
-        return sorted(candidates, key=lambda item: (item.page_index, item.y))[0]
+        return min(candidates, key=lambda item: item.y)
+
+    def _find_anchor(
+        self, document: fitz.Document, number: int, *, page_hint: int | None = None
+    ) -> TaskAnchor:
+        index = self._load_index()
+        cached = index.get(str(number))
+        if cached:
+            page_index = int(cached.get("page_index", -1))
+            y = float(cached.get("y", -1))
+            if 0 <= page_index < document.page_count and y >= 0:
+                return TaskAnchor(page_index, y)
+
+        if page_hint is None:
+            raise TaskFragmentError(
+                f"Для задания {number} не задана ожидаемая страница; глобальный поиск отключён."
+            )
+
+        # page_hint is stored as a human-facing 1-based PDF page number.
+        anchor = self._find_anchor_on_page(document, number, page_hint - 1)
+        index[str(number)] = {"page_index": anchor.page_index, "y": anchor.y}
+        self._save_index(index)
+        return anchor
 
     @staticmethod
     def _content_rect(page: fitz.Page, top: float, hard_bottom: float) -> fitz.Rect:
@@ -186,7 +244,9 @@ class PdfTaskFragmentService:
         bottom = min(hard_bottom, max(box.y1 for box in boxes) + 14.0)
         return fitz.Rect(left, max(0.0, top - 5.0), right, bottom)
 
-    def _render_task(self, task_number: int, output_path: Path) -> None:
+    def _render_task(
+        self, task_number: int, output_path: Path, *, page_hint: int | None = None
+    ) -> None:
         """Render a memory-bounded fragment.
 
         Render only the page containing the task start. This avoids keeping
@@ -195,12 +255,16 @@ class PdfTaskFragmentService:
         link as a fallback.
         """
         with fitz.open(self.pdf_path) as document:
-            start = self._find_anchor(document, task_number)
-            end = (
-                self._find_anchor(document, task_number + 1)
-                if task_number < 27
-                else None
-            )
+            start = self._find_anchor(document, task_number, page_hint=page_hint)
+            # Only use a cached next-task anchor when it is already known.
+            # Guessing the next page can reintroduce false matches.
+            end = None
+            if task_number < 27:
+                cached_next = self._load_index().get(str(task_number + 1))
+                if cached_next:
+                    end = TaskAnchor(
+                        int(cached_next["page_index"]), float(cached_next["y"])
+                    )
 
             page = document[start.page_index]
             top = max(0.0, start.y - self.margin_top)
