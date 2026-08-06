@@ -299,13 +299,36 @@ async def receive_ege_answer(message: Message, state: FSMContext):
     await message.answer(f"{result.message}\n\n{render_task(attempt.current_task)}")
 
 
+async def skip_ege_task(message: Message, state: FSMContext):
+    from src.services.ege_exam_service import ExamAttempt, render_summary, render_task, skip_task
+    data = await state.get_data()
+    attempt = ExamAttempt.from_dict(data.get("ege_attempt"))
+    skipped_number = skip_task(attempt)
+    if attempt.finished:
+        await state.clear()
+        await message.answer(f"⏭ Задание {skipped_number} пропущено.\n\n{render_summary(attempt)}")
+        return
+    await state.update_data(ege_attempt=attempt.to_dict())
+    await message.answer(f"⏭ Задание {skipped_number} пропущено.\n\n{render_task(attempt.current_task)}")
+
+
+async def finish_ege_exam(message: Message, state: FSMContext):
+    from src.services.ege_exam_service import ExamAttempt, render_summary
+    data = await state.get_data()
+    attempt = ExamAttempt.from_dict(data.get("ege_attempt"))
+    await state.clear()
+    await message.answer(render_summary(attempt))
+
+
 async def cancel_ege_exam(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("КЕГЭ-вариант остановлен. Запустить заново: /ege2026")
+    await message.answer("КЕГЭ-вариант отменён без сохранения. Запустить заново: /ege2026")
 
 
 def register_student_handlers(dp: Dispatcher):
     dp.message.register(cancel_ege_exam, F.text == "/cancel_ege")
+    dp.message.register(skip_ege_task, StudentEgeExamStates.waiting_answer, F.text == "/skip_ege")
+    dp.message.register(finish_ege_exam, StudentEgeExamStates.waiting_answer, F.text == "/finish_ege")
     dp.message.register(start_ege_exam, F.text.in_({"/ege2026", "🎓 Пройти КЕГЭ"}))
     dp.message.register(
         receive_ege_answer,
