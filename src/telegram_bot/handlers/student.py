@@ -312,6 +312,43 @@ async def _send_ege_task(message: Message, task_number: int) -> None:
     await message.answer(render_task(task_number))
 
 
+async def _complete_ege_diagnostics(
+    message: Message,
+    state: FSMContext,
+    attempt,
+) -> None:
+    """Atomically persist confirmed diagnoses and finish the Telegram flow."""
+    from src.learning_dna.engine import apply_confirmed_ege_diagnostics
+    from src.services.ege_exam_service import diagnostic_summary
+
+    current_dna = LearningDNARepository.get(message.from_user.id)
+    dna, write_result = apply_confirmed_ege_diagnostics(
+        current_dna,
+        message.from_user.id,
+        attempt,
+    )
+    LearningDNARepository.save(message.from_user.id, dna)
+    save_ege_session(
+        message.from_user.id,
+        attempt.to_dict(),
+        status="completed",
+    )
+    await state.clear()
+
+    plan = dna.get("trajectory", {}).get("individual_plan", [])
+    next_focus = dna.get("trajectory", {}).get("next_focus")
+    lines = [
+        diagnostic_summary(attempt),
+        "",
+        "💾 Подтверждённые результаты записаны в Learning DNA.",
+        f"Новых доказательств: {write_result['applied_count']}.",
+        f"Шагов в индивидуальном плане: {len(plan)}.",
+    ]
+    if next_focus:
+        lines.append(f"🎯 Следующий фокус: {next_focus}")
+    await message.answer("\n".join(lines))
+
+
 async def _begin_ege_diagnostics(
     message: Message,
     state: FSMContext,
@@ -325,13 +362,7 @@ async def _begin_ege_diagnostics(
 
     probe = next_attempt_diagnostic_probe(attempt)
     if probe is None:
-        save_ege_session(
-            message.from_user.id,
-            attempt.to_dict(),
-            status="completed",
-        )
-        await state.clear()
-        await message.answer(diagnostic_summary(attempt))
+        await _complete_ege_diagnostics(message, state, attempt)
         return
 
     save_ege_session(
@@ -390,13 +421,7 @@ async def receive_ege_diagnostic_answer(
         )
 
     if next_attempt_diagnostic_probe(attempt) is None:
-        save_ege_session(
-            message.from_user.id,
-            attempt.to_dict(),
-            status="completed",
-        )
-        await state.clear()
-        await message.answer(diagnostic_summary(attempt))
+        await _complete_ege_diagnostics(message, state, attempt)
         return
 
     await message.answer(render_diagnostic_probe(attempt))
