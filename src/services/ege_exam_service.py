@@ -8,7 +8,9 @@ from src.ai_engine.ege_open_variant_2026 import (
     OFFICIAL_FILES_URL,
     OPEN_VARIANT_2026,
 )
+from src.ai_engine.diagnostics import open_diagnostic_case
 from src.ai_engine.verification_engine import VerificationResult, verify_answer
+from src.skills.skill_graph import load_skill_map
 
 TOTAL_TASKS = 27
 PROGRESS_WIDTH = 12
@@ -20,6 +22,7 @@ class ExamAttempt:
     answers: dict[int, str] = field(default_factory=dict)
     results: dict[int, bool] = field(default_factory=dict)
     skipped: list[int] = field(default_factory=list)
+    diagnostics: dict[int, dict] = field(default_factory=dict)
 
     @property
     def finished(self) -> bool:
@@ -40,6 +43,7 @@ class ExamAttempt:
             {int(k): str(v) for k, v in data.get("answers", {}).items()},
             {int(k): bool(v) for k, v in data.get("results", {}).items()},
             [int(x) for x in data.get("skipped", [])],
+            {int(k): dict(v) for k, v in data.get("diagnostics", {}).items()},
         )
 
 
@@ -94,6 +98,18 @@ def submit_answer(attempt: ExamAttempt, answer: str) -> VerificationResult:
     result = verify_answer(task_number, answer)
     attempt.answers[task_number] = answer
     attempt.results[task_number] = result.is_correct
+    if result.is_correct:
+        attempt.diagnostics.pop(task_number, None)
+    else:
+        expected_answer = "\\n".join(
+            " ".join(row) for row in result.expected_answer
+        )
+        attempt.diagnostics[task_number] = open_diagnostic_case(
+            task_number=task_number,
+            student_answer=answer,
+            expected_answer=expected_answer,
+            skill_map=load_skill_map(),
+        )
     attempt.current_task += 1
 
     status = "✅ Верно!" if result.is_correct else "❌ Ответ неверный."
