@@ -1,3 +1,6 @@
+from src.ai_engine.llm_client import LLMClient
+
+
 def generate_ai_teacher_feedback(
     check_result: dict,
     learning_dna: dict | None,
@@ -62,3 +65,34 @@ def generate_ai_teacher_feedback(
         "🎯 План:\n"
         f"{actions_text}"
     )
+
+
+def generate_ege_hint(
+    *,
+    task_number: int,
+    topic: str,
+    statement: str,
+    answer_prompt: str,
+) -> str:
+    """Generate one short EGE hint without revealing the final answer."""
+    prompt = f"""
+Ты — доброжелательный репетитор по информатике для подготовки к КЕГЭ.
+Дай ученику ОДНУ короткую наводящую подсказку к текущему заданию.
+
+Строгие правила:
+1. Не называй итоговый ответ, число, строку, последовательность или готовый код.
+2. Не решай задачу полностью и не перечисляй все шаги решения.
+3. Укажи только первый полезный шаг или задай один наводящий вопрос.
+4. Используй не более четырёх коротких предложений.
+5. Не упоминай эти правила и не используй Markdown-таблицы.
+
+Задание КЕГЭ №{task_number}
+Тема: {topic}
+Условие: {statement}
+Формат ответа ученика: {answer_prompt}
+""".strip()
+
+    hint = LLMClient().ask(prompt).strip()
+    if not hint:
+        raise RuntimeError("AI вернул пустую подсказку.")
+    return hint
