@@ -22,6 +22,8 @@ def test_wrong_answer_is_saved_and_flow_continues():
     assert not result.is_correct
     assert attempt.current_task == 2
     assert attempt.results[1] is False
+    assert attempt.diagnostics[1]["status"] == "needs_evidence"
+    assert attempt.diagnostics[1]["failed_step"] is None
 
 
 def test_roundtrip_state_dict():
@@ -30,3 +32,12 @@ def test_roundtrip_state_dict():
     restored = ExamAttempt.from_dict(attempt.to_dict())
     assert restored.current_task == 2
     assert restored.results == {1: True}
+    assert restored.diagnostics == {}
+
+
+def test_diagnostic_case_survives_state_roundtrip():
+    attempt = ExamAttempt()
+    submit_answer(attempt, "wrong")
+    restored = ExamAttempt.from_dict(attempt.to_dict())
+    assert restored.diagnostics[1]["student_answer"] == "wrong"
+    assert restored.diagnostics[1]["status"] == "needs_evidence"
