@@ -6,6 +6,7 @@ from src.services.ege_exam_service import (
     next_attempt_diagnostic_probe,
     submit_diagnostic_answer,
 )
+from src.learning_dna.engine import apply_confirmed_ege_diagnostics
 from src.ai_engine.diagnostics import (
     CONTROL_PROBES,
     DIAGNOSIS_CONFIRMED,
@@ -195,3 +196,48 @@ def test_attempt_diagnostics_end_when_all_wrong_tasks_are_classified():
     submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert attempt.diagnostics[1]["status"] == DIAGNOSIS_CONFIRMED
     assert next_attempt_diagnostic_probe(attempt) is None
+
+
+
+def test_confirmed_ege_evidence_is_applied_to_learning_dna_exactly_once():
+    skill_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    attempt = ExamAttempt(attempt_id="attempt-fixed", current_task=28)
+    case = open_diagnostic_case(14, "wrong", "expected", skill_map)
+    probe = next_control_probe(case)
+    attempt.diagnostics = {
+        14: answer_control_probe(case, probe["probe_id"], "заведомо неверно")
+    }
+
+    dna, first = apply_confirmed_ege_diagnostics(None, 123, attempt)
+    signal_count = len(dna["signals"])
+    skill_attempts = dna["skills"]["number_systems.base_conversion"]["attempts"]
+
+    dna, second = apply_confirmed_ege_diagnostics(dna, 123, attempt)
+
+    assert first["applied_count"] == 1
+    assert second["applied_count"] == 0
+    assert len(dna["processed_evidence_ids"]) == 1
+    assert len(dna["signals"]) == signal_count
+    assert dna["skills"]["number_systems.base_conversion"]["attempts"] == skill_attempts
+    assert len(dna["trajectory"]["individual_plan"]) == 1
+    assert dna["trajectory"]["next_focus"] == attempt.diagnostics[14]["failed_step"]
+
+
+def test_unconfirmed_ege_case_does_not_change_learning_dna_or_plan():
+    skill_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    attempt = ExamAttempt(attempt_id="attempt-unconfirmed", current_task=28)
+    attempt.diagnostics = {
+        14: open_diagnostic_case(14, "wrong", "expected", skill_map)
+    }
+
+    dna, result = apply_confirmed_ege_diagnostics(None, 123, attempt)
+
+    assert result["applied_count"] == 0
+    assert dna["signals"] == []
+    assert dna["processed_evidence_ids"] == []
+    assert dna["trajectory"]["individual_plan"] == []
+    assert dna["trajectory"]["next_focus"] is None
