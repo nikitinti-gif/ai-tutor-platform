@@ -8,7 +8,11 @@ from src.ai_engine.ege_open_variant_2026 import (
     OFFICIAL_FILES_URL,
     OPEN_VARIANT_2026,
 )
-from src.ai_engine.diagnostics import open_diagnostic_case
+from src.ai_engine.diagnostics import (
+    answer_control_probe,
+    next_control_probe,
+    open_diagnostic_case,
+)
 from src.ai_engine.verification_engine import VerificationResult, verify_answer
 from src.skills.skill_graph import load_skill_map
 
@@ -160,3 +164,85 @@ def render_summary(attempt: ExamAttempt) -> str:
         f"⏭ Пропущенные: {skipped}\n\n"
         "Проверка выполнена локально — без AI и Vision."
     )
+
+
+def next_attempt_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
+    """Return the next probe across all incorrect tasks in exam order."""
+    for task_number in sorted(attempt.diagnostics):
+        case = attempt.diagnostics[task_number]
+        if case.get("status") == "confirmed":
+            continue
+        probe = next_control_probe(case)
+        if probe is not None:
+            return {
+                "task_number": task_number,
+                **probe,
+            }
+    return None
+
+
+def submit_diagnostic_answer(attempt: ExamAttempt, answer: str) -> dict:
+    """Check one active local probe and persist its evidence in the attempt."""
+    probe = next_attempt_diagnostic_probe(attempt)
+    if probe is None:
+        raise ValueError("Диагностические мини-пробы завершены.")
+
+    task_number = probe["task_number"]
+    case = answer_control_probe(
+        attempt.diagnostics[task_number],
+        probe["probe_id"],
+        answer,
+    )
+    attempt.diagnostics[task_number] = case
+    return {
+        "task_number": task_number,
+        "probe_id": probe["probe_id"],
+        "is_correct": case["evidence"][-1]["is_correct"],
+        "status": case["status"],
+        "failed_step": case.get("failed_step"),
+    }
+
+
+def render_diagnostic_probe(attempt: ExamAttempt) -> str:
+    probe = next_attempt_diagnostic_probe(attempt)
+    if probe is None:
+        return ""
+
+    return (
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔎 ДИАГНОСТИКА ОШИБКИ\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Задание КЕГЭ №{probe['task_number']}\n"
+        "Проверяем один конкретный шаг решения.\n\n"
+        f"{probe['prompt']}\n\n"
+        "✍️ Отправь только ответ."
+    )
+
+
+def diagnostic_summary(attempt: ExamAttempt) -> str:
+    confirmed = [
+        case for case in attempt.diagnostics.values()
+        if case.get("status") == "confirmed"
+    ]
+    unresolved = [
+        case for case in attempt.diagnostics.values()
+        if case.get("status") != "confirmed"
+    ]
+    lines = [
+        "━━━━━━━━━━━━━━━━━━━━",
+        "🧬 ДИАГНОСТИКА ЗАВЕРШЕНА",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        f"Подтверждённых точек ошибки: {len(confirmed)}",
+        f"Не подтверждено мини-пробами: {len(unresolved)}",
+    ]
+    for case in confirmed:
+        lines.append(
+            f"• Задание №{case['task_number']}: {case['failed_step']}"
+        )
+    if unresolved:
+        lines.append("")
+        lines.append(
+            "Неподтверждённые гипотезы не будут записаны в Learning DNA."
+        )
+    return "\n".join(lines)
