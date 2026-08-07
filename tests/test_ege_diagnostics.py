@@ -1,6 +1,11 @@
 import json
 from pathlib import Path
 
+from src.services.ege_exam_service import (
+    ExamAttempt,
+    next_attempt_diagnostic_probe,
+    submit_diagnostic_answer,
+)
 from src.ai_engine.diagnostics import (
     CONTROL_PROBES,
     DIAGNOSIS_CONFIRMED,
@@ -147,3 +152,46 @@ def test_every_probe_accepts_its_declared_answer_and_confirms_wrong_answer():
             failed = answer_control_probe(case, probe["id"], "заведомо неверный ответ")
             assert failed["status"] == DIAGNOSIS_CONFIRMED
             assert failed["failed_step"] == case["operations"][probe["operation_index"]]
+
+
+
+def test_attempt_diagnostics_advance_across_steps_and_tasks():
+    attempt = ExamAttempt(current_task=28)
+    attempt.diagnostics = {
+        1: open_diagnostic_case(1, "wrong", "expected", json.loads(
+            (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+        )),
+        2: open_diagnostic_case(2, "wrong", "expected", json.loads(
+            (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+        )),
+    }
+
+    first = next_attempt_diagnostic_probe(attempt)
+    assert first["task_number"] == 1
+    assert first["probe_id"] == CONTROL_PROBES[1][0]["id"]
+
+    passed = submit_diagnostic_answer(
+        attempt,
+        CONTROL_PROBES[1][0]["expected_answers"][0],
+    )
+    assert passed["is_correct"] is True
+    assert next_attempt_diagnostic_probe(attempt)["probe_id"] == CONTROL_PROBES[1][1]["id"]
+
+    failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")
+    assert failed["is_correct"] is False
+    assert failed["failed_step"] == attempt.diagnostics[1]["operations"][1]
+    assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2
+
+
+def test_attempt_diagnostics_end_when_all_wrong_tasks_are_classified():
+    skill_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    attempt = ExamAttempt(current_task=28)
+    attempt.diagnostics = {
+        1: open_diagnostic_case(1, "wrong", "expected", skill_map),
+    }
+
+    submit_diagnostic_answer(attempt, "заведомо неверный ответ")
+    assert attempt.diagnostics[1]["status"] == DIAGNOSIS_CONFIRMED
+    assert next_attempt_diagnostic_probe(attempt) is None
