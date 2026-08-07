@@ -23,6 +23,7 @@ from config import (
 from src.services.submission_worker import run_synthetic_submission_worker
 from src.telegram_bot.handlers.registration import register_registration_handlers
 from src.telegram_bot.handlers.student import register_student_handlers
+from src.telegram_bot.handlers.ege_hint import register_ege_hint_handlers
 from src.telegram_bot.handlers.parent import register_parent_handlers
 from src.telegram_bot.handlers.teacher import register_teacher_handlers
 from src.telegram_bot.handlers.demo import register_demo_handlers
@@ -37,6 +38,7 @@ def create_dispatcher() -> Dispatcher:
 
     register_registration_handlers(dp)
     register_demo_handlers(dp)
+    register_ege_hint_handlers(dp)
     register_student_handlers(dp)
     register_parent_handlers(dp)
     register_teacher_handlers(dp)
