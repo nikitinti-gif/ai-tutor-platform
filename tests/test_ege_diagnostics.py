@@ -1,4 +1,8 @@
+import json
+from pathlib import Path
+
 from src.ai_engine.diagnostics import (
+    CONTROL_PROBES,
     DIAGNOSIS_CONFIRMED,
     DIAGNOSIS_NEEDS_EVIDENCE,
     DIAGNOSIS_PROBABLE,
@@ -109,3 +113,37 @@ def test_unconfirmed_case_cannot_become_learning_dna_signal():
         assert "подтверждённую" in str(error)
     else:
         raise AssertionError("Unconfirmed diagnosis leaked into Learning DNA")
+
+
+def test_all_27_tasks_have_one_probe_per_operation():
+    skill_map_path = Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json"
+    if not skill_map_path.exists():
+        skill_map_path = Path(__file__).parents[1] / "repo_snapshot" / "src" / "skills" / "ege_informatics_2026.json"
+    skill_map = json.loads(skill_map_path.read_text(encoding="utf-8"))
+    validate_control_probes(skill_map)
+
+    assert set(CONTROL_PROBES) == set(range(1, 28))
+    for task in skill_map["tasks"]:
+        probes = CONTROL_PROBES[task["number"]]
+        assert len(probes) == len(task["operations"])
+        assert {probe["operation_index"] for probe in probes} == set(
+            range(len(task["operations"]))
+        )
+
+
+def test_every_probe_accepts_its_declared_answer_and_confirms_wrong_answer():
+    skill_map_path = Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json"
+    if not skill_map_path.exists():
+        skill_map_path = Path(__file__).parents[1] / "repo_snapshot" / "src" / "skills" / "ege_informatics_2026.json"
+    skill_map = json.loads(skill_map_path.read_text(encoding="utf-8"))
+
+    for task_number, probes in CONTROL_PROBES.items():
+        for probe in probes:
+            case = open_diagnostic_case(task_number, "wrong", "expected", skill_map)
+            passed = answer_control_probe(case, probe["id"], probe["expected_answers"][0])
+            assert passed["status"] == DIAGNOSIS_NEEDS_EVIDENCE
+            assert passed["failed_step"] is None
+
+            failed = answer_control_probe(case, probe["id"], "заведомо неверный ответ")
+            assert failed["status"] == DIAGNOSIS_CONFIRMED
+            assert failed["failed_step"] == case["operations"][probe["operation_index"]]
