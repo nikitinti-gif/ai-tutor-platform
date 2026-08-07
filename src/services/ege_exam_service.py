@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
+from uuid import uuid4
 
 from src.ai_engine.ege_open_variant_2026 import (
     EgeTask,
@@ -22,6 +23,7 @@ PROGRESS_WIDTH = 12
 
 @dataclass(slots=True)
 class ExamAttempt:
+    attempt_id: str = field(default_factory=lambda: str(uuid4()))
     current_task: int = 1
     answers: dict[int, str] = field(default_factory=dict)
     results: dict[int, bool] = field(default_factory=dict)
@@ -43,6 +45,7 @@ class ExamAttempt:
     def from_dict(cls, data: dict | None) -> "ExamAttempt":
         data = data or {}
         return cls(
+            str(data.get("attempt_id") or uuid4()),
             int(data.get("current_task", 1)),
             {int(k): str(v) for k, v in data.get("answers", {}).items()},
             {int(k): bool(v) for k, v in data.get("results", {}).items()},
