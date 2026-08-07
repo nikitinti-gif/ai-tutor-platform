@@ -3,9 +3,13 @@ from src.ai_engine.diagnostics import (
     DIAGNOSIS_NEEDS_EVIDENCE,
     DIAGNOSIS_PROBABLE,
     confirmed_cases,
+    confirmed_case_to_check_result,
+    answer_control_probe,
+    next_control_probe,
     open_diagnostic_case,
     record_control_probe,
     record_student_step,
+    validate_control_probes,
 )
 
 
@@ -15,7 +19,11 @@ SKILL_MAP = {
             "number": 14,
             "title": "Системы счисления",
             "skills": ["number_systems.base_conversion"],
-            "operations": ["получать цифры делением с остатком", "считать цифры"],
+            "operations": [
+                "получать цифры делением с остатком",
+                "проверять свойство цифр",
+                "считать без потери разрядов",
+            ],
             "typical_errors": ["не обработан старший разряд"],
         }
     ]
@@ -67,3 +75,37 @@ def test_passed_probe_rejects_previous_hypothesis():
     assert case["status"] == DIAGNOSIS_NEEDS_EVIDENCE
     assert case["failed_step"] is None
     assert confirmed_cases([case]) == []
+
+
+def test_task14_probes_cover_every_operation():
+    validate_control_probes(SKILL_MAP)
+    case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
+    probe_ids = []
+    for correct_answer in ("2", "2", "5"):
+        probe = next_control_probe(case)
+        probe_ids.append(probe["probe_id"])
+        case = answer_control_probe(case, probe["probe_id"], correct_answer)
+    assert len(set(probe_ids)) == len(SKILL_MAP["tasks"][0]["operations"])
+    assert next_control_probe(case) is None
+    assert confirmed_cases([case]) == []
+
+
+def test_failed_task14_probe_creates_learning_dna_signal():
+    case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
+    probe = next_control_probe(case)
+    case = answer_control_probe(case, probe["probe_id"], "38")
+    signal = confirmed_case_to_check_result(case)
+    assert signal["status"] == "has_error"
+    assert signal["skill_id"] == "number_systems.base_conversion"
+    assert signal["source"] == "local_control_probe"
+    assert signal["confidence"] == 0.95
+
+
+def test_unconfirmed_case_cannot_become_learning_dna_signal():
+    case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
+    try:
+        confirmed_case_to_check_result(case)
+    except ValueError as error:
+        assert "подтверждённую" in str(error)
+    else:
+        raise AssertionError("Unconfirmed diagnosis leaked into Learning DNA")
