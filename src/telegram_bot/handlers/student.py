@@ -391,7 +391,7 @@ async def _begin_ege_diagnostics(
 
 
 async def _prepare_ai_probe_for_admin(message: Message, attempt) -> None:
-    """Best-effort AI wording for the isolated admin pilot."""
+    """Best-effort live AI parameters for the isolated admin pilot."""
     if not AI_DIAGNOSTIC_PROBES_ENABLED:
         return
     if not ADMIN_TELEGRAM_ID or str(message.from_user.id) != str(ADMIN_TELEGRAM_ID):
@@ -401,7 +401,7 @@ async def _prepare_ai_probe_for_admin(message: Message, attempt) -> None:
     try:
         await asyncio.to_thread(prepare_ai_diagnostic_probe, attempt)
     except Exception:
-        logging.exception("AI diagnostic wording failed; using local fallback")
+        logging.exception("Live AI diagnostic probe failed; using local fallback")
 
 
 async def receive_ege_diagnostic_answer(

@@ -209,23 +209,29 @@ def next_control_probe(case: dict) -> dict | None:
     """Return the next unchecked local probe for a diagnostic case."""
     probes = CONTROL_PROBES.get(int(case.get("task_number", 0)), ())
     completed = {
-        item.get("probe_id")
+        item.get("base_probe_id", item.get("probe_id"))
         for item in case.get("evidence", [])
-        if item.get("kind") == "control_probe"
+        if item.get("kind") == "control_probe" and item.get("is_correct")
     }
     operations = case.get("operations", [])
     for probe in probes:
         if probe["id"] not in completed:
             operation_index = probe["operation_index"]
+            failure_count = sum(
+                1 for item in case.get("evidence", [])
+                if item.get("base_probe_id", item.get("probe_id")) == probe["id"]
+                and not item.get("is_correct")
+            )
             result = {
-                "probe_id": probe["id"],
+                "probe_id": probe["id"] if failure_count == 0 else f"{probe['id']}:retry{failure_count + 1}",
+                "base_probe_id": probe["id"],
+                "operation_index": operation_index,
                 "prompt": probe["prompt"],
                 "tested_step": operations[operation_index],
             }
             pending = case.get("pending_probe") or {}
-            if pending.get("probe_id") == probe["id"]:
-                result["prompt"] = pending.get("prompt", result["prompt"])
-                result["source"] = pending.get("source")
+            if pending.get("base_probe_id", pending.get("probe_id")) == probe["id"]:
+                result.update({key: pending[key] for key in ("probe_id", "base_probe_id", "prompt", "source") if key in pending})
             return result
     return None
 
@@ -233,7 +239,9 @@ def next_control_probe(case: dict) -> dict | None:
 def answer_control_probe(case: dict, probe_id: str, answer: str) -> dict:
     """Verify a mini-probe locally and apply its evidence to the case."""
     probes = CONTROL_PROBES.get(int(case.get("task_number", 0)), ())
-    probe = next((item for item in probes if item["id"] == probe_id), None)
+    pending = case.get("pending_probe") or {}
+    base_probe_id = pending.get("base_probe_id") if pending.get("probe_id") == probe_id else probe_id.split(":retry", 1)[0]
+    probe = next((item for item in probes if item["id"] == base_probe_id), None)
     if probe is None:
         raise ValueError("Контрольная проба не найдена для этого задания.")
     if any(
@@ -244,8 +252,9 @@ def answer_control_probe(case: dict, probe_id: str, answer: str) -> dict:
     operations = case.get("operations", [])
     tested_step = operations[probe["operation_index"]]
     normalized = _normalize_probe_answer(answer)
+    expected_answers = pending.get("expected_answers", probe["expected_answers"])
     is_correct = normalized in {
-        _normalize_probe_answer(value) for value in probe["expected_answers"]
+        _normalize_probe_answer(value) for value in expected_answers
     }
     updated = record_control_probe(
         case,
@@ -256,6 +265,7 @@ def answer_control_probe(case: dict, probe_id: str, answer: str) -> dict:
     )
     pending = updated.pop("pending_probe", None) or {}
     if updated.get("evidence"):
+        updated["evidence"][-1]["base_probe_id"] = base_probe_id
         updated["evidence"][-1]["display_prompt"] = pending.get("prompt")
         updated["evidence"][-1]["probe_source"] = pending.get(
             "source", "local_fallback"
@@ -371,6 +381,7 @@ def record_control_probe(
         item for item in updated["evidence"]
         if item.get("kind") in {"control_probe", "ai_control_probe"}
         and item.get("proves_failed_step")
+        and item.get("tested_step") == tested_step
     ]
     if is_correct:
         updated["status"] = DIAGNOSIS_NEEDS_EVIDENCE
@@ -411,6 +422,13 @@ def apply_ai_probe_wording(case: dict, probe: dict, raw_result: str) -> dict:
         "tested_step": probe["tested_step"],
         "source": "ai_wording_local_answer",
     }
+    return updated
+
+
+def apply_live_probe(case: dict, generated: dict) -> dict:
+    """Persist a model-parameterised probe already solved by Python."""
+    updated = deepcopy(case)
+    updated["pending_probe"] = deepcopy(generated)
     return updated
 
 

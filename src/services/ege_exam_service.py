@@ -13,7 +13,7 @@ from src.ai_engine.diagnostics import (
     answer_control_probe,
     next_control_probe,
     open_diagnostic_case,
-    apply_ai_probe_wording,
+    apply_live_probe,
     diagnostic_probe_context,
 )
 from src.ai_engine.verification_engine import VerificationResult, verify_answer
@@ -203,24 +203,31 @@ def next_attempt_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
 
 
 def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
-    """Add AI wording to the next probe, preserving local answer checking."""
+    """Generate fresh parameters, then let Python render and solve the probe."""
     probe = next_attempt_diagnostic_probe(attempt)
-    if probe is None or probe.get("source") == "ai_wording_local_answer":
+    if probe is None or probe.get("source") == "ai_parameters_python_solver":
         return probe
 
     from src.ai_engine.llm_client import LLMClient
+    from src.ai_engine.live_diagnostic_probes import build_live_probe, PILOT_TASKS
 
     task_number = probe["task_number"]
+    if task_number not in PILOT_TASKS:
+        return probe
     case = attempt.diagnostics[task_number]
     context = diagnostic_probe_context(case)
-    raw = LLMClient().rephrase_diagnostic_probe(
+    raw = LLMClient().generate_diagnostic_probe_parameters(
+        task_number=task_number,
+        operation_index=probe["operation_index"],
         skill_id=context["skill_id"],
-        skill_name=context["skill_name"],
-        canonical_prompt=probe["prompt"],
         previous_prompts=context["previous_prompts"],
         synthetic_test=True,
     )
-    attempt.diagnostics[task_number] = apply_ai_probe_wording(case, probe, raw)
+    generated = build_live_probe(case, {
+        "id": probe["base_probe_id"],
+        "operation_index": probe["operation_index"],
+    }, raw)
+    attempt.diagnostics[task_number] = apply_live_probe(case, generated)
     return next_attempt_diagnostic_probe(attempt)
 
 

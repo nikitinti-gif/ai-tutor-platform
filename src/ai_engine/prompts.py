@@ -232,3 +232,20 @@ def build_diagnostic_probe_rephrase_prompt(
 
 Верни только JSON с полем prompt.
 """.strip()
+
+
+def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int, skill_id: str, previous_prompts: list[str] | None = None) -> str:
+    """Request only fresh parameters; Python will construct and solve the task."""
+    previous = "\n".join(f"- {item}" for item in (previous_prompts or []))
+    counts = {(5, 0): 1, (5, 1): 2, (5, 2): 2, (5, 3): 2,
+              (14, 0): 2, (14, 1): 1, (14, 2): 1,
+              (27, 0): 2, (27, 1): 3, (27, 2): 6, (27, 3): 4}
+    count = counts[(task_number, operation_index)]
+    return f"""
+Создай НОВЫЕ числовые параметры диагностической мини-пробы по навыку {skill_id}.
+Задание КЕГЭ: {task_number}; индекс проверяемого шага: {operation_index}.
+Верни ровно {count} целых чисел в массиве values. Не решай задачу и не пиши условие.
+Числа должны отличаться от примеров в ранее показанных вопросах.
+Ранее показано:\n{previous or 'нет'}
+Верни только JSON: {{"values": [...]}}.
+""".strip()

@@ -13,6 +13,7 @@ from src.ai_engine.prompts import (
     build_homework_critical_review_prompt,
     build_diagnostic_critical_review_prompt,
     build_diagnostic_probe_rephrase_prompt,
+    build_live_diagnostic_probe_prompt,
 )
 from src.ai_engine.schemas import (
     HOMEWORK_CHECK_RESPONSE_SCHEMA,
@@ -327,6 +328,18 @@ class LLMClient:
         )
         if not interaction.output_text:
             raise LLMResponseError("Gemini не вернул формулировку мини-пробы.")
+        return interaction.output_text
+
+    def generate_diagnostic_probe_parameters(self, *, task_number: int, operation_index: int, skill_id: str, previous_prompts: list[str] | None = None, synthetic_test: bool = False) -> str:
+        if not synthetic_test:
+            raise LLMDataPolicyError("AI-мини-пробы пока разрешены только в синтетическом пилоте.")
+        interaction = self.client.interactions.create(
+            model=self.model,
+            input=build_live_diagnostic_probe_prompt(task_number=task_number, operation_index=operation_index, skill_id=skill_id, previous_prompts=previous_prompts),
+            response_format={"type": "text", "mime_type": "application/json", "schema": {"type": "object", "properties": {"values": {"type": "array", "items": {"type": "integer"}}}, "required": ["values"], "additionalProperties": False}},
+        )
+        if not interaction.output_text:
+            raise LLMResponseError("Gemini не вернул параметры мини-пробы.")
         return interaction.output_text
 
 

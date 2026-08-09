@@ -22,6 +22,7 @@ from src.ai_engine.diagnostics import (
     record_student_step,
     validate_control_probes,
 )
+from src.ai_engine.live_diagnostic_probes import build_live_probe
 
 
 SKILL_MAP = {
@@ -63,6 +64,31 @@ def test_ai_changes_wording_but_not_local_probe_identity():
     assert displayed["source"] == "ai_wording_local_answer"
 
 
+def test_live_probe_uses_ai_parameters_but_python_computes_answer():
+    case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
+    base = next_control_probe(case)
+    generated = build_live_probe(
+        case,
+        {"id": base["base_probe_id"], "operation_index": base["operation_index"]},
+        json.dumps({"values": [137, 61]}),
+    )
+    assert "137" in generated["prompt"]
+    assert generated["expected_answers"] == ("13",)
+    assert generated["source"] == "ai_parameters_python_solver"
+
+
+def test_live_probe_rejects_invalid_parameter_shape():
+    full_map = json.loads((Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8"))
+    case = open_diagnostic_case(27, "wrong", "expected", full_map)
+    base = next_control_probe(case)
+    try:
+        build_live_probe(case, {"id": base["base_probe_id"], "operation_index": 0}, json.dumps({"values": [2]}))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Некорректные параметры AI должны быть отклонены")
+
+
 def test_self_report_is_only_probable():
     case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
     case = record_student_step(case, 0)
@@ -83,6 +109,15 @@ def test_one_failed_control_probe_is_only_probable():
     assert case["status"] == DIAGNOSIS_PROBABLE
     assert case["failed_step"] == "получать цифры делением с остатком"
     assert case["confidence"] == 0.6
+    assert confirmed_cases([case]) == []
+
+
+def test_failure_in_another_step_does_not_confirm_current_skill():
+    case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
+    case = record_control_probe(case, probe_id="first", tested_step=case["operations"][0], is_correct=False, observed_answer="x")
+    case = record_control_probe(case, probe_id="recovery", tested_step=case["operations"][0], is_correct=True, observed_answer="2")
+    case = record_control_probe(case, probe_id="second", tested_step=case["operations"][1], is_correct=False, observed_answer="x")
+    assert case["status"] == DIAGNOSIS_PROBABLE
     assert confirmed_cases([case]) == []
 
 
@@ -146,7 +181,7 @@ def test_failed_task14_probe_creates_learning_dna_signal():
     probe = next_control_probe(case)
     case = answer_control_probe(case, probe["probe_id"], "38")
     probe = next_control_probe(case)
-    case = answer_control_probe(case, probe["probe_id"], "нет")
+    case = answer_control_probe(case, probe["probe_id"], "38")
     signal = confirmed_case_to_check_result(case)
     assert signal["status"] == "has_error"
     assert signal["skill_id"] == "number_systems.base_conversion"
@@ -224,6 +259,10 @@ def test_attempt_diagnostics_advance_across_steps_and_tasks():
     failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert failed["is_correct"] is False
     assert failed["failed_step"] == attempt.diagnostics[1]["operations"][1]
+    retry = next_attempt_diagnostic_probe(attempt)
+    assert retry["task_number"] == 1
+    assert retry["base_probe_id"] == CONTROL_PROBES[1][1]["id"]
+    submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2
 
 
