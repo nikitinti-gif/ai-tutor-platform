@@ -58,6 +58,22 @@ def get_task(number: int) -> EgeTask:
     return OPEN_VARIANT_2026[number]
 
 
+def create_pilot_diagnostic_attempt() -> ExamAttempt:
+    """Build an isolated attempt for reviewing pilot probes without an exam run."""
+    skill_map = load_skill_map()
+    attempt = ExamAttempt(current_task=TOTAL_TASKS + 1)
+    for task_number in (5, 14, 27):
+        attempt.answers[task_number] = "pilot_wrong_answer"
+        attempt.results[task_number] = False
+        attempt.diagnostics[task_number] = open_diagnostic_case(
+            task_number=task_number,
+            student_answer="pilot_wrong_answer",
+            expected_answer="pilot_expected_answer",
+            skill_map=skill_map,
+        )
+    return attempt
+
+
 def _progress_bar(completed: int) -> str:
     completed = max(0, min(completed, TOTAL_TASKS))
     filled = round(PROGRESS_WIDTH * completed / TOTAL_TASKS)
