@@ -456,6 +456,28 @@ async def start_ege_exam(message: Message, state: FSMContext):
     await _send_ege_task(message, attempt.current_task)
 
 
+async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
+    """Start the 5/14/27 probe review without completing the full exam."""
+    is_admin = bool(
+        ADMIN_TELEGRAM_ID
+        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+    if not is_admin:
+        await message.answer("⛔ Эта тестовая команда доступна только администратору.")
+        return
+
+    from src.services.ege_exam_service import create_pilot_diagnostic_attempt
+
+    delete_ege_session(message.from_user.id)
+    await state.clear()
+    attempt = create_pilot_diagnostic_attempt()
+    await message.answer(
+        "🧪 Пилот мини-проб №5, №14 и №27.\n\n"
+        "Полный вариант проходить не нужно. Ответы проверяются локально."
+    )
+    await _begin_ege_diagnostics(message, state, attempt)
+
+
 async def receive_ege_answer(message: Message, state: FSMContext):
     from src.services.ege_exam_service import (
         ExamAttempt, render_summary, submit_answer,
@@ -528,6 +550,7 @@ async def cancel_ege_exam(message: Message, state: FSMContext):
 
 def register_student_handlers(dp: Dispatcher):
     dp.message.register(cancel_ege_exam, F.text == "/cancel_ege")
+    dp.message.register(start_ege_diagnostic_pilot, F.text == "/test_ege_diagnostics")
     dp.message.register(skip_ege_task, StudentEgeExamStates.waiting_answer, F.text == "/skip_ege")
     dp.message.register(finish_ege_exam, StudentEgeExamStates.waiting_answer, F.text == "/finish_ege")
     dp.message.register(start_ege_exam, F.text.in_({"/ege2026", "🎓 Пройти КЕГЭ"}))
