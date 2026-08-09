@@ -113,6 +113,55 @@ def get_skill_name(skill_id: str) -> str:
     return skill["name"] if skill else skill_id
 
 
+def prerequisite_path(skill_id: str, skill_map: dict | None = None) -> list[str]:
+    """Return prerequisites deepest-first, followed by the requested skill.
+
+    A skill is emitted once even when several branches share the same
+    prerequisite.  The order is deterministic and therefore safe to persist
+    in an unfinished Telegram diagnostic session.
+    """
+    subject_map = skill_map or load_skill_map()
+    if get_skill(skill_id, subject_map) is None:
+        raise ValueError(f"Unknown skill: {skill_id}")
+
+    ordered: list[str] = []
+    visited: set[str] = set()
+
+    def visit(current_id: str) -> None:
+        if current_id in visited:
+            return
+        current = get_skill(current_id, subject_map)
+        if current is None:  # guarded by validate_skill_map for descendants
+            return
+        for prerequisite_id in current.get("prerequisites", []):
+            visit(prerequisite_id)
+        visited.add(current_id)
+        ordered.append(current_id)
+
+    visit(skill_id)
+    return ordered
+
+
+def task_diagnostic_path(task_number: int, skill_map: dict | None = None) -> list[str]:
+    """Build one recursive prerequisite path for an exam task."""
+    subject_map = skill_map or load_skill_map()
+    task = next(
+        (item for item in subject_map["tasks"] if item["number"] == task_number),
+        None,
+    )
+    if task is None:
+        raise ValueError(f"Unknown EGE task: {task_number}")
+    if not subject_map.get("skills"):
+        return list(dict.fromkeys(task.get("skills", [])))
+
+    ordered: list[str] = []
+    for skill_id in task.get("skills", []):
+        for path_skill_id in prerequisite_path(skill_id, subject_map):
+            if path_skill_id not in ordered:
+                ordered.append(path_skill_id)
+    return ordered
+
+
 def migrate_legacy_focus(focus: str | None, skill_map: dict | None = None) -> str | None:
     if not focus:
         return None

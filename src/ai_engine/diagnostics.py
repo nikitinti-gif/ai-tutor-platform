@@ -8,7 +8,10 @@ that a particular reasoning step failed.
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 import re
+
+from src.skills.skill_graph import get_skill_name, task_diagnostic_path
 
 
 DIAGNOSIS_NEEDS_EVIDENCE = "needs_evidence"
@@ -214,11 +217,16 @@ def next_control_probe(case: dict) -> dict | None:
     for probe in probes:
         if probe["id"] not in completed:
             operation_index = probe["operation_index"]
-            return {
+            result = {
                 "probe_id": probe["id"],
                 "prompt": probe["prompt"],
                 "tested_step": operations[operation_index],
             }
+            pending = case.get("pending_probe") or {}
+            if pending.get("probe_id") == probe["id"]:
+                result["prompt"] = pending.get("prompt", result["prompt"])
+                result["source"] = pending.get("source")
+            return result
     return None
 
 
@@ -239,13 +247,20 @@ def answer_control_probe(case: dict, probe_id: str, answer: str) -> dict:
     is_correct = normalized in {
         _normalize_probe_answer(value) for value in probe["expected_answers"]
     }
-    return record_control_probe(
+    updated = record_control_probe(
         case,
         probe_id=probe_id,
         tested_step=tested_step,
         is_correct=is_correct,
         observed_answer=answer,
     )
+    pending = updated.pop("pending_probe", None) or {}
+    if updated.get("evidence"):
+        updated["evidence"][-1]["display_prompt"] = pending.get("prompt")
+        updated["evidence"][-1]["probe_source"] = pending.get(
+            "source", "local_fallback"
+        )
+    return updated
 
 
 def confirmed_case_to_check_result(case: dict) -> dict:
@@ -284,12 +299,15 @@ def open_diagnostic_case(
 ) -> dict:
     """Create an unresolved case without inventing a failed step."""
     task = _task_definition(task_number, skill_map)
+    diagnostic_path = task_diagnostic_path(task_number, skill_map)
     return {
         "task_number": task_number,
         "task_title": task.get("title", f"Задание {task_number}"),
         "student_answer": student_answer,
         "expected_answer": expected_answer,
         "skill_ids": list(task.get("skills", [])),
+        "diagnostic_path": diagnostic_path,
+        "active_skill_id": diagnostic_path[-1] if diagnostic_path else None,
         "operations": list(task.get("operations", [])),
         "candidate_errors": list(task.get("typical_errors", [])),
         "failed_step": None,
@@ -349,10 +367,21 @@ def record_control_probe(
             "proves_failed_step": not is_correct,
         }
     )
+    failed_probes = [
+        item for item in updated["evidence"]
+        if item.get("kind") in {"control_probe", "ai_control_probe"}
+        and item.get("proves_failed_step")
+    ]
     if is_correct:
         updated["status"] = DIAGNOSIS_NEEDS_EVIDENCE
         updated["confidence"] = 0.0
         updated["failed_step"] = None
+        updated["error_type"] = None
+        updated["learning_action"] = None
+    elif len(failed_probes) < 2:
+        updated["status"] = DIAGNOSIS_PROBABLE
+        updated["confidence"] = 0.6
+        updated["failed_step"] = tested_step
         updated["error_type"] = None
         updated["learning_action"] = None
     else:
@@ -362,6 +391,42 @@ def record_control_probe(
         updated["error_type"] = f"failed_step:{probe_id}"
         updated["learning_action"] = f"Отработать шаг: {tested_step}."
     return updated
+
+
+def apply_ai_probe_wording(case: dict, probe: dict, raw_result: str) -> dict:
+    """Persist a safe AI wording; the canonical answer remains unchanged."""
+    try:
+        data = json.loads(raw_result)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise ValueError("AI вернул некорректный JSON мини-пробы.") from error
+    prompt = str(data.get("prompt", "")).strip()
+    if not prompt or len(prompt) > 500:
+        raise ValueError("AI вернул пустую или слишком длинную мини-пробу.")
+
+    updated = deepcopy(case)
+    updated["pending_probe"] = {
+        "probe_id": probe["probe_id"],
+        "prompt": prompt,
+        "canonical_prompt": probe["prompt"],
+        "tested_step": probe["tested_step"],
+        "source": "ai_wording_local_answer",
+    }
+    return updated
+
+
+def diagnostic_probe_context(case: dict) -> dict:
+    """Return anonymised graph context safe to send to an AI provider."""
+    skill_id = case.get("active_skill_id") or (case.get("skill_ids") or [None])[0]
+    previous = [
+        item.get("display_prompt")
+        for item in case.get("evidence", [])
+        if item.get("display_prompt")
+    ]
+    return {
+        "skill_id": skill_id or "unknown",
+        "skill_name": get_skill_name(skill_id) if skill_id else "Неизвестный навык",
+        "previous_prompts": previous[-5:],
+    }
 
 
 def confirmed_cases(cases: list[dict]) -> list[dict]:

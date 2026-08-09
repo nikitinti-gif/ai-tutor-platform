@@ -12,6 +12,7 @@ from src.ai_engine.prompts import (
     build_diagnostic_level_prompt,
     build_homework_critical_review_prompt,
     build_diagnostic_critical_review_prompt,
+    build_diagnostic_probe_rephrase_prompt,
 )
 from src.ai_engine.schemas import (
     HOMEWORK_CHECK_RESPONSE_SCHEMA,
@@ -287,6 +288,45 @@ class LLMClient:
         )
         if not interaction.output_text:
             raise LLMResponseError("Gemini не вернул критическую диагностику.")
+        return interaction.output_text
+
+    def rephrase_diagnostic_probe(
+        self,
+        *,
+        skill_id: str,
+        skill_name: str,
+        canonical_prompt: str,
+        answer_format: str = "короткий ответ",
+        previous_prompts: list[str] | None = None,
+        synthetic_test: bool = False,
+    ) -> str:
+        """Vary wording while Python retains the canonical correct answer."""
+        if not synthetic_test:
+            raise LLMDataPolicyError(
+                "AI-мини-пробы пока разрешены только в синтетическом пилоте."
+            )
+        interaction = self.client.interactions.create(
+            model=self.model,
+            input=build_diagnostic_probe_rephrase_prompt(
+                skill_id=skill_id,
+                skill_name=skill_name,
+                canonical_prompt=canonical_prompt,
+                answer_format=answer_format,
+                previous_prompts=previous_prompts,
+            ),
+            response_format={
+                "type": "text",
+                "mime_type": "application/json",
+                "schema": {
+                    "type": "object",
+                    "properties": {"prompt": {"type": "string"}},
+                    "required": ["prompt"],
+                    "additionalProperties": False,
+                },
+            },
+        )
+        if not interaction.output_text:
+            raise LLMResponseError("Gemini не вернул формулировку мини-пробы.")
         return interaction.output_text
 
 

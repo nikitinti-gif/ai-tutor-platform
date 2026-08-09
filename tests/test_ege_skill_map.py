@@ -11,7 +11,9 @@ from src.skills.skill_graph import (
     DEFAULT_MAP_PATH,
     SkillMapValidationError,
     load_skill_map,
+    prerequisite_path,
     select_next_skill,
+    task_diagnostic_path,
     validate_skill_map,
 )
 
@@ -25,6 +27,23 @@ class EgeSkillMapTest(unittest.TestCase):
         self.assertEqual(
             [task["number"] for task in self.skill_map["tasks"]],
             list(range(1, 28)),
+        )
+
+    def test_all_tasks_have_recursive_diagnostic_paths(self):
+        for task_number in range(1, 28):
+            path = task_diagnostic_path(task_number, self.skill_map)
+            self.assertTrue(path)
+            self.assertEqual(len(path), len(set(path)))
+
+    def test_task_27_descends_to_foundations_before_clustering(self):
+        path = task_diagnostic_path(27, self.skill_map)
+        self.assertEqual(path[-1], "programming.geometry_clusters")
+        self.assertLess(
+            path.index("algorithms.tracing"),
+            path.index("programming.sequences"),
+        )
+        self.assertEqual(
+            prerequisite_path("programming.geometry_clusters"), path
         )
 
     def test_every_attachment_task_names_real_source_file(self):

@@ -13,6 +13,8 @@ from src.ai_engine.diagnostics import (
     answer_control_probe,
     next_control_probe,
     open_diagnostic_case,
+    apply_ai_probe_wording,
+    diagnostic_probe_context,
 )
 from src.ai_engine.verification_engine import VerificationResult, verify_answer
 from src.skills.skill_graph import load_skill_map
@@ -198,6 +200,28 @@ def next_attempt_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
                 **probe,
             }
     return None
+
+
+def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
+    """Add AI wording to the next probe, preserving local answer checking."""
+    probe = next_attempt_diagnostic_probe(attempt)
+    if probe is None or probe.get("source") == "ai_wording_local_answer":
+        return probe
+
+    from src.ai_engine.llm_client import LLMClient
+
+    task_number = probe["task_number"]
+    case = attempt.diagnostics[task_number]
+    context = diagnostic_probe_context(case)
+    raw = LLMClient().rephrase_diagnostic_probe(
+        skill_id=context["skill_id"],
+        skill_name=context["skill_name"],
+        canonical_prompt=probe["prompt"],
+        previous_prompts=context["previous_prompts"],
+        synthetic_test=True,
+    )
+    attempt.diagnostics[task_number] = apply_ai_probe_wording(case, probe, raw)
+    return next_attempt_diagnostic_probe(attempt)
 
 
 def submit_diagnostic_answer(attempt: ExamAttempt, answer: str) -> dict:

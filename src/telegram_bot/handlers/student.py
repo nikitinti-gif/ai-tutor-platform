@@ -2,7 +2,11 @@ import asyncio
 import logging
 from io import BytesIO
 
-from config import ADMIN_TELEGRAM_ID, QWEN_PILOT_V2_ENABLED
+from config import (
+    ADMIN_TELEGRAM_ID,
+    AI_DIAGNOSTIC_PROBES_ENABLED,
+    QWEN_PILOT_V2_ENABLED,
+)
 from aiogram import Dispatcher, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import FSInputFile, Message
@@ -360,6 +364,7 @@ async def _begin_ege_diagnostics(
         render_diagnostic_probe,
     )
 
+    await _prepare_ai_probe_for_admin(message, attempt)
     probe = next_attempt_diagnostic_probe(attempt)
     if probe is None:
         await _complete_ege_diagnostics(message, state, attempt)
@@ -372,11 +377,31 @@ async def _begin_ege_diagnostics(
     )
     await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)
     await state.update_data(ege_attempt=attempt.to_dict())
+    mode_text = (
+        "AI меняет формулировку, а правильность ответа проверяет Python."
+        if AI_DIAGNOSTIC_PROBES_ENABLED
+        and ADMIN_TELEGRAM_ID
+        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
+        else "Каждая мини-проба проверяется локально."
+    )
     await message.answer(
-        "Теперь разберём только ошибочные задания. "
-        "Каждая мини-проба проверяет один шаг и работает локально, без AI."
+        "Теперь разберём только ошибочные задания. " + mode_text
     )
     await message.answer(render_diagnostic_probe(attempt))
+
+
+async def _prepare_ai_probe_for_admin(message: Message, attempt) -> None:
+    """Best-effort AI wording for the isolated admin pilot."""
+    if not AI_DIAGNOSTIC_PROBES_ENABLED:
+        return
+    if not ADMIN_TELEGRAM_ID or str(message.from_user.id) != str(ADMIN_TELEGRAM_ID):
+        return
+    from src.services.ege_exam_service import prepare_ai_diagnostic_probe
+
+    try:
+        await asyncio.to_thread(prepare_ai_diagnostic_probe, attempt)
+    except Exception:
+        logging.exception("AI diagnostic wording failed; using local fallback")
 
 
 async def receive_ege_diagnostic_answer(
@@ -424,6 +449,13 @@ async def receive_ege_diagnostic_answer(
         await _complete_ege_diagnostics(message, state, attempt)
         return
 
+    await _prepare_ai_probe_for_admin(message, attempt)
+    await state.update_data(ege_attempt=attempt.to_dict())
+    save_ege_session(
+        message.from_user.id,
+        attempt.to_dict(),
+        status="diagnostics_in_progress",
+    )
     await message.answer(render_diagnostic_probe(attempt))
 
 
@@ -433,6 +465,7 @@ async def start_ege_exam(message: Message, state: FSMContext):
     saved = get_ege_session(message.from_user.id)
     if saved and saved.get("status") == "diagnostics_in_progress":
         attempt = ExamAttempt.from_dict(saved.get("attempt"))
+        await _prepare_ai_probe_for_admin(message, attempt)
         await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)
         await state.update_data(ege_attempt=attempt.to_dict())
         await message.answer("▶️ Продолжаем диагностику ошибок.")

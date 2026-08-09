@@ -201,3 +201,34 @@ def build_diagnostic_critical_review_prompt(
 
 # Временная совместимость со старым кодом.
 HOMEWORK_CHECK_PROMPT = HOMEWORK_CHECK_SYSTEM_PROMPT
+
+
+def build_diagnostic_probe_rephrase_prompt(
+    *,
+    skill_id: str,
+    skill_name: str,
+    canonical_prompt: str,
+    answer_format: str,
+    previous_prompts: list[str] | None = None,
+) -> str:
+    """Ask AI for variety without giving it control over correctness."""
+    previous = "\n".join(f"- {item}" for item in (previous_prompts or []))
+    return f"""
+Ты формулируешь короткую диагностическую мини-пробу по информатике.
+Проверяй только навык {skill_id} ({skill_name}).
+
+Переформулируй канонический вопрос живым и понятным русским языком, но:
+- не меняй числа, данные, логические условия и требуемое действие;
+- не добавляй подсказку или правильный ответ;
+- не смешивай несколько навыков;
+- сохрани формат ответа: {answer_format};
+- вопрос должен быть самодостаточным и не длиннее 500 символов.
+
+КАНОНИЧЕСКИЙ ВОПРОС:
+{canonical_prompt}
+
+РАНЕЕ ПОКАЗАННЫЕ ФОРМУЛИРОВКИ (не повторяй дословно):
+{previous or "нет"}
+
+Верни только JSON с полем prompt.
+""".strip()

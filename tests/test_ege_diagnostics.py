@@ -9,6 +9,7 @@ from src.services.ege_exam_service import (
 from src.learning_dna.engine import apply_confirmed_ege_diagnostics
 from src.ai_engine.diagnostics import (
     CONTROL_PROBES,
+    apply_ai_probe_wording,
     DIAGNOSIS_CONFIRMED,
     DIAGNOSIS_NEEDS_EVIDENCE,
     DIAGNOSIS_PROBABLE,
@@ -48,6 +49,20 @@ def test_wrong_final_answer_does_not_invent_failed_step():
     assert confirmed_cases([case]) == []
 
 
+def test_ai_changes_wording_but_not_local_probe_identity():
+    case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
+    probe = next_control_probe(case)
+    updated = apply_ai_probe_wording(
+        case,
+        probe,
+        json.dumps({"prompt": "Вычислите остаток при первом делении."}),
+    )
+    displayed = next_control_probe(updated)
+    assert displayed["probe_id"] == probe["probe_id"]
+    assert displayed["prompt"] == "Вычислите остаток при первом делении."
+    assert displayed["source"] == "ai_wording_local_answer"
+
+
 def test_self_report_is_only_probable():
     case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
     case = record_student_step(case, 0)
@@ -56,7 +71,7 @@ def test_self_report_is_only_probable():
     assert confirmed_cases([case]) == []
 
 
-def test_failed_control_probe_confirms_exact_step():
+def test_one_failed_control_probe_is_only_probable():
     case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
     case = record_control_probe(
         case,
@@ -65,10 +80,10 @@ def test_failed_control_probe_confirms_exact_step():
         is_correct=False,
         observed_answer="остаток 38",
     )
-    assert case["status"] == DIAGNOSIS_CONFIRMED
+    assert case["status"] == DIAGNOSIS_PROBABLE
     assert case["failed_step"] == "получать цифры делением с остатком"
-    assert case["confidence"] == 0.95
-    assert confirmed_cases([case]) == [case]
+    assert case["confidence"] == 0.6
+    assert confirmed_cases([case]) == []
 
 
 def test_medoid_probe_accepts_cyrillic_lookalike_for_latin_b():
@@ -111,7 +126,10 @@ def test_passed_probe_rejects_previous_hypothesis():
 
 
 def test_task14_probes_cover_every_operation():
-    validate_control_probes(SKILL_MAP)
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    validate_control_probes(full_map)
     case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
     probe_ids = []
     for correct_answer in ("2", "да", "4"):
@@ -127,6 +145,8 @@ def test_failed_task14_probe_creates_learning_dna_signal():
     case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
     probe = next_control_probe(case)
     case = answer_control_probe(case, probe["probe_id"], "38")
+    probe = next_control_probe(case)
+    case = answer_control_probe(case, probe["probe_id"], "нет")
     signal = confirmed_case_to_check_result(case)
     assert signal["status"] == "has_error"
     assert signal["skill_id"] == "number_systems.base_conversion"
@@ -160,7 +180,7 @@ def test_all_27_tasks_have_one_probe_per_operation():
         )
 
 
-def test_every_probe_accepts_its_declared_answer_and_confirms_wrong_answer():
+def test_every_probe_accepts_its_declared_answer_and_keeps_one_error_probable():
     skill_map_path = Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json"
     if not skill_map_path.exists():
         skill_map_path = Path(__file__).parents[1] / "repo_snapshot" / "src" / "skills" / "ege_informatics_2026.json"
@@ -174,7 +194,7 @@ def test_every_probe_accepts_its_declared_answer_and_confirms_wrong_answer():
             assert passed["failed_step"] is None
 
             failed = answer_control_probe(case, probe["id"], "заведомо неверный ответ")
-            assert failed["status"] == DIAGNOSIS_CONFIRMED
+            assert failed["status"] == DIAGNOSIS_PROBABLE
             assert failed["failed_step"] == case["operations"][probe["operation_index"]]
 
 
@@ -217,6 +237,7 @@ def test_attempt_diagnostics_end_when_all_wrong_tasks_are_classified():
     }
 
     submit_diagnostic_answer(attempt, "заведомо неверный ответ")
+    submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert attempt.diagnostics[1]["status"] == DIAGNOSIS_CONFIRMED
     assert next_attempt_diagnostic_probe(attempt) is None
 
@@ -229,8 +250,12 @@ def test_confirmed_ege_evidence_is_applied_to_learning_dna_exactly_once():
     attempt = ExamAttempt(attempt_id="attempt-fixed", current_task=28)
     case = open_diagnostic_case(14, "wrong", "expected", skill_map)
     probe = next_control_probe(case)
+    case = answer_control_probe(case, probe["probe_id"], "заведомо неверно")
+    second_probe = next_control_probe(case)
     attempt.diagnostics = {
-        14: answer_control_probe(case, probe["probe_id"], "заведомо неверно")
+        14: answer_control_probe(
+            case, second_probe["probe_id"], "заведомо неверно"
+        )
     }
 
     dna, first = apply_confirmed_ege_diagnostics(None, 123, attempt)
