@@ -1,9 +1,23 @@
-from src.services.ege_exam_service import ExamAttempt, render_summary, submit_answer
+from src.services.ege_exam_service import (
+    ExamAttempt,
+    create_pilot_diagnostic_attempt,
+    render_summary,
+    submit_answer,
+)
 from src.ai_engine.ege_open_variant_2026 import OPEN_VARIANT_2026
 
 
 def answer_text(task):
     return "\n".join(" ".join(row) for row in task.answer_rows)
+
+
+def test_pilot_diagnostic_attempt_contains_only_selected_tasks():
+    attempt = create_pilot_diagnostic_attempt()
+
+    assert attempt.finished is True
+    assert set(attempt.diagnostics) == {5, 14, 27}
+    assert set(attempt.answers) == {5, 14, 27}
+    assert all(result is False for result in attempt.results.values())
 
 
 def test_complete_all_27_with_official_answers():
