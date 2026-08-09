@@ -71,6 +71,29 @@ def test_failed_control_probe_confirms_exact_step():
     assert confirmed_cases([case]) == [case]
 
 
+def test_medoid_probe_accepts_cyrillic_lookalike_for_latin_b():
+    skill_map = {
+        "tasks": [{
+            "number": 27,
+            "title": "Кластеризация",
+            "skills": ["clustering.medoid"],
+            "operations": [
+                "разделить точки на кластеры",
+                "найти медоид",
+                "отфильтровать точки по метке",
+                "найти максимальное расстояние",
+            ],
+            "typical_errors": [],
+        }]
+    }
+    case = open_diagnostic_case(27, "wrong", "correct", skill_map)
+    case = answer_control_probe(case, "task27_clusters_v2", "2")
+    updated = answer_control_probe(case, "task27_medoid_v2", "В")
+
+    assert updated["evidence"][-1]["is_correct"] is True
+    assert updated["status"] != DIAGNOSIS_CONFIRMED
+
+
 def test_passed_probe_rejects_previous_hypothesis():
     case = record_student_step(
         open_diagnostic_case(14, "1012", "1013", SKILL_MAP), 0

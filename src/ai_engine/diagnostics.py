@@ -163,7 +163,24 @@ CONTROL_PROBES = {
 
 
 def _normalize_probe_answer(value: str) -> str:
-    return " ".join(re.findall(r"[a-zа-яё]+|[-+]?\d+", value.lower()))
+    normalized = " ".join(re.findall(r"[a-zа-яё]+|[-+]?\d+", value.lower()))
+    # Telegram users may answer letter-labelled choices from a Russian keyboard.
+    # Treat visually identical Cyrillic letters as their Latin counterparts.
+    if len(normalized) == 1:
+        normalized = normalized.translate(str.maketrans({
+            "а": "a",
+            "в": "b",
+            "с": "c",
+            "е": "e",
+            "н": "h",
+            "к": "k",
+            "м": "m",
+            "о": "o",
+            "р": "p",
+            "т": "t",
+            "х": "x",
+        }))
+    return normalized
 
 
 def validate_control_probes(skill_map: dict) -> None:
