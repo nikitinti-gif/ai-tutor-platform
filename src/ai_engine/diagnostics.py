@@ -42,10 +42,10 @@ CONTROL_PROBES = {
         {"id": "task04_min_word_v1", "operation_index": 2, "prompt": "Из допустимых кодовых слов 110, 1110 и 1111 выберите слово минимальной длины.", "expected_answers": ("110",)},
     ),
     5: (
-        {"id": "task05_binary_v1", "operation_index": 0, "prompt": "Запишите число 13 в двоичной системе без ведущих нулей.", "expected_answers": ("1101",)},
-        {"id": "task05_branch_v1", "operation_index": 1, "prompt": "Если последняя двоичная цифра равна 1, выполняется ветка A, иначе B. Какая ветка для строки 1010?", "expected_answers": ("B", "Б")},
-        {"id": "task05_string_change_v1", "operation_index": 2, "prompt": "К двоичной строке 101 приписали справа 0. Какая строка получилась?", "expected_answers": ("1010",)},
-        {"id": "task05_boundary_v1", "operation_index": 3, "prompt": "Условию n < 8 удовлетворяет граничное целое 8? Ответьте да или нет.", "expected_answers": ("нет", "no")},
+        {"id": "task05_binary_v2", "operation_index": 0, "prompt": "Переведите число 19 в двоичную систему. Запишите только двоичную запись.", "expected_answers": ("10011",)},
+        {"id": "task05_branch_v2", "operation_index": 1, "prompt": "Алгоритм проверяет последнюю цифру двоичной записи: если она равна 1, справа дописывается 0; иначе дописывается 11. Для N=11 выберите применяемую ветку: ветка 1 или ветка 0.", "expected_answers": ("ветка 1", "1")},
+        {"id": "task05_string_change_v2", "operation_index": 2, "prompt": "Для N=11 двоичная запись равна 1011. По правилу для последней цифры 1 справа дописывается 0. Запишите получившуюся двоичную строку.", "expected_answers": ("10110",)},
+        {"id": "task05_boundary_v2", "operation_index": 3, "prompt": "Известно, что N=11 удовлетворяет условию поиска, а N=12 уже не удовлетворяет. Какое наибольшее целое N подходит?", "expected_answers": ("11",)},
     ),
     6: (
         {"id": "task06_contour_v1", "operation_index": 0, "prompt": "Черепаха прошла вправо 4, вверх 3, влево 4, вниз 3. Замкнут ли контур? Ответьте да или нет.", "expected_answers": ("да", "yes")},
@@ -88,30 +88,9 @@ CONTROL_PROBES = {
         {"id": "task13_max_host_v1", "operation_index": 2, "prompt": "Для сети 192.168.1.0/30 укажите последний октет максимального адреса узла.", "expected_answers": ("2",)},
     ),
     14: (
-        {
-            "id": "task14_remainder_v1",
-            "operation_index": 0,
-            "prompt": "Какой остаток получится при делении 254 на 36?",
-            "expected_answers": ("2",),
-        },
-        {
-            "id": "task14_digit_property_v1",
-            "operation_index": 1,
-            "prompt": (
-                "Сколько цифр с чётным значением среди цифр "
-                "A, B, C, D в 36-ричной системе?"
-            ),
-            "expected_answers": ("2",),
-        },
-        {
-            "id": "task14_count_all_digits_v1",
-            "operation_index": 2,
-            "prompt": (
-                "При разборе числа получены цифры 2, 0, 4, 0, 6. "
-                "Сколько среди них цифр с чётным значением?"
-            ),
-            "expected_answers": ("5",),
-        },
+        {"id": "task14_remainder_v2", "operation_index": 0, "prompt": "При переводе числа 1298 в 36-ричную систему сначала делят 1298 на 36. Какой остаток получится?", "expected_answers": ("2",)},
+        {"id": "task14_digit_property_v2", "operation_index": 1, "prompt": "В 36-ричной системе цифра C имеет значение 12. Учитывается ли C при подсчёте цифр с чётным числовым значением? Ответьте да или нет.", "expected_answers": ("да", "yes")},
+        {"id": "task14_count_all_digits_v2", "operation_index": 2, "prompt": "В цикле деления на 36 получены остатки 5, 0 и 2, после чего частное стало равно 1. Этот последний ненулевой разряд тоже нужно записать. Сколько всего цифр будет в записи числа?", "expected_answers": ("4",)},
     ),
     15: (
         {"id": "task15_implication_v1", "operation_index": 0, "prompt": "Чему равна импликация 1→0?", "expected_answers": ("0",)},
@@ -175,10 +154,10 @@ CONTROL_PROBES = {
         {"id": "task26_revenue_v1", "operation_index": 3, "prompt": "Продано 7 единиц по цене 150. Найдите выручку.", "expected_answers": ("1050",)},
     ),
     27: (
-        {"id": "task27_clusters_v1", "operation_index": 0, "prompt": "Точки образуют две явно раздельные группы по 4 точки. Сколько кластеров?", "expected_answers": ("2",)},
-        {"id": "task27_medoid_v1", "operation_index": 1, "prompt": "Суммы расстояний от точек A, B, C до остальных равны 10, 6, 9. Какая точка является медоидом?", "expected_answers": ("B", "Б")},
-        {"id": "task27_labels_v1", "operation_index": 2, "prompt": "После фильтра меток 1, 2, 1, 3 по метке 1 сколько точек останется?", "expected_answers": ("2",)},
-        {"id": "task27_distance_v1", "operation_index": 3, "prompt": "Найдите евклидово расстояние между точками (0,0) и (3,4).", "expected_answers": ("5",)},
+        {"id": "task27_clusters_v2", "operation_index": 0, "prompt": "Даны точки (0,0), (0,2), (8,8), (10,8). Внутри каждой пары расстояние равно 2, а между парами значительно больше. Сколько естественных кластеров образуют точки?", "expected_answers": ("2",)},
+        {"id": "task27_medoid_v2", "operation_index": 1, "prompt": "Для трёх точек одного кластера суммы расстояний до остальных равны: A — 8, B — 5, C — 7. Какая точка является медоидом?", "expected_answers": ("B", "Б")},
+        {"id": "task27_labels_v2", "operation_index": 2, "prompt": "После кластеризации получены метки 2, 1, 2, 2, 1, 2. Сколько точек относится к кластеру с меткой 2?", "expected_answers": ("4",)},
+        {"id": "task27_distance_v2", "operation_index": 3, "prompt": "Медоид кластера находится в точке (1,1). Расстояния от него до остальных точек равны 3, 4 и 2. Каково максимальное расстояние внутри этого кластера?", "expected_answers": ("4",)},
     ),
 }
 
