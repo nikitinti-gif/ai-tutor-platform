@@ -91,7 +91,7 @@ def test_task14_probes_cover_every_operation():
     validate_control_probes(SKILL_MAP)
     case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
     probe_ids = []
-    for correct_answer in ("2", "2", "5"):
+    for correct_answer in ("2", "да", "4"):
         probe = next_control_probe(case)
         probe_ids.append(probe["probe_id"])
         case = answer_control_probe(case, probe["probe_id"], correct_answer)
