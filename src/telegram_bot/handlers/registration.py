@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 role_menu = ReplyKeyboardMarkup(
     keyboard=[
+        [KeyboardButton(text="👨‍🎓 Ученик")],
         [KeyboardButton(text="👨‍👩‍👧 Родитель")],
     ],
     resize_keyboard=True,
@@ -73,11 +74,16 @@ async def start_handler(message: Message):
 
 
 async def register_student(message: Message):
-    user = UserRepository.create(
-        telegram_id=message.from_user.id,
-        full_name=message.from_user.full_name,
-        role=ROLE_STUDENT,
-    )
+    try:
+        user = UserRepository.create(
+            telegram_id=message.from_user.id,
+            full_name=message.from_user.full_name,
+            role=ROLE_STUDENT,
+        )
+    except Exception:
+        logger.exception("Student registration failed")
+        await message.answer("🔴 Не удалось зарегистрироваться. Попробуйте позже.")
+        return
 
     await message.answer(
         f"Готово! Ты зарегистрирован как {ROLE_NAMES[user['role']]}.\n\n"
@@ -129,5 +135,6 @@ async def register_teacher(message: Message):
 
 def register_registration_handlers(dp: Dispatcher):
     dp.message.register(start_handler, CommandStart())
+    dp.message.register(register_student, F.text == "👨‍🎓 Ученик")
     dp.message.register(register_parent, F.text == "👨‍👩‍👧 Родитель")
     dp.message.register(register_teacher, F.text == "👩‍🏫 Преподаватель")
