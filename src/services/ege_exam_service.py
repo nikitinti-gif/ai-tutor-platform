@@ -65,7 +65,7 @@ def _generate_self_check_probe(task_number: int, operation_index: int) -> dict:
     from src.ai_engine.live_diagnostic_probes import (
         _scenario,
         build_live_probe,
-        generate_live_probe_values,
+        generate_live_probe_data,
     )
 
     case = open_diagnostic_case(
@@ -83,8 +83,9 @@ def _generate_self_check_probe(task_number: int, operation_index: int) -> dict:
     for attempt_number in range(1, 4):
         raw = None
         try:
-            values = generate_live_probe_values(task_number, operation_index)
-            fields, _ = _scenario(task_number, operation_index, {"values": values})
+            probe_data = generate_live_probe_data(task_number, operation_index)
+            values = probe_data["values"]
+            fields, _ = _scenario(task_number, operation_index, probe_data)
             raw = _generate_wording_with_rate_limit_retry(
                 client,
                 task_number=task_number,
@@ -100,8 +101,11 @@ def _generate_self_check_probe(task_number: int, operation_index: int) -> dict:
                 raw,
                 previous_prompts=rejected_prompts,
                 values=values,
+                variant=str(probe_data["variant"]),
             )
             generated["generation_attempts"] = attempt_number
+            generated["python_inputs"] = probe_data
+            generated["scenario_fields"] = fields
             return generated
         except Exception as error:
             errors.append(
@@ -124,6 +128,7 @@ async def run_live_diagnostic_self_check(bot) -> None:
     scenarios = ((5, 4), (14, 3), (27, 4))
     passed: list[str] = []
     failed: list[str] = []
+    probes: list[dict] = []
     logger.info("LIVE_DIAGNOSTIC_SELF_CHECK started scenarios=11")
 
     for task_number, operation_count in scenarios:
@@ -136,6 +141,17 @@ async def run_live_diagnostic_self_check(bot) -> None:
                     operation_index,
                 )
                 passed.append(label)
+                probes.append({
+                    "task_number": task_number,
+                    "operation_index": operation_index,
+                    "variant": result["variant"],
+                    "prompt": result["prompt"],
+                    "python_inputs": result["python_inputs"],
+                    "scenario_fields": result["scenario_fields"],
+                    "expected_answer": result["expected_answers"][0],
+                    "generation_attempts": result["generation_attempts"],
+                    "source": "AI_PROBE",
+                })
                 logger.info(
                     "LIVE_DIAGNOSTIC_SELF_CHECK AI_PROBE %s attempts=%s prompt=%r",
                     label,
@@ -162,6 +178,7 @@ async def run_live_diagnostic_self_check(bot) -> None:
                 "status": status,
                 "passed": len(passed),
                 "total": 11,
+                "probes": probes,
                 "failures": failed,
             },
             ensure_ascii=False,
@@ -360,7 +377,7 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
         return probe
 
     from src.ai_engine.llm_client import LLMClient
-    from src.ai_engine.live_diagnostic_probes import build_live_probe, generate_live_probe_values, _scenario, PILOT_TASKS
+    from src.ai_engine.live_diagnostic_probes import build_live_probe, generate_live_probe_data, _scenario, PILOT_TASKS
 
     task_number = probe["task_number"]
     if task_number not in PILOT_TASKS:
@@ -373,8 +390,9 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
     for attempt_number in range(1, 4):
         raw = None
         try:
-            values = generate_live_probe_values(task_number, probe["operation_index"])
-            fields, _ = _scenario(task_number, probe["operation_index"], {"values": values})
+            probe_data = generate_live_probe_data(task_number, probe["operation_index"])
+            values = probe_data["values"]
+            fields, _ = _scenario(task_number, probe["operation_index"], probe_data)
             raw = _generate_wording_with_rate_limit_retry(
                 client,
                 task_number=task_number,
@@ -387,7 +405,7 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
             generated = build_live_probe(case, {
                 "id": probe["base_probe_id"],
                 "operation_index": probe["operation_index"],
-            }, raw, previous_prompts=context["previous_prompts"] + rejected_prompts, values=values)
+            }, raw, previous_prompts=context["previous_prompts"] + rejected_prompts, values=values, variant=str(probe_data["variant"]))
             break
         except Exception as error:
             errors.append(f"attempt {attempt_number}: {type(error).__name__}: {error}")

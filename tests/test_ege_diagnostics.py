@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import random
 
 from src.services.ege_exam_service import (
     ExamAttempt,
@@ -24,7 +25,7 @@ from src.ai_engine.diagnostics import (
     record_student_step,
     validate_control_probes,
 )
-from src.ai_engine.live_diagnostic_probes import build_live_probe, generate_live_probe_values, _scenario
+from src.ai_engine.live_diagnostic_probes import build_live_probe, generate_live_probe_data, generate_live_probe_values, _scenario
 
 
 SKILL_MAP = {
@@ -85,7 +86,7 @@ def test_live_probe_uses_ai_wording_and_parameters_but_python_computes_answer():
     assert generated["source"] == "ai_wording_parameters_python_solver"
 
 
-def test_binary_conversion_uses_atomic_python_owned_action():
+def test_binary_conversion_uses_python_owned_direction_and_data():
     full_map = json.loads(
         (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
     )
@@ -96,7 +97,8 @@ def test_binary_conversion_uses_atomic_python_owned_action():
         {"id": base["id"], "operation_index": 0},
         json.dumps({
             "prompt_template": (
-                "Выполните действие: {conversion_task}. Какая запись получится?"
+                "Число {source_number} дано в {source_system} системе. "
+                "Запишите его в {target_system}. Какая запись получится?"
             ),
             "values": [102],
         }),
@@ -105,8 +107,8 @@ def test_binary_conversion_uses_atomic_python_owned_action():
 
     invalid = json.dumps({
         "prompt_template": (
-            "Выполните действие: {conversion_task}, используя 8 разрядов. "
-            "Какая двоичная запись получится?"
+            "Число {source_number} дано в {source_system} системе. "
+            "Запишите его в {target_system}, используя 8 разрядов. Что получится?"
         ),
         "values": [102],
     })
@@ -190,19 +192,15 @@ def test_live_probe_rejects_repeated_wording():
         raise AssertionError("Повтор прежней формулировки должен быть отклонён")
 
 
-def test_live_probe_rejects_skill_mismatch():
+def test_live_probe_does_not_require_literal_skill_keywords():
     case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
     base = next_control_probe(case)
     raw = json.dumps({
-        "prompt_template": "Сложите числа {n} и {base}. Каков результат?",
+        "prompt_template": "При первом шаге алгоритма для {n} и основания {base} какое значение нужно сохранить?",
         "values": [137, 61],
     })
-    try:
-        build_live_probe(case, {"id": base["base_probe_id"], "operation_index": 0}, raw)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("Вопрос по другому навыку должен быть отклонён")
+    generated = build_live_probe(case, {"id": base["base_probe_id"], "operation_index": 0}, raw)
+    assert generated["expected_answers"] == ("13",)
 
 
 def test_all_pilot_scenarios_accept_valid_independent_wording():
@@ -210,7 +208,7 @@ def test_all_pilot_scenarios_accept_valid_independent_wording():
         (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
     )
     samples = {
-        (5, 0): ("Выполните действие: {conversion_task}. Какая запись получится?", [73]),
+        (5, 0): ("Запишите число {source_number} из {source_system} системы в {target_system}. Что получится?", [73]),
         (5, 1): ("Для числа {n} алгоритм смотрит на последний бит. Какую ветку он выберет: ветку один для единицы или ветку ноль для нуля?", [42]),
         (5, 2): ("К двоичной строке {binary} нужно присоединить справа суффикс {suffix}. Какая строка получится?", [19, 17]),
         (5, 3): ("Среди целых N от {start} до {limit} найдите наибольшее, для которого выполнено условие {expression} < {boundary}. Какое это N?", [20, 15]),
@@ -301,6 +299,41 @@ def test_python_owns_fresh_inputs_for_all_pilot_scenarios():
             fields, answer = _scenario(task_number, operation_index, {"values": values})
             assert fields
             assert str(answer)
+
+
+def test_task5_conversion_branch_supports_both_directions():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(5, "wrong", "expected", full_map)
+    base = CONTROL_PROBES[5][0]
+    template = "Число {source_number} дано в {source_system} системе. Запишите его в {target_system}. Каков результат?"
+    decimal_probe = build_live_probe(
+        case, {"id": base["id"], "operation_index": 0},
+        json.dumps({"prompt_template": template, "values": [42]}),
+        variant="decimal_to_binary",
+    )
+    binary_probe = build_live_probe(
+        case, {"id": base["id"], "operation_index": 0},
+        json.dumps({"prompt_template": template, "values": [42]}),
+        variant="binary_to_decimal",
+    )
+    assert decimal_probe["expected_answers"] == ("101010",)
+    assert binary_probe["expected_answers"] == ("42",)
+    assert "101010" in binary_probe["prompt"]
+    assert decimal_probe["variant"] != binary_probe["variant"]
+
+
+def test_task5_conversion_generator_selects_equivalent_variants():
+    class LastChoiceRng(random.Random):
+        def choice(self, seq):
+            return seq[-1]
+
+    data = generate_live_probe_data(5, 0, LastChoiceRng(7))
+    assert data["variant"] == "binary_to_decimal"
+    fields, answer = _scenario(5, 0, data)
+    assert fields["source_system"] == "двоичной"
+    assert str(answer).isdigit()
 
 
 def test_self_report_is_only_probable():

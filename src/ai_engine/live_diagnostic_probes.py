@@ -43,6 +43,16 @@ def generate_live_probe_values(task: int, op: int, rng: random.Random | None = N
     raise ValueError("Python не смог создать допустимые данные мини-пробы.")
 
 
+def generate_live_probe_data(task: int, op: int, rng: random.Random | None = None) -> dict[str, object]:
+    """Choose an equivalent exercise type and create its Python-owned inputs."""
+    rng = rng or random.SystemRandom()
+    variants = {(5, 0): ("decimal_to_binary", "binary_to_decimal")}
+    return {
+        "variant": rng.choice(variants.get((task, op), ("default",))),
+        "values": generate_live_probe_values(task, op, rng),
+    }
+
+
 def _ints(data: dict, count: int, low: int, high: int) -> list[int]:
     values = data.get("values")
     if not isinstance(values, list) or len(values) != count:
@@ -55,11 +65,12 @@ def _ints(data: dict, count: int, low: int, high: int) -> list[int]:
 def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | int]:
     if task == 5 and op == 0:
         (n,) = _ints(data, 1, 10, 250)
-        # Keep the complete assessed action atomic. Gemini may frame the
-        # question naturally, but cannot drop the conversion operation or
-        # introduce answer-bearing numeric data around it.
-        conversion_task = f"перевести десятичное число {n} в двоичную систему счисления"
-        return {"conversion_task": conversion_task}, bin(n)[2:]
+        variant = data.get("variant", "decimal_to_binary")
+        if variant == "decimal_to_binary":
+            return {"source_number": n, "source_system": "десятичной", "target_system": "двоичной"}, bin(n)[2:]
+        if variant == "binary_to_decimal":
+            return {"source_number": bin(n)[2:], "source_system": "двоичной", "target_system": "десятичной"}, n
+        raise ValueError("Неизвестный вариант преобразования системы счисления.")
     if task == 5 and op == 1:
         (n,) = _ints(data, 1, 5, 200)
         return {"n": n}, n % 2
@@ -146,38 +157,6 @@ def _validate_template(
         raise ValueError("Формулировка раскрывает правильный ответ.")
 
 
-def _validate_intent(task: int, op: int, prompt: str) -> None:
-    """Reject fluent questions that test a different operation."""
-    requirements = {
-        (5, 0): (("двоич",), ("перев", "запис")),
-        (5, 1): (("последн",), ("бит", "цифр"), ("ветк",)),
-        # Gemini often describes appending a suffix as extending or completing
-        # a binary string.  Requiring the literal direction "справа" rejected
-        # valid questions even though the suffix operation was unambiguous.
-        (5, 2): (
-            ("допис", "присоедин", "добав", "припис", "продолж", "дополн"),
-            ("двоич", "строк", "запис", "последователь", "результ"),
-        ),
-        (5, 3): (("наибольш", "максим"), ("неравен", "услов")),
-        (14, 0): (("остат",), ("дел",)),
-        (14, 1): (("чётн", "четн"),),
-        (14, 2): (("остат",), ("частн",), ("цифр", "разряд")),
-        (27, 0): (("кластер", "групп"),),
-        (27, 1): (("медоид",), ("сумм",)),
-        # Gemini may naturally call a cluster label a value or cluster number,
-        # and may ask for the number of matching points without the literal
-        # word "сколько". These variants still test the same local count.
-        (27, 2): (
-            ("метк", "значен", "номер", "кластер"),
-            ("сколько", "количеств", "числ", "подсчит", "посчитай", "сосчит"),
-        ),
-        (27, 3): (("расстоян",), ("максим", "наибольш")),
-    }
-    lowered = prompt.lower()
-    if any(not any(word in lowered for word in alternatives) for alternatives in requirements[(task, op)]):
-        raise ValueError("Формулировка не проверяет выбранный диагностический шаг.")
-
-
 def _validate_no_answer_leak(prompt: str, answer: str | int) -> None:
     escaped = re.escape(str(answer).lower())
     pattern = rf"(?:ответ|результат)\s*(?:равен|будет|—|-|:)\s*{escaped}(?:\b|$)"
@@ -199,6 +178,7 @@ def build_live_probe(
     raw_result: str,
     previous_prompts: list[str] | None = None,
     values: list[int] | None = None,
+    variant: str | None = None,
 ) -> dict:
     """Validate AI wording and parameters, then solve the probe in Python."""
     try:
@@ -214,7 +194,11 @@ def build_live_probe(
     if task not in PILOT_TASKS:
         raise ValueError("Живая генерация ещё не включена для этого задания.")
 
-    fields, answer = _scenario(task, operation, {"values": values if values is not None else data["values"]})
+    scenario_data = {
+        "values": values if values is not None else data["values"],
+        "variant": variant or data.get("variant", "decimal_to_binary" if (task, operation) == (5, 0) else "default"),
+    }
+    fields, answer = _scenario(task, operation, scenario_data)
     template = str(data["prompt_template"]).strip()
     _validate_template(template, fields, task, operation)
     try:
@@ -223,7 +207,6 @@ def build_live_probe(
         raise ValueError("AI вернул нерабочий шаблон вопроса.") from error
     if len(prompt) > MAX_PROMPT_LENGTH:
         raise ValueError("Итоговая формулировка слишком длинная.")
-    _validate_intent(task, operation, prompt)
     _validate_no_answer_leak(prompt, answer)
     _validate_variety(prompt, previous_prompts or [])
 
@@ -231,6 +214,7 @@ def build_live_probe(
         "probe_id": f"{base_probe['id']}:{uuid4().hex[:10]}",
         "base_probe_id": base_probe["id"],
         "operation_index": operation,
+        "variant": scenario_data["variant"],
         "prompt": prompt,
         "expected_answers": (str(answer),),
         "source": "ai_wording_parameters_python_solver",

@@ -238,7 +238,7 @@ def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int
     """Request genuinely new wording for fresh Python-owned inputs."""
     previous = "\n".join(f"- {item}" for item in (previous_prompts or []))
     placeholders_by_operation = {
-        (5, 0): ("conversion_task",), (5, 1): ("n",),
+        (5, 0): ("source_number", "source_system", "target_system"), (5, 1): ("n",),
         (5, 2): ("binary", "suffix"),
         (5, 3): ("start", "limit", "expression", "boundary"),
         (14, 0): ("n", "base"), (14, 1): ("digit", "value"),
@@ -247,7 +247,7 @@ def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int
         (27, 3): ("distances",),
     }
     intents = {
-        (5, 0): "перевести десятичное число в двоичную запись",
+        (5, 0): "перевести source_number из source_system системы счисления в target_system",
         (5, 1): "определить ветку 1 для нечётного N и ветку 0 для чётного N по последнему двоичному биту",
         (5, 2): "дописать заданный суффикс справа к готовой двоичной записи",
         (5, 3): "найти наибольшее целое N в указанном диапазоне, удовлетворяющее строгому неравенству 3N+2 < boundary",
@@ -276,7 +276,7 @@ Python уже создал и проверил данные: {preview}.
 - проверяй только указанное действие, без второго вычислительного шага;
 - задай явный вопрос со знаком вопроса; длина до 500 символов;
 - значения уже проверены и будут подставлены Python после проверки текста.
-{('- плейсхолдер {conversion_task} содержит всё проверяемое действие; сохрани его целиком и добавляй только нейтральное обрамление.' if (task_number, operation_index) == (5, 0) else '')}
+{('- направление перевода уже выбрано Python; не меняй его и не добавляй вторую операцию.' if (task_number, operation_index) == (5, 0) else '')}
 
 Ранее показанные формулировки (создай заметно другую):
 {previous or 'нет'}
