@@ -330,13 +330,13 @@ class LLMClient:
             raise LLMResponseError("Gemini не вернул формулировку мини-пробы.")
         return interaction.output_text
 
-    def generate_live_diagnostic_probe(self, *, task_number: int, operation_index: int, skill_id: str, previous_prompts: list[str] | None = None, synthetic_test: bool = False) -> str:
+    def generate_live_diagnostic_probe(self, *, task_number: int, operation_index: int, skill_id: str, fields: dict[str, object], previous_prompts: list[str] | None = None, synthetic_test: bool = False) -> str:
         if not synthetic_test:
             raise LLMDataPolicyError("AI-мини-пробы пока разрешены только в синтетическом пилоте.")
         interaction = self.client.interactions.create(
             model=self.model,
-            input=build_live_diagnostic_probe_prompt(task_number=task_number, operation_index=operation_index, skill_id=skill_id, previous_prompts=previous_prompts),
-            response_format={"type": "text", "mime_type": "application/json", "schema": {"type": "object", "properties": {"prompt_template": {"type": "string"}, "values": {"type": "array", "items": {"type": "integer"}}}, "required": ["prompt_template", "values"], "additionalProperties": False}},
+            input=build_live_diagnostic_probe_prompt(task_number=task_number, operation_index=operation_index, skill_id=skill_id, fields=fields, previous_prompts=previous_prompts),
+            response_format={"type": "text", "mime_type": "application/json", "schema": {"type": "object", "properties": {"prompt_template": {"type": "string"}}, "required": ["prompt_template"], "additionalProperties": False}},
         )
         if not interaction.output_text:
             raise LLMResponseError("Gemini не вернул живую мини-пробу.")

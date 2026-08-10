@@ -234,15 +234,12 @@ def build_diagnostic_probe_rephrase_prompt(
 """.strip()
 
 
-def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int, skill_id: str, previous_prompts: list[str] | None = None) -> str:
-    """Request genuinely new wording plus inputs for a Python-owned scenario."""
+def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int, skill_id: str, fields: dict[str, object], previous_prompts: list[str] | None = None) -> str:
+    """Request genuinely new wording for fresh Python-owned inputs."""
     previous = "\n".join(f"- {item}" for item in (previous_prompts or []))
-    counts = {(5, 0): 1, (5, 1): 1, (5, 2): 2, (5, 3): 2,
-              (14, 0): 2, (14, 1): 1, (14, 2): 1,
-              (27, 0): 2, (27, 1): 3, (27, 2): 6, (27, 3): 4}
-    fields = {
+    placeholders_by_operation = {
         (5, 0): ("n",), (5, 1): ("n",),
-        (5, 2): ("n", "binary", "suffix"),
+        (5, 2): ("binary", "suffix"),
         (5, 3): ("start", "limit", "expression", "boundary"),
         (14, 0): ("n", "base"), (14, 1): ("digit", "value"),
         (14, 2): ("count",), (27, 0): ("points",),
@@ -262,15 +259,14 @@ def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int
         (27, 2): "посчитать метки target в последовательности labels",
         (27, 3): "найти максимальное из расстояний distances от медоида",
     }
-    count = counts[(task_number, operation_index)]
-    placeholders = ", ".join("{" + name + "}" for name in fields[(task_number, operation_index)])
+    placeholders = ", ".join("{" + name + "}" for name in placeholders_by_operation[(task_number, operation_index)])
+    preview = ", ".join(f"{name}={value}" for name, value in fields.items())
     return f"""
 Создай новую короткую диагностическую мини-пробу по навыку {skill_id}.
 Проверяемое действие: {intents[(task_number, operation_index)]}.
 
-Верни:
-1. prompt_template — самостоятельный вопрос ученику на естественном русском языке;
-2. values — ровно {count} свежих целых входных параметров для Python-решателя.
+Верни prompt_template — самостоятельный вопрос ученику на естественном русском языке.
+Python уже создал и проверил данные: {preview}.
 
 Жёсткие правила prompt_template:
 - сам придумай композицию и формулировку, не копируй предыдущие вопросы;
@@ -279,11 +275,11 @@ def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int
 - не сообщай и не подсказывай ответ;
 - проверяй только указанное действие, без второго вычислительного шага;
 - задай явный вопрос со знаком вопроса; длина до 500 символов;
-- значения будут подставлены Python после проверки.
+- значения уже проверены и будут подставлены Python после проверки текста.
 
 Ранее показанные формулировки (создай заметно другую):
 {previous or 'нет'}
 
 Верни только JSON:
-{{"prompt_template": "...", "values": [...]}}.
+{{"prompt_template": "..."}}.
 """.strip()

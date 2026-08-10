@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from difflib import SequenceMatcher
 import json
+import random
 import re
 from string import Formatter
 from uuid import uuid4
@@ -15,6 +16,31 @@ from uuid import uuid4
 
 PILOT_TASKS = {5, 14, 27}
 MAX_PROMPT_LENGTH = 500
+
+
+def generate_live_probe_values(task: int, op: int, rng: random.Random | None = None) -> list[int]:
+    """Create fresh solver inputs locally; the model never owns answer-bearing data."""
+    rng = rng or random.SystemRandom()
+    ranges = {
+        (5, 0): ((10, 250),), (5, 1): ((5, 200),),
+        (5, 2): ((5, 200), (5, 200)), (5, 3): ((5, 150), (5, 150)),
+        (14, 0): ((50, 5000), (50, 5000)), (14, 1): ((10, 35),),
+        (14, 2): ((2, 8),), (27, 0): ((12, 30), (6, 30)),
+        (27, 1): ((3, 30), (3, 30), (3, 30)),
+        (27, 2): ((1, 3),) * 6, (27, 3): ((1, 30),) * 4,
+    }
+    try:
+        bounds = ranges[(task, op)]
+    except KeyError as error:
+        raise ValueError("Для этого шага нет генератора данных живой пробы.") from error
+    for _ in range(20):
+        values = [rng.randint(low, high) for low, high in bounds]
+        try:
+            _scenario(task, op, {"values": values})
+            return values
+        except ValueError:
+            continue
+    raise ValueError("Python не смог создать допустимые данные мини-пробы.")
 
 
 def _ints(data: dict, count: int, low: int, high: int) -> list[int]:
@@ -36,7 +62,7 @@ def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | 
     if task == 5 and op == 2:
         n, suffix_seed = _ints(data, 2, 5, 200)
         suffix = 0 if suffix_seed % 2 == 0 else 11
-        return {"n": n, "binary": bin(n)[2:], "suffix": suffix}, f"{bin(n)[2:]}{suffix}"
+        return {"binary": bin(n)[2:], "suffix": suffix}, f"{bin(n)[2:]}{suffix}"
     if task == 5 and op == 3:
         start, width = _ints(data, 2, 5, 150)
         limit = start + 3 + width % 6
@@ -115,7 +141,7 @@ def _validate_intent(task: int, op: int, prompt: str) -> None:
         (5, 1): (("последн",), ("бит", "цифр"), ("ветк",)),
         (5, 2): (("допис", "присоедин"), ("справа", "конец", "окончан")),
         (5, 3): (("наибольш", "максим"), ("неравен", "услов")),
-        (14, 0): (("остат",), ("делен", "делит")),
+        (14, 0): (("остат",), ("дел",)),
         (14, 1): (("чётн", "четн"),),
         (14, 2): (("остат",), ("частн",), ("цифр", "разряд")),
         (27, 0): (("кластер", "групп"),),
@@ -148,13 +174,15 @@ def build_live_probe(
     base_probe: dict,
     raw_result: str,
     previous_prompts: list[str] | None = None,
+    values: list[int] | None = None,
 ) -> dict:
     """Validate AI wording and parameters, then solve the probe in Python."""
     try:
         data = json.loads(raw_result)
     except (TypeError, json.JSONDecodeError) as error:
         raise ValueError("AI вернул некорректный JSON мини-пробы.") from error
-    if set(data) != {"prompt_template", "values"}:
+    expected_keys = {"prompt_template"} if values is not None else {"prompt_template", "values"}
+    if set(data) != expected_keys:
         raise ValueError("AI нарушил контракт живой мини-пробы.")
 
     task = int(case["task_number"])
@@ -162,7 +190,7 @@ def build_live_probe(
     if task not in PILOT_TASKS:
         raise ValueError("Живая генерация ещё не включена для этого задания.")
 
-    fields, answer = _scenario(task, operation, data)
+    fields, answer = _scenario(task, operation, {"values": values if values is not None else data["values"]})
     template = str(data["prompt_template"]).strip()
     _validate_template(template, fields)
     try:

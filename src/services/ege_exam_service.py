@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
 import json
+import logging
 from uuid import uuid4
 
 from src.ai_engine.ege_open_variant_2026 import (
@@ -22,6 +23,7 @@ from src.skills.skill_graph import load_skill_map
 
 TOTAL_TASKS = 27
 PROGRESS_WIDTH = 12
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -210,7 +212,7 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
         return probe
 
     from src.ai_engine.llm_client import LLMClient
-    from src.ai_engine.live_diagnostic_probes import build_live_probe, PILOT_TASKS
+    from src.ai_engine.live_diagnostic_probes import build_live_probe, generate_live_probe_values, _scenario, PILOT_TASKS
 
     task_number = probe["task_number"]
     if task_number not in PILOT_TASKS:
@@ -219,23 +221,27 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
     context = diagnostic_probe_context(case)
     client = LLMClient()
     rejected_prompts: list[str] = []
-    last_error: ValueError | None = None
-    for _ in range(3):
-        raw = client.generate_live_diagnostic_probe(
-            task_number=task_number,
-            operation_index=probe["operation_index"],
-            skill_id=context["skill_id"],
-            previous_prompts=context["previous_prompts"] + rejected_prompts,
-            synthetic_test=True,
-        )
+    errors: list[str] = []
+    for attempt_number in range(1, 4):
+        raw = None
         try:
+            values = generate_live_probe_values(task_number, probe["operation_index"])
+            fields, _ = _scenario(task_number, probe["operation_index"], {"values": values})
+            raw = client.generate_live_diagnostic_probe(
+                task_number=task_number,
+                operation_index=probe["operation_index"],
+                skill_id=context["skill_id"],
+                fields=fields,
+                previous_prompts=context["previous_prompts"] + rejected_prompts,
+                synthetic_test=True,
+            )
             generated = build_live_probe(case, {
                 "id": probe["base_probe_id"],
                 "operation_index": probe["operation_index"],
-            }, raw, previous_prompts=context["previous_prompts"] + rejected_prompts)
+            }, raw, previous_prompts=context["previous_prompts"] + rejected_prompts, values=values)
             break
-        except ValueError as error:
-            last_error = error
+        except Exception as error:
+            errors.append(f"attempt {attempt_number}: {type(error).__name__}: {error}")
             try:
                 rejected = str(json.loads(raw).get("prompt_template", "")).strip()
             except (TypeError, json.JSONDecodeError):
@@ -243,7 +249,15 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
             if rejected:
                 rejected_prompts.append(rejected)
     else:
-        raise last_error or ValueError("AI не создал качественную мини-пробу за три попытки.")
+        case["probe_generation"] = {"status": "fallback", "errors": errors}
+        logger.warning(
+            "FALLBACK_PROBE task=%s operation=%s errors=%s",
+            task_number,
+            probe["operation_index"],
+            " | ".join(errors),
+        )
+        return next_attempt_diagnostic_probe(attempt)
+    generated["generation_attempts"] = len(errors) + 1
     attempt.diagnostics[task_number] = apply_live_probe(case, generated)
     return next_attempt_diagnostic_probe(attempt)
 
@@ -275,12 +289,23 @@ def render_diagnostic_probe(attempt: ExamAttempt) -> str:
     if probe is None:
         return ""
 
+    case = attempt.diagnostics[probe["task_number"]]
+    generation = case.get("probe_generation", {})
+    if probe.get("source") == "ai_wording_parameters_python_solver":
+        source = "🧪 Источник: AI_PROBE\n"
+    elif generation.get("status") == "fallback":
+        errors = generation.get("errors") or []
+        detail = f"Причина: {errors[-1]}\n" if errors else ""
+        source = f"⚠️ Источник: FALLBACK_PROBE\n{detail}"
+    else:
+        source = ""
     return (
         "━━━━━━━━━━━━━━━━━━━━\n"
         "🔎 ДИАГНОСТИКА ОШИБКИ\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"Задание КЕГЭ №{probe['task_number']}\n"
         "Проверяем один конкретный шаг решения.\n\n"
+        f"{source}"
         f"{probe['prompt']}\n\n"
         "✍️ Отправь только ответ."
     )

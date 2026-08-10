@@ -22,7 +22,7 @@ from src.ai_engine.diagnostics import (
     record_student_step,
     validate_control_probes,
 )
-from src.ai_engine.live_diagnostic_probes import build_live_probe
+from src.ai_engine.live_diagnostic_probes import build_live_probe, generate_live_probe_values, _scenario
 
 
 SKILL_MAP = {
@@ -157,7 +157,7 @@ def test_all_pilot_scenarios_accept_valid_independent_wording():
     samples = {
         (5, 0): ("Запишите в двоичной системе десятичное значение {n}. Какая запись получится?", [73]),
         (5, 1): ("Для числа {n} алгоритм смотрит на последний бит. Какую ветку он выберет: ветку один для единицы или ветку ноль для нуля?", [42]),
-        (5, 2): ("К двоичной строке {binary}, полученной из N={n}, нужно присоединить справа суффикс {suffix}. Какая строка получится?", [19, 17]),
+        (5, 2): ("К двоичной строке {binary} нужно присоединить справа суффикс {suffix}. Какая строка получится?", [19, 17]),
         (5, 3): ("Среди целых N от {start} до {limit} найдите наибольшее, для которого выполнено условие {expression} < {boundary}. Какое это N?", [20, 15]),
         (14, 0): ("Перевод числа {n} в основание {base} начинают с деления. Какой остаток возникнет на этом шаге?", [913, 67]),
         (14, 1): ("У цифры {digit} числовое значение {value}. Чётное ли оно? Ответьте да или нет.", [17]),
@@ -177,6 +177,15 @@ def test_all_pilot_scenarios_accept_valid_independent_wording():
         )
         assert generated["prompt"]
         assert generated["expected_answers"]
+
+
+def test_python_owns_fresh_inputs_for_all_pilot_scenarios():
+    for task_number, operation_count in ((5, 4), (14, 3), (27, 4)):
+        for operation_index in range(operation_count):
+            values = generate_live_probe_values(task_number, operation_index)
+            fields, answer = _scenario(task_number, operation_index, {"values": values})
+            assert fields
+            assert str(answer)
 
 
 def test_self_report_is_only_probable():
