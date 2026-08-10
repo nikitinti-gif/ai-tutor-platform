@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field, replace
 import json
 import logging
 import asyncio
+from pathlib import Path
 from uuid import uuid4
 
 from src.ai_engine.ege_open_variant_2026 import (
@@ -26,6 +27,7 @@ from src.skills.skill_graph import load_skill_map
 TOTAL_TASKS = 27
 PROGRESS_WIDTH = 12
 logger = logging.getLogger(__name__)
+SELF_CHECK_RESULT_PATH = Path("/tmp/live_diagnostic_self_check.json")
 
 
 def _generate_self_check_probe(task_number: int, operation_index: int) -> dict:
@@ -123,6 +125,18 @@ async def run_live_diagnostic_self_check(bot) -> None:
         "LIVE_DIAGNOSTIC_SELF_CHECK completed status=%s failures=%s",
         status,
         " | ".join(failed) if failed else "none",
+    )
+    SELF_CHECK_RESULT_PATH.write_text(
+        json.dumps(
+            {
+                "status": status,
+                "passed": len(passed),
+                "total": 11,
+                "failures": failed,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
     )
     message = f"🧪 Реальная самопроверка Gemini завершена: {status}."
     if failed:

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import sys
 
@@ -57,7 +58,20 @@ async def run_polling() -> None:
 
 
 async def health_check(_: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "mode": BOT_MODE})
+    payload = {"status": "ok", "mode": BOT_MODE}
+    if LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED:
+        from src.services.ege_exam_service import SELF_CHECK_RESULT_PATH
+
+        if SELF_CHECK_RESULT_PATH.exists():
+            try:
+                payload["live_diagnostic_self_check"] = json.loads(
+                    SELF_CHECK_RESULT_PATH.read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError):
+                payload["live_diagnostic_self_check"] = {"status": "unreadable"}
+        else:
+            payload["live_diagnostic_self_check"] = {"status": "running"}
+    return web.json_response(payload)
 
 
 async def log_outbound_location() -> None:
