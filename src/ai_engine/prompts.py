@@ -243,7 +243,7 @@ def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int
         (5, 3): ("start", "limit", "expression", "boundary"),
         (14, 0): ("n", "base"), (14, 1): ("digit", "value"),
         (14, 2): ("count",), (27, 0): ("points",),
-        (27, 1): ("a", "b", "c"), (27, 2): ("labels", "target"),
+        (27, 1): ("sums",), (27, 2): ("labels", "target"),
         (27, 3): ("distances",),
     }
     intents = {

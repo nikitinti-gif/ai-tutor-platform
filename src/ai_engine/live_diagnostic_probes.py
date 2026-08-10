@@ -96,7 +96,8 @@ def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | 
         values = [a, b, c]
         if len(set(values)) != 3:
             raise ValueError("Для медоида нужен единственный минимум.")
-        return {"a": a, "b": b, "c": c}, "ABC"[values.index(min(values))]
+        sums = f"A — {a}, B — {b}, C — {c}"
+        return {"sums": sums}, "ABC"[values.index(min(values))]
     if task == 27 and op == 2:
         values = _ints(data, 6, 1, 3)
         target = 1 + sum(values) % 3
@@ -163,7 +164,13 @@ def _validate_intent(task: int, op: int, prompt: str) -> None:
         (14, 2): (("остат",), ("частн",), ("цифр", "разряд")),
         (27, 0): (("кластер", "групп"),),
         (27, 1): (("медоид",), ("сумм",)),
-        (27, 2): (("метк",), ("сколько", "количеств")),
+        # Gemini may naturally call a cluster label a value or cluster number,
+        # and may ask for the number of matching points without the literal
+        # word "сколько". These variants still test the same local count.
+        (27, 2): (
+            ("метк", "значен", "номер", "кластер"),
+            ("сколько", "количеств", "числ", "подсчит", "посчитай", "сосчит"),
+        ),
         (27, 3): (("расстоян",), ("максим", "наибольш")),
     }
     lowered = prompt.lower()

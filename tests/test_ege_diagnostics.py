@@ -219,7 +219,7 @@ def test_all_pilot_scenarios_accept_valid_independent_wording():
         (14, 1): ("У цифры {digit} числовое значение {value}. Чётное ли оно? Ответьте да или нет.", [17]),
         (14, 2): ("Алгоритм получил {count} остатков, после чего осталось ненулевое частное. Сколько разрядов будет в записи?", [5]),
         (27, 0): ("На плоскости отмечены точки {points}. На сколько естественных групп-кластеров распадается набор?", [20, 8]),
-        (27, 1): ("Суммы расстояний до соседей для A, B и C равны соответственно {a}, {b}, {c}. Какая точка является медоидом?", [12, 5, 9]),
+        (27, 1): ("Для точек получены суммы расстояний: {sums}. Какая точка является медоидом?", [12, 5, 9]),
         (27, 2): ("После кластеризации получена последовательность меток {labels}. Сколько раз в ней встречается метка {target}?", [1, 2, 2, 3, 2, 1]),
         (27, 3): ("От медоида измерены расстояния до точек: {distances}. Каково максимальное расстояние?", [3, 11, 7, 5]),
     }
@@ -253,6 +253,46 @@ def test_suffix_probe_accepts_natural_gemini_wording_without_literal_right():
         }),
     )
     assert generated["expected_answers"] == ("1001111",)
+
+
+def test_task27_medoid_uses_one_atomic_placeholder_for_all_sums():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(27, "wrong", "expected", full_map)
+    base = CONTROL_PROBES[27][1]
+    generated = build_live_probe(
+        case,
+        {"id": base["id"], "operation_index": 1},
+        json.dumps({
+            "prompt_template": (
+                "Сравните суммы расстояний {sums}. Какой объект будет медоидом?"
+            ),
+            "values": [12, 5, 9],
+        }),
+    )
+    assert "A — 12, B — 5, C — 9" in generated["prompt"]
+    assert generated["expected_answers"] == ("B",)
+
+
+def test_task27_label_count_accepts_natural_gemini_synonyms():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(27, "wrong", "expected", full_map)
+    base = CONTROL_PROBES[27][2]
+    generated = build_live_probe(
+        case,
+        {"id": base["id"], "operation_index": 2},
+        json.dumps({
+            "prompt_template": (
+                "Дана последовательность кластеров {labels}. "
+                "Определите число элементов со значением {target}?"
+            ),
+            "values": [1, 2, 2, 3, 2, 1],
+        }),
+    )
+    assert generated["expected_answers"] == ("1",)
 
 
 def test_python_owns_fresh_inputs_for_all_pilot_scenarios():
