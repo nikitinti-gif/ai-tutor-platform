@@ -19,6 +19,7 @@ from config import (
     WEBHOOK_PATH,
     WEBHOOK_SECRET,
     SYNTHETIC_GEMINI_WORKER_ENABLED,
+    LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED,
 )
 from src.services.submission_worker import run_synthetic_submission_worker
 from src.telegram_bot.handlers.registration import register_registration_handlers
@@ -44,6 +45,7 @@ def create_dispatcher() -> Dispatcher:
     register_teacher_handlers(dp)
     dp.startup.register(log_outbound_location)
     dp.startup.register(schedule_submission_worker)
+    dp.startup.register(schedule_live_diagnostic_self_check)
 
     return dp
 
@@ -118,6 +120,18 @@ async def schedule_submission_worker(bot: Bot) -> None:
         return
 
     task = asyncio.create_task(run_synthetic_submission_worker(bot))
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
+
+
+async def schedule_live_diagnostic_self_check(bot: Bot) -> None:
+    """Run the temporary real-Gemini probe check without blocking startup."""
+    if not LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED:
+        return
+
+    from src.services.ege_exam_service import run_live_diagnostic_self_check
+
+    task = asyncio.create_task(run_live_diagnostic_self_check(bot))
     background_tasks.add(task)
     task.add_done_callback(background_tasks.discard)
 

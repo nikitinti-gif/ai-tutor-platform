@@ -28,6 +28,8 @@ services:
         value: "15"
       - key: SYNTHETIC_WORKER_MAX_ATTEMPTS
         value: "2"
+      - key: LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED
+        value: "true"
       - key: MISTRAL_API_KEY
         sync: false
       - key: MISTRAL_MODEL

@@ -139,7 +139,13 @@ def _validate_intent(task: int, op: int, prompt: str) -> None:
     requirements = {
         (5, 0): (("двоич",), ("перев", "запис")),
         (5, 1): (("последн",), ("бит", "цифр"), ("ветк",)),
-        (5, 2): (("допис", "присоедин"), ("справа", "конец", "окончан")),
+        # Gemini often describes appending a suffix as extending or completing
+        # a binary string.  Requiring the literal direction "справа" rejected
+        # valid questions even though the suffix operation was unambiguous.
+        (5, 2): (
+            ("допис", "присоедин", "добав", "припис", "продолж", "дополн"),
+            ("двоич", "строк", "запис", "последователь", "результ"),
+        ),
         (5, 3): (("наибольш", "максим"), ("неравен", "услов")),
         (14, 0): (("остат",), ("дел",)),
         (14, 1): (("чётн", "четн"),),

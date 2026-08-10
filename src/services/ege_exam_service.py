@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, replace
 import json
 import logging
+import asyncio
 from uuid import uuid4
 
 from src.ai_engine.ege_open_variant_2026 import (
@@ -12,6 +13,7 @@ from src.ai_engine.ege_open_variant_2026 import (
     OPEN_VARIANT_2026,
 )
 from src.ai_engine.diagnostics import (
+    CONTROL_PROBES,
     answer_control_probe,
     next_control_probe,
     open_diagnostic_case,
@@ -24,6 +26,108 @@ from src.skills.skill_graph import load_skill_map
 TOTAL_TASKS = 27
 PROGRESS_WIDTH = 12
 logger = logging.getLogger(__name__)
+
+
+def _generate_self_check_probe(task_number: int, operation_index: int) -> dict:
+    """Make one real Gemini probe with the same retries as the student flow."""
+    from src.ai_engine.llm_client import LLMClient
+    from src.ai_engine.live_diagnostic_probes import (
+        _scenario,
+        build_live_probe,
+        generate_live_probe_values,
+    )
+
+    case = open_diagnostic_case(
+        task_number,
+        "synthetic_wrong_answer",
+        "synthetic_expected_answer",
+        load_skill_map(),
+    )
+    context = diagnostic_probe_context(case)
+    base_probe = CONTROL_PROBES[task_number][operation_index]
+    client = LLMClient()
+    rejected_prompts: list[str] = []
+    errors: list[str] = []
+
+    for attempt_number in range(1, 4):
+        raw = None
+        try:
+            values = generate_live_probe_values(task_number, operation_index)
+            fields, _ = _scenario(task_number, operation_index, {"values": values})
+            raw = client.generate_live_diagnostic_probe(
+                task_number=task_number,
+                operation_index=operation_index,
+                skill_id=context["skill_id"],
+                fields=fields,
+                previous_prompts=rejected_prompts,
+                synthetic_test=True,
+            )
+            generated = build_live_probe(
+                case,
+                {"id": base_probe["id"], "operation_index": operation_index},
+                raw,
+                previous_prompts=rejected_prompts,
+                values=values,
+            )
+            generated["generation_attempts"] = attempt_number
+            return generated
+        except Exception as error:
+            errors.append(
+                f"attempt {attempt_number}: {type(error).__name__}: {error}"
+            )
+            try:
+                rejected = str(json.loads(raw).get("prompt_template", "")).strip()
+            except (TypeError, json.JSONDecodeError):
+                rejected = ""
+            if rejected:
+                rejected_prompts.append(rejected)
+
+    raise RuntimeError(" | ".join(errors))
+
+
+async def run_live_diagnostic_self_check(bot) -> None:
+    """Run all 11 pilot scenarios against real Gemini and notify the admin."""
+    from config import ADMIN_TELEGRAM_ID
+
+    scenarios = ((5, 4), (14, 3), (27, 4))
+    passed: list[str] = []
+    failed: list[str] = []
+    logger.info("LIVE_DIAGNOSTIC_SELF_CHECK started scenarios=11")
+
+    for task_number, operation_count in scenarios:
+        for operation_index in range(operation_count):
+            label = f"task={task_number} operation={operation_index}"
+            try:
+                result = await asyncio.to_thread(
+                    _generate_self_check_probe,
+                    task_number,
+                    operation_index,
+                )
+                passed.append(label)
+                logger.info(
+                    "LIVE_DIAGNOSTIC_SELF_CHECK AI_PROBE %s attempts=%s prompt=%r",
+                    label,
+                    result["generation_attempts"],
+                    result["prompt"],
+                )
+            except Exception as error:
+                detail = f"{label}: {type(error).__name__}: {error}"
+                failed.append(detail)
+                logger.exception(
+                    "LIVE_DIAGNOSTIC_SELF_CHECK FALLBACK_PROBE %s",
+                    label,
+                )
+
+    status = "11/11 AI_PROBE" if not failed else f"{len(passed)}/11 AI_PROBE"
+    logger.info(
+        "LIVE_DIAGNOSTIC_SELF_CHECK completed status=%s failures=%s",
+        status,
+        " | ".join(failed) if failed else "none",
+    )
+    message = f"🧪 Реальная самопроверка Gemini завершена: {status}."
+    if failed:
+        message += "\n\nОшибки:\n" + "\n".join(f"• {item}" for item in failed)
+    await bot.send_message(int(ADMIN_TELEGRAM_ID), message[:4000])
 
 
 @dataclass(slots=True)

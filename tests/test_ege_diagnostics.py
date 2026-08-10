@@ -179,6 +179,26 @@ def test_all_pilot_scenarios_accept_valid_independent_wording():
         assert generated["expected_answers"]
 
 
+def test_suffix_probe_accepts_natural_gemini_wording_without_literal_right():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(5, "wrong", "expected", full_map)
+    base = CONTROL_PROBES[5][2]
+    generated = build_live_probe(
+        case,
+        {"id": base["id"], "operation_index": 2},
+        json.dumps({
+            "prompt_template": (
+                "Продолжите двоичную последовательность {binary}, "
+                "добавив суффикс {suffix}. Какой результат получится?"
+            ),
+            "values": [19, 17],
+        }),
+    )
+    assert generated["expected_answers"] == ("1001111",)
+
+
 def test_python_owns_fresh_inputs_for_all_pilot_scenarios():
     for task_number, operation_count in ((5, 4), (14, 3), (27, 4)):
         for operation_index in range(operation_count):
