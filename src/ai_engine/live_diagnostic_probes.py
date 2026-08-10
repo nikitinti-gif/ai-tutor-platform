@@ -55,7 +55,11 @@ def _ints(data: dict, count: int, low: int, high: int) -> list[int]:
 def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | int]:
     if task == 5 and op == 0:
         (n,) = _ints(data, 1, 10, 250)
-        return {"n": n}, bin(n)[2:]
+        # Keep the complete assessed action atomic. Gemini may frame the
+        # question naturally, but cannot drop the conversion operation or
+        # introduce answer-bearing numeric data around it.
+        conversion_task = f"перевести десятичное число {n} в двоичную систему счисления"
+        return {"conversion_task": conversion_task}, bin(n)[2:]
     if task == 5 and op == 1:
         (n,) = _ints(data, 1, 5, 200)
         return {"n": n}, n % 2
@@ -131,11 +135,7 @@ def _validate_template(
     names = _field_names(template)
     if set(names) != set(fields) or any(names.count(name) != 1 for name in names):
         raise ValueError("Формулировка должна использовать каждый разрешённый параметр ровно один раз.")
-    allowed_constants = {
-        # The base is part of the skill definition, not answer-bearing input.
-        # Gemini naturally writes either "binary" or "base 2".
-        (5, 0): {"2"},
-    }.get((task, operation), set())
+    allowed_constants: set[str] = set()
     numeric_literals = set(re.findall(r"\d+", template))
     if numeric_literals - allowed_constants:
         raise ValueError("AI добавил непроверяемые числа вне плейсхолдеров.")

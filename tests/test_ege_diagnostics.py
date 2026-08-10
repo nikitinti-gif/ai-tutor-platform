@@ -85,7 +85,7 @@ def test_live_probe_uses_ai_wording_and_parameters_but_python_computes_answer():
     assert generated["source"] == "ai_wording_parameters_python_solver"
 
 
-def test_binary_conversion_allows_only_the_fixed_base_two_literal():
+def test_binary_conversion_uses_atomic_python_owned_action():
     full_map = json.loads(
         (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
     )
@@ -96,8 +96,7 @@ def test_binary_conversion_allows_only_the_fixed_base_two_literal():
         {"id": base["id"], "operation_index": 0},
         json.dumps({
             "prompt_template": (
-                "Переведите число {n} в систему счисления с основанием 2. "
-                "Какая двоичная запись получится?"
+                "Выполните действие: {conversion_task}. Какая запись получится?"
             ),
             "values": [102],
         }),
@@ -106,7 +105,7 @@ def test_binary_conversion_allows_only_the_fixed_base_two_literal():
 
     invalid = json.dumps({
         "prompt_template": (
-            "Переведите число {n} в систему счисления с основанием 2, используя 8 разрядов. "
+            "Выполните действие: {conversion_task}, используя 8 разрядов. "
             "Какая двоичная запись получится?"
         ),
         "values": [102],
@@ -116,7 +115,7 @@ def test_binary_conversion_allows_only_the_fixed_base_two_literal():
     except ValueError:
         pass
     else:
-        raise AssertionError("Посторонние числа кроме фиксированного основания 2 должны отклоняться")
+        raise AssertionError("Посторонние числа вне атомарного действия должны отклоняться")
 
 
 def test_gemini_429_retries_same_request_after_declared_delay(monkeypatch):
@@ -211,7 +210,7 @@ def test_all_pilot_scenarios_accept_valid_independent_wording():
         (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
     )
     samples = {
-        (5, 0): ("Запишите в двоичной системе десятичное значение {n}. Какая запись получится?", [73]),
+        (5, 0): ("Выполните действие: {conversion_task}. Какая запись получится?", [73]),
         (5, 1): ("Для числа {n} алгоритм смотрит на последний бит. Какую ветку он выберет: ветку один для единицы или ветку ноль для нуля?", [42]),
         (5, 2): ("К двоичной строке {binary} нужно присоединить справа суффикс {suffix}. Какая строка получится?", [19, 17]),
         (5, 3): ("Среди целых N от {start} до {limit} найдите наибольшее, для которого выполнено условие {expression} < {boundary}. Какое это N?", [20, 15]),
