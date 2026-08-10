@@ -378,7 +378,7 @@ async def _begin_ege_diagnostics(
     await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)
     await state.update_data(ege_attempt=attempt.to_dict())
     mode_text = (
-        "AI меняет формулировку, а правильность ответа проверяет Python."
+        "AI создаёт новую формулировку и данные, а Python независимо проверяет вопрос и ответ."
         if AI_DIAGNOSTIC_PROBES_ENABLED
         and ADMIN_TELEGRAM_ID
         and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
@@ -439,10 +439,15 @@ async def receive_ege_diagnostic_answer(
         await message.answer(
             "✅ Этот шаг выполнен верно — гипотеза об ошибке не подтверждена."
         )
-    else:
+    elif result["status"] == "confirmed":
         await message.answer(
             "🔴 Точка ошибки подтверждена локальной пробой:\n"
             f"{result['failed_step']}"
+        )
+    else:
+        await message.answer(
+            "🟡 Получено первое свидетельство ошибки. "
+            "Нужна ещё одна независимая проба этого же шага."
         )
 
     if next_attempt_diagnostic_probe(attempt) is None:

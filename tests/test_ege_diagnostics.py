@@ -64,17 +64,23 @@ def test_ai_changes_wording_but_not_local_probe_identity():
     assert displayed["source"] == "ai_wording_local_answer"
 
 
-def test_live_probe_uses_ai_parameters_but_python_computes_answer():
+def test_live_probe_uses_ai_wording_and_parameters_but_python_computes_answer():
     case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
     base = next_control_probe(case)
     generated = build_live_probe(
         case,
         {"id": base["base_probe_id"], "operation_index": base["operation_index"]},
-        json.dumps({"values": [137, 61]}),
+        json.dumps({
+            "prompt_template": (
+                "Число {n} переводят в систему счисления с основанием {base}. "
+                "Какой остаток даст первое деление?"
+            ),
+            "values": [137, 61],
+        }),
     )
     assert "137" in generated["prompt"]
     assert generated["expected_answers"] == ("13",)
-    assert generated["source"] == "ai_parameters_python_solver"
+    assert generated["source"] == "ai_wording_parameters_python_solver"
 
 
 def test_live_probe_rejects_invalid_parameter_shape():
@@ -82,11 +88,95 @@ def test_live_probe_rejects_invalid_parameter_shape():
     case = open_diagnostic_case(27, "wrong", "expected", full_map)
     base = next_control_probe(case)
     try:
-        build_live_probe(case, {"id": base["base_probe_id"], "operation_index": 0}, json.dumps({"values": [2]}))
+        build_live_probe(case, {"id": base["base_probe_id"], "operation_index": 0}, json.dumps({
+            "prompt_template": "Точки {points}. Сколько естественных кластеров образуют эти группы?",
+            "values": [2],
+        }))
     except ValueError:
         pass
     else:
         raise AssertionError("Некорректные параметры AI должны быть отклонены")
+
+
+def test_live_probe_rejects_answer_leak():
+    case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
+    base = next_control_probe(case)
+    raw = json.dumps({
+        "prompt_template": (
+            "Для числа {n} и основания {base} найдите остаток при делении. "
+            "Ответ равен 13?"
+        ),
+        "values": [137, 61],
+    })
+    try:
+        build_live_probe(case, {"id": base["base_probe_id"], "operation_index": 0}, raw)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Вопрос с раскрытым ответом должен быть отклонён")
+
+
+def test_live_probe_rejects_repeated_wording():
+    case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
+    base = next_control_probe(case)
+    previous = "Число 137 переводят в систему с основанием 28. Какой остаток даст первое деление?"
+    raw = json.dumps({
+        "prompt_template": (
+            "Число {n} переводят в систему с основанием {base}. "
+            "Какой остаток даст первое деление?"
+        ),
+        "values": [211, 91],
+    })
+    try:
+        build_live_probe(case, {"id": base["base_probe_id"], "operation_index": 0}, raw, [previous])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Повтор прежней формулировки должен быть отклонён")
+
+
+def test_live_probe_rejects_skill_mismatch():
+    case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
+    base = next_control_probe(case)
+    raw = json.dumps({
+        "prompt_template": "Сложите числа {n} и {base}. Каков результат?",
+        "values": [137, 61],
+    })
+    try:
+        build_live_probe(case, {"id": base["base_probe_id"], "operation_index": 0}, raw)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Вопрос по другому навыку должен быть отклонён")
+
+
+def test_all_pilot_scenarios_accept_valid_independent_wording():
+    skill_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    samples = {
+        (5, 0): ("Запишите в двоичной системе десятичное значение {n}. Какая запись получится?", [73]),
+        (5, 1): ("Для числа {n} алгоритм смотрит на последний бит. Какую ветку он выберет: ветку один для единицы или ветку ноль для нуля?", [42]),
+        (5, 2): ("К двоичной строке {binary}, полученной из N={n}, нужно присоединить справа суффикс {suffix}. Какая строка получится?", [19, 17]),
+        (5, 3): ("Среди целых N от {start} до {limit} найдите наибольшее, для которого выполнено условие {expression} < {boundary}. Какое это N?", [20, 15]),
+        (14, 0): ("Перевод числа {n} в основание {base} начинают с деления. Какой остаток возникнет на этом шаге?", [913, 67]),
+        (14, 1): ("У цифры {digit} числовое значение {value}. Чётное ли оно? Ответьте да или нет.", [17]),
+        (14, 2): ("Алгоритм получил {count} остатков, после чего осталось ненулевое частное. Сколько разрядов будет в записи?", [5]),
+        (27, 0): ("На плоскости отмечены точки {points}. На сколько естественных групп-кластеров распадается набор?", [20, 8]),
+        (27, 1): ("Суммы расстояний до соседей для A, B и C равны соответственно {a}, {b}, {c}. Какая точка является медоидом?", [12, 5, 9]),
+        (27, 2): ("После кластеризации получена последовательность меток {labels}. Сколько раз в ней встречается метка {target}?", [1, 2, 2, 3, 2, 1]),
+        (27, 3): ("От медоида измерены расстояния до точек: {distances}. Каково максимальное расстояние?", [3, 11, 7, 5]),
+    }
+    for (task_number, operation_index), (template, values) in samples.items():
+        case = open_diagnostic_case(task_number, "wrong", "expected", skill_map)
+        base = CONTROL_PROBES[task_number][operation_index]
+        generated = build_live_probe(
+            case,
+            {"id": base["id"], "operation_index": operation_index},
+            json.dumps({"prompt_template": template, "values": values}),
+        )
+        assert generated["prompt"]
+        assert generated["expected_answers"]
 
 
 def test_self_report_is_only_probable():

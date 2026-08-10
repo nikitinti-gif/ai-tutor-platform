@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
+import json
 from uuid import uuid4
 
 from src.ai_engine.ege_open_variant_2026 import (
@@ -203,9 +204,9 @@ def next_attempt_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
 
 
 def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
-    """Generate fresh parameters, then let Python render and solve the probe."""
+    """Generate fresh wording and inputs; Python validates and solves them."""
     probe = next_attempt_diagnostic_probe(attempt)
-    if probe is None or probe.get("source") == "ai_parameters_python_solver":
+    if probe is None or probe.get("source") == "ai_wording_parameters_python_solver":
         return probe
 
     from src.ai_engine.llm_client import LLMClient
@@ -216,17 +217,33 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
         return probe
     case = attempt.diagnostics[task_number]
     context = diagnostic_probe_context(case)
-    raw = LLMClient().generate_diagnostic_probe_parameters(
-        task_number=task_number,
-        operation_index=probe["operation_index"],
-        skill_id=context["skill_id"],
-        previous_prompts=context["previous_prompts"],
-        synthetic_test=True,
-    )
-    generated = build_live_probe(case, {
-        "id": probe["base_probe_id"],
-        "operation_index": probe["operation_index"],
-    }, raw)
+    client = LLMClient()
+    rejected_prompts: list[str] = []
+    last_error: ValueError | None = None
+    for _ in range(3):
+        raw = client.generate_live_diagnostic_probe(
+            task_number=task_number,
+            operation_index=probe["operation_index"],
+            skill_id=context["skill_id"],
+            previous_prompts=context["previous_prompts"] + rejected_prompts,
+            synthetic_test=True,
+        )
+        try:
+            generated = build_live_probe(case, {
+                "id": probe["base_probe_id"],
+                "operation_index": probe["operation_index"],
+            }, raw, previous_prompts=context["previous_prompts"] + rejected_prompts)
+            break
+        except ValueError as error:
+            last_error = error
+            try:
+                rejected = str(json.loads(raw).get("prompt_template", "")).strip()
+            except (TypeError, json.JSONDecodeError):
+                rejected = ""
+            if rejected:
+                rejected_prompts.append(rejected)
+    else:
+        raise last_error or ValueError("AI не создал качественную мини-пробу за три попытки.")
     attempt.diagnostics[task_number] = apply_live_probe(case, generated)
     return next_attempt_diagnostic_probe(attempt)
 
