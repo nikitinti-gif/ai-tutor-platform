@@ -3,6 +3,8 @@ from pathlib import Path
 
 from src.services.ege_exam_service import (
     ExamAttempt,
+    _generate_wording_with_rate_limit_retry,
+    _rate_limit_retry_delay,
     next_attempt_diagnostic_probe,
     submit_diagnostic_answer,
 )
@@ -81,6 +83,60 @@ def test_live_probe_uses_ai_wording_and_parameters_but_python_computes_answer():
     assert "137" in generated["prompt"]
     assert generated["expected_answers"] == ("13",)
     assert generated["source"] == "ai_wording_parameters_python_solver"
+
+
+def test_binary_conversion_allows_only_the_fixed_base_two_literal():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(5, "wrong", "expected", full_map)
+    base = CONTROL_PROBES[5][0]
+    generated = build_live_probe(
+        case,
+        {"id": base["id"], "operation_index": 0},
+        json.dumps({
+            "prompt_template": (
+                "Переведите число {n} в систему счисления с основанием 2. "
+                "Какая двоичная запись получится?"
+            ),
+            "values": [102],
+        }),
+    )
+    assert generated["expected_answers"] == ("1100110",)
+
+    invalid = json.dumps({
+        "prompt_template": (
+            "Переведите число {n} в систему счисления с основанием 2, используя 8 разрядов. "
+            "Какая двоичная запись получится?"
+        ),
+        "values": [102],
+    })
+    try:
+        build_live_probe(case, {"id": base["id"], "operation_index": 0}, invalid)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Посторонние числа кроме фиксированного основания 2 должны отклоняться")
+
+
+def test_gemini_429_retries_same_request_after_declared_delay(monkeypatch):
+    class FakeClient:
+        calls = 0
+
+        def generate_live_diagnostic_probe(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("Error code: 429. Please retry in 1.363s")
+            return '{"prompt_template": "ok"}'
+
+    sleeps = []
+    monkeypatch.setattr("src.services.ege_exam_service.time.sleep", sleeps.append)
+    client = FakeClient()
+    result = _generate_wording_with_rate_limit_retry(client, task_number=5)
+    assert result == '{"prompt_template": "ok"}'
+    assert client.calls == 2
+    assert sleeps == [2.363]
+    assert _rate_limit_retry_delay(RuntimeError("ordinary failure")) is None
 
 
 def test_live_probe_rejects_invalid_parameter_shape():

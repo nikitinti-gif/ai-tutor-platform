@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass, field, replace
 import json
 import logging
 import asyncio
+import re
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -27,6 +29,33 @@ from src.skills.skill_graph import load_skill_map
 TOTAL_TASKS = 27
 PROGRESS_WIDTH = 12
 logger = logging.getLogger(__name__)
+
+
+def _rate_limit_retry_delay(error: Exception) -> float | None:
+    """Return Gemini's requested delay for a 429, otherwise ``None``."""
+    text = str(error)
+    if "429" not in text and "rate limit" not in text.lower() and "quota" not in text.lower():
+        return None
+    matches = re.findall(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", text, re.IGNORECASE)
+    return min(max(float(matches[-1]) if matches else 60.0, 1.0) + 1.0, 65.0)
+
+
+def _generate_wording_with_rate_limit_retry(client, **kwargs) -> str:
+    """Retry the same Gemini request after the server-declared quota delay."""
+    for rate_attempt in range(1, 4):
+        try:
+            return client.generate_live_diagnostic_probe(**kwargs)
+        except Exception as error:
+            delay = _rate_limit_retry_delay(error)
+            if delay is None or rate_attempt == 3:
+                raise
+            logger.warning(
+                "Gemini rate limit; retrying same diagnostic request in %.1fs (%s/2)",
+                delay,
+                rate_attempt,
+            )
+            time.sleep(delay)
+    raise RuntimeError("Недостижимая ветка повтора Gemini.")
 SELF_CHECK_RESULT_PATH = Path("/tmp/live_diagnostic_self_check.json")
 
 
@@ -56,7 +85,8 @@ def _generate_self_check_probe(task_number: int, operation_index: int) -> dict:
         try:
             values = generate_live_probe_values(task_number, operation_index)
             fields, _ = _scenario(task_number, operation_index, {"values": values})
-            raw = client.generate_live_diagnostic_probe(
+            raw = _generate_wording_with_rate_limit_retry(
+                client,
                 task_number=task_number,
                 operation_index=operation_index,
                 skill_id=context["skill_id"],
@@ -345,7 +375,8 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
         try:
             values = generate_live_probe_values(task_number, probe["operation_index"])
             fields, _ = _scenario(task_number, probe["operation_index"], {"values": values})
-            raw = client.generate_live_diagnostic_probe(
+            raw = _generate_wording_with_rate_limit_retry(
+                client,
                 task_number=task_number,
                 operation_index=probe["operation_index"],
                 skill_id=context["skill_id"],

@@ -119,13 +119,24 @@ def _normalise_wording(prompt: str) -> str:
     return re.sub(r"\s+", " ", prompt).strip()
 
 
-def _validate_template(template: str, fields: dict[str, object]) -> None:
+def _validate_template(
+    template: str,
+    fields: dict[str, object],
+    task: int,
+    operation: int,
+) -> None:
     if not template or len(template) > MAX_PROMPT_LENGTH:
         raise ValueError("AI вернул пустую или слишком длинную формулировку.")
     names = _field_names(template)
     if set(names) != set(fields) or any(names.count(name) != 1 for name in names):
         raise ValueError("Формулировка должна использовать каждый разрешённый параметр ровно один раз.")
-    if re.search(r"\d", template):
+    allowed_constants = {
+        # The base is part of the skill definition, not answer-bearing input.
+        # Gemini naturally writes either "binary" or "base 2".
+        (5, 0): {"2"},
+    }.get((task, operation), set())
+    numeric_literals = set(re.findall(r"\d+", template))
+    if numeric_literals - allowed_constants:
         raise ValueError("AI добавил непроверяемые числа вне плейсхолдеров.")
     if "?" not in template:
         raise ValueError("Мини-проба должна содержать явный вопрос.")
@@ -198,7 +209,7 @@ def build_live_probe(
 
     fields, answer = _scenario(task, operation, {"values": values if values is not None else data["values"]})
     template = str(data["prompt_template"]).strip()
-    _validate_template(template, fields)
+    _validate_template(template, fields, task, operation)
     try:
         prompt = template.format(**fields)
     except (KeyError, ValueError) as error:
