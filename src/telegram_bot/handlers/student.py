@@ -368,7 +368,10 @@ async def _complete_ege_diagnostics(
 
 
 async def receive_ege_remediation_answer(message: Message, state: FSMContext) -> None:
-    from src.learning_dna.engine import set_ege_remediation_status
+    from src.learning_dna.engine import (
+        confirm_ege_remediation_mastery,
+        set_ege_remediation_status,
+    )
     from src.services.ege_exam_service import (
         ExamAttempt,
         render_task14_remediation,
@@ -389,16 +392,28 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
     result = submit_task14_remediation_answer(attempt, message.text or "")
     dna = LearningDNARepository.get(message.from_user.id)
     if dna:
-        dna = set_ege_remediation_status(dna, 14, result["status"])
+        if result["status"] == "mastered":
+            dna = confirm_ege_remediation_mastery(
+                dna, 14, attempt.attempt_id
+            )
+        else:
+            dna = set_ege_remediation_status(dna, 14, result["status"])
         LearningDNARepository.save(message.from_user.id, dna)
 
-    if result["status"] == "ready_for_retest":
+    if result["status"] == "mastered":
         save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
         await state.clear()
+        next_focus = (dna or {}).get("trajectory", {}).get("next_focus")
+        next_line = (
+            f"\n\nСледующий шаг: {next_focus}."
+            if next_focus
+            else "\n\nСледующий шаг подберу по твоему профилю."
+        )
         await message.answer(
-            "✅ Отлично! Ты правильно применил правило уже в новой задаче.\n\n"
-            "Этот шаг пройден. Позже я дам ещё одну независимую задачу, "
-            "чтобы убедиться, что навык закрепился."
+            "🏆 Навык подтверждён. Ты справился с объяснением, переносом "
+            "и независимой задачей без подсказки. Результат записан в "
+            "Learning DNA."
+            + next_line
         )
         return
 
@@ -408,10 +423,21 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
         status="remediation_in_progress",
     )
     await state.update_data(ege_attempt=attempt.to_dict())
-    if result["is_correct"]:
+    if result["status"] == "retesting":
+        await message.answer(
+            "✅ Правило применено верно. Теперь — новая задача без подсказки. "
+            "Только после неё навык будет считаться подтверждённым."
+        )
+    elif result["is_correct"]:
         await message.answer(
             "✅ Верно. Теперь проверим, сможешь ли ты применить это правило "
             "в новой задаче типа №14."
+        )
+    elif result["stage"] == "control" and attempt.remediation.get("learning_round", 1) > 1:
+        await message.answer(
+            "Эта независимая задача показала, что правило пока не стало "
+            "устойчивым. Это нормально: разберём его другим способом и "
+            "попробуем снова на новых данных."
         )
     else:
         await message.answer("Пока неверно — ничего страшного. Посмотри на подсказку и попробуй ещё раз.")

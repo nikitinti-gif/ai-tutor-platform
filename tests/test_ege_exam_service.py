@@ -75,7 +75,7 @@ def _confirmed_task14_attempt():
     return attempt
 
 
-def test_task14_remediation_survives_roundtrip_and_reaches_ready_for_retest():
+def test_task14_remediation_survives_roundtrip_and_confirms_mastery():
     attempt = _confirmed_task14_attempt()
     remediation = start_task14_remediation(attempt)
     assert remediation["status"] == "remediating"
@@ -94,7 +94,27 @@ def test_task14_remediation_survives_roundtrip_and_reaches_ready_for_retest():
     assert restored.remediation["stage"] == "retest"
 
     retest = submit_task14_remediation_answer(restored, "2")
-    assert retest["status"] == "ready_for_retest"
+    assert retest["status"] == "retesting"
+    assert retest["stage"] == "verification"
+    assert "НЕЗАВИСИМАЯ ПРОВЕРКА" in render_task14_remediation(restored)
+
+    verification = submit_task14_remediation_answer(restored, "21")
+    assert verification["status"] == "mastered"
+    assert verification["stage"] == "completed"
+
+
+def test_failed_task14_verification_starts_a_fresh_learning_round():
+    attempt = _confirmed_task14_attempt()
+    start_task14_remediation(attempt)
+    submit_task14_remediation_answer(attempt, "20")
+    submit_task14_remediation_answer(attempt, "2")
+
+    failed = submit_task14_remediation_answer(attempt, "999")
+
+    assert failed["status"] == "remediating"
+    assert failed["stage"] == "control"
+    assert attempt.remediation["learning_round"] == 2
+    assert "КОРОТКОЕ ОБУЧЕНИЕ" in render_task14_remediation(attempt)
 
 
 def test_task14_remediation_restores_full_lesson_before_first_control_answer():

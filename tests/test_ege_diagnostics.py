@@ -14,7 +14,10 @@ from src.services.ege_exam_service import (
     submit_diagnostic_answer,
 )
 from src.learning_dna.engine import apply_confirmed_ege_diagnostics
-from src.learning_dna.engine import set_ege_remediation_status
+from src.learning_dna.engine import (
+    confirm_ege_remediation_mastery,
+    set_ege_remediation_status,
+)
 from src.ai_engine.diagnostics import (
     CONTROL_PROBES,
     apply_ai_probe_wording,
@@ -681,7 +684,28 @@ def test_remediation_status_updates_existing_task14_plan():
     attempt.diagnostics[14] = case
     dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
 
-    updated = set_ege_remediation_status(dna, 14, "ready_for_retest")
+    updated = set_ege_remediation_status(dna, 14, "retesting")
 
-    assert updated["trajectory"]["individual_plan"][0]["learning_status"] == "ready_for_retest"
-    assert updated["trajectory"]["remediation_status"] == "ready_for_retest"
+    assert updated["trajectory"]["individual_plan"][0]["learning_status"] == "retesting"
+    assert updated["trajectory"]["remediation_status"] == "retesting"
+
+
+def test_verified_task14_remediation_marks_skill_mastered_once():
+    attempt = ExamAttempt(attempt_id="attempt-verified", current_task=28)
+    case = open_diagnostic_case(14, "wrong", "expected", json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    ))
+    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    attempt.diagnostics[14] = case
+    dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
+
+    updated = confirm_ege_remediation_mastery(dna, 14, attempt.attempt_id)
+    evidence_count = updated["skills"]["number_systems.base_conversion"]["evidence_count"]
+    updated = confirm_ege_remediation_mastery(updated, 14, attempt.attempt_id)
+
+    skill = updated["skills"]["number_systems.base_conversion"]
+    assert skill["mastered"] is True
+    assert skill["mastery_level"] == 100
+    assert skill["evidence_count"] == evidence_count
+    assert updated["trajectory"]["individual_plan"][0]["learning_status"] == "mastered"

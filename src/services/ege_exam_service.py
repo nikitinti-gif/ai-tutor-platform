@@ -236,6 +236,11 @@ TASK14_REMEDIATION = {
             "систему. Какой остаток получится на первом шаге?"
         ),
         "retest_answers": ("2",),
+        "verification_prompt": (
+            "Независимая проверка: число 777 переводят в 36-ричную систему. "
+            "Какой остаток получится на первом шаге?"
+        ),
+        "verification_answers": ("21",),
     },
     "BASE_DIGIT_VALUE_PROPERTY": {
         "explanation": (
@@ -251,6 +256,11 @@ TASK14_REMEDIATION = {
             "цифр с чётным числовым значением? Ответь да или нет."
         ),
         "retest_answers": ("да", "yes"),
+        "verification_prompt": (
+            "Независимая проверка: учитывается ли цифра B при подсчёте цифр "
+            "с чётным числовым значением? Ответь да или нет."
+        ),
+        "verification_answers": ("нет", "no"),
     },
     "BASE_MOST_SIGNIFICANT_DIGIT": {
         "explanation": (
@@ -272,6 +282,11 @@ TASK14_REMEDIATION = {
             "частное 1. Сколько всего цифр в записи?"
         ),
         "retest_answers": ("4",),
+        "verification_prompt": (
+            "Независимая проверка: получены остатки 7, 1, 0 и 3, затем "
+            "осталось частное 2. Сколько всего цифр в записи?"
+        ),
+        "verification_answers": ("5",),
     },
 }
 
@@ -301,6 +316,8 @@ def start_task14_remediation(attempt: ExamAttempt) -> dict | None:
         "stage": "control",
         "control_attempts": 0,
         "retest_attempts": 0,
+        "verification_attempts": 0,
+        "learning_round": 1,
     }
     return attempt.remediation
 
@@ -330,6 +347,14 @@ def render_task14_remediation(
                 f"Правило ещё раз: {lesson['explanation']}\n\n"
             )
         return intro + lesson["control_prompt"] + "\n\nОтправь только ответ."
+    if remediation["stage"] == "verification":
+        return (
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🎯 НЕЗАВИСИМАЯ ПРОВЕРКА · №14\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Здесь нет подсказки и числа отличаются от примеров.\n\n"
+            f"{lesson['verification_prompt']}\n\nОтправь только ответ."
+        )
     intro = ""
     if remediation["retest_attempts"]:
         intro = (
@@ -341,7 +366,7 @@ def render_task14_remediation(
 
 def submit_task14_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
     remediation = attempt.remediation
-    if not remediation or remediation.get("status") != "remediating":
+    if not remediation or remediation.get("status") not in {"remediating", "retesting"}:
         raise ValueError("Обучающий цикл №14 не запущен.")
     lesson = TASK14_REMEDIATION[remediation["gap_id"]]
     stage = remediation["stage"]
@@ -351,9 +376,20 @@ def submit_task14_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
     is_correct = normalized in expected
     if is_correct and stage == "control":
         remediation["stage"] = "retest"
+    elif is_correct and stage == "retest":
+        remediation["status"] = "retesting"
+        remediation["stage"] = "verification"
     elif is_correct:
-        remediation["status"] = "ready_for_retest"
+        remediation["status"] = "mastered"
         remediation["stage"] = "completed"
+    elif stage == "verification":
+        # A failed blind check is evidence that the skill is not stable yet.
+        # Start a fresh teaching round instead of drilling the same question.
+        remediation["status"] = "remediating"
+        remediation["stage"] = "control"
+        remediation["control_attempts"] = 0
+        remediation["retest_attempts"] = 0
+        remediation["learning_round"] += 1
     return {
         "is_correct": is_correct,
         "status": remediation["status"],

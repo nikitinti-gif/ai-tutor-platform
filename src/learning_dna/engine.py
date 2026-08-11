@@ -222,7 +222,7 @@ def apply_confirmed_ege_diagnostics(
 
 def set_ege_remediation_status(dna: dict, task_number: int, status: str) -> dict:
     """Update the existing plan step without creating a second trajectory."""
-    if status not in {"remediating", "ready_for_retest"}:
+    if status not in {"remediating", "retesting", "mastered"}:
         raise ValueError("Неизвестный статус обучающего цикла.")
     trajectory = dna.setdefault("trajectory", {})
     for item in trajectory.get("individual_plan", []):
@@ -230,5 +230,47 @@ def set_ege_remediation_status(dna: dict, task_number: int, status: str) -> dict
             item["learning_status"] = status
             break
     trajectory["remediation_status"] = status
+    dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    return dna
+
+
+def confirm_ege_remediation_mastery(
+    dna: dict,
+    task_number: int,
+    attempt_id: str,
+) -> dict:
+    """Record mastery only after teaching, transfer and a blind verification."""
+    evidence_id = f"ege:{attempt_id}:task:{task_number}:remediation:verified"
+    processed = dna.setdefault("processed_evidence_ids", [])
+    dna = set_ege_remediation_status(dna, task_number, "mastered")
+    if evidence_id in processed:
+        return dna
+
+    plan_item = next(
+        (
+            item
+            for item in dna.get("trajectory", {}).get("individual_plan", [])
+            if item.get("task_number") == task_number
+        ),
+        {},
+    )
+    skill_id = plan_item.get("skill_id")
+    if skill_id:
+        state = dna.setdefault("skills", {}).setdefault(skill_id, {"skill_id": skill_id})
+        state.update({
+            "mastered": True,
+            "mastery_level": 100,
+            "evidence_count": int(state.get("evidence_count", 0) or 0) + 3,
+            "attempts": int(state.get("attempts", 0) or 0) + 3,
+            "successes": int(state.get("successes", 0) or 0) + 3,
+            "difficulty_max": "exam_level",
+            "last_evidence_id": evidence_id,
+        })
+        next_skill = select_next_focus_from_graph(dna)
+        trajectory = dna["trajectory"]
+        trajectory["next_focus_skill_id"] = next_skill
+        trajectory["next_focus"] = get_skill_name(next_skill) if next_skill else None
+
+    processed.append(evidence_id)
     dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
     return dna
