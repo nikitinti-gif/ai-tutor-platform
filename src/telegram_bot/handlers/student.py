@@ -331,13 +331,21 @@ async def _complete_ege_diagnostics(
         message.from_user.id,
         attempt,
     )
+    from src.learning_dna.engine import set_ege_remediation_status
+    from src.services.ege_exam_service import (
+        render_task14_remediation,
+        start_task14_remediation,
+    )
+
+    remediation = start_task14_remediation(attempt)
+    if remediation:
+        dna = set_ege_remediation_status(dna, 14, "remediating")
     LearningDNARepository.save(message.from_user.id, dna)
     save_ege_session(
         message.from_user.id,
         attempt.to_dict(),
-        status="completed",
+        status="remediation_in_progress" if remediation else "completed",
     )
-    await state.clear()
 
     plan = dna.get("trajectory", {}).get("individual_plan", [])
     next_focus = dna.get("trajectory", {}).get("next_focus")
@@ -351,6 +359,60 @@ async def _complete_ege_diagnostics(
     if next_focus:
         lines.append(f"🎯 Следующий фокус: {next_focus}")
     await message.answer("\n".join(lines))
+    if remediation:
+        await state.set_state(StudentEgeExamStates.waiting_remediation_answer)
+        await state.update_data(ege_attempt=attempt.to_dict())
+        await message.answer(render_task14_remediation(attempt, include_lesson=True))
+    else:
+        await state.clear()
+
+
+async def receive_ege_remediation_answer(message: Message, state: FSMContext) -> None:
+    from src.learning_dna.engine import set_ege_remediation_status
+    from src.services.ege_exam_service import (
+        ExamAttempt,
+        render_task14_remediation,
+        submit_task14_remediation_answer,
+    )
+
+    data = await state.get_data()
+    attempt_data = data.get("ege_attempt")
+    if not attempt_data:
+        saved = get_ege_session(message.from_user.id)
+        attempt_data = saved.get("attempt") if saved else None
+    if not attempt_data:
+        await state.clear()
+        await message.answer("Обучающая сессия не найдена.")
+        return
+
+    attempt = ExamAttempt.from_dict(attempt_data)
+    result = submit_task14_remediation_answer(attempt, message.text or "")
+    dna = LearningDNARepository.get(message.from_user.id)
+    if dna:
+        dna = set_ege_remediation_status(dna, 14, result["status"])
+        LearningDNARepository.save(message.from_user.id, dna)
+
+    if result["status"] == "ready_for_retest":
+        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
+        await state.clear()
+        await message.answer(
+            "✅ Повтор задания типа №14 выполнен верно.\n\n"
+            "Статус: ready_for_retest. Пробел ещё не отмечен mastered: "
+            "для этого позже нужна независимая отложенная проверка."
+        )
+        return
+
+    save_ege_session(
+        message.from_user.id,
+        attempt.to_dict(),
+        status="remediation_in_progress",
+    )
+    await state.update_data(ege_attempt=attempt.to_dict())
+    if result["is_correct"]:
+        await message.answer("✅ Правило применено верно. Теперь вернёмся к заданию типа №14.")
+    else:
+        await message.answer("Пока неверно. Разберём этот же шаг ещё раз — статус остаётся remediating.")
+    await message.answer(render_task14_remediation(attempt))
 
 
 async def _begin_ege_diagnostics(
@@ -468,6 +530,15 @@ async def start_ege_exam(message: Message, state: FSMContext):
     from src.services.ege_exam_service import ExamAttempt
 
     saved = get_ege_session(message.from_user.id)
+    if saved and saved.get("status") == "remediation_in_progress":
+        from src.services.ege_exam_service import render_task14_remediation
+
+        attempt = ExamAttempt.from_dict(saved.get("attempt"))
+        await state.set_state(StudentEgeExamStates.waiting_remediation_answer)
+        await state.update_data(ege_attempt=attempt.to_dict())
+        await message.answer("▶️ Продолжаем короткое обучение по заданию №14.")
+        await message.answer(render_task14_remediation(attempt))
+        return
     if saved and saved.get("status") == "diagnostics_in_progress":
         attempt = ExamAttempt.from_dict(saved.get("attempt"))
         await _prepare_ai_probe_for_admin(message, attempt)
@@ -600,6 +671,11 @@ def register_student_handlers(dp: Dispatcher):
     dp.message.register(
         receive_ege_diagnostic_answer,
         StudentEgeExamStates.waiting_diagnostic_answer,
+        F.text,
+    )
+    dp.message.register(
+        receive_ege_remediation_answer,
+        StudentEgeExamStates.waiting_remediation_answer,
         F.text,
     )
     dp.message.register(student_homework, F.text == "📚 Моё ДЗ")

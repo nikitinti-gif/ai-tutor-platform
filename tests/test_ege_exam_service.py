@@ -3,7 +3,13 @@ from src.services.ege_exam_service import (
     create_pilot_diagnostic_attempt,
     render_summary,
     submit_answer,
+    render_task14_remediation,
+    start_task14_remediation,
+    submit_task14_remediation_answer,
 )
+from src.ai_engine.diagnostics import answer_control_probe, next_control_probe, open_diagnostic_case
+import json
+from pathlib import Path
 from src.ai_engine.ege_open_variant_2026 import OPEN_VARIANT_2026
 
 
@@ -55,3 +61,34 @@ def test_diagnostic_case_survives_state_roundtrip():
     restored = ExamAttempt.from_dict(attempt.to_dict())
     assert restored.diagnostics[1]["student_answer"] == "wrong"
     assert restored.diagnostics[1]["status"] == "needs_evidence"
+
+
+def _confirmed_task14_attempt():
+    skill_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    attempt = ExamAttempt(current_task=28)
+    case = open_diagnostic_case(14, "wrong", "expected", skill_map)
+    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    attempt.diagnostics[14] = case
+    return attempt
+
+
+def test_task14_remediation_survives_roundtrip_and_reaches_ready_for_retest():
+    attempt = _confirmed_task14_attempt()
+    remediation = start_task14_remediation(attempt)
+    assert remediation["status"] == "remediating"
+    assert "Контроль" in render_task14_remediation(attempt, include_lesson=True)
+
+    wrong = submit_task14_remediation_answer(attempt, "999")
+    assert wrong["status"] == "remediating"
+    assert wrong["stage"] == "control"
+
+    control = submit_task14_remediation_answer(attempt, "20")
+    assert control["stage"] == "retest"
+    restored = ExamAttempt.from_dict(attempt.to_dict())
+    assert restored.remediation["stage"] == "retest"
+
+    retest = submit_task14_remediation_answer(restored, "2")
+    assert retest["status"] == "ready_for_retest"

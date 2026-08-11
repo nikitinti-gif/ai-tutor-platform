@@ -218,3 +218,17 @@ def apply_confirmed_ege_diagnostics(
         "plan_size": len(plan),
         "next_focus": trajectory.get("next_focus"),
     }
+
+
+def set_ege_remediation_status(dna: dict, task_number: int, status: str) -> dict:
+    """Update the existing plan step without creating a second trajectory."""
+    if status not in {"remediating", "ready_for_retest"}:
+        raise ValueError("Неизвестный статус обучающего цикла.")
+    trajectory = dna.setdefault("trajectory", {})
+    for item in trajectory.get("individual_plan", []):
+        if item.get("task_number") == task_number:
+            item["learning_status"] = status
+            break
+    trajectory["remediation_status"] = status
+    dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    return dna

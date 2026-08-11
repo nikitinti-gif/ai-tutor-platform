@@ -14,6 +14,7 @@ from src.services.ege_exam_service import (
     submit_diagnostic_answer,
 )
 from src.learning_dna.engine import apply_confirmed_ege_diagnostics
+from src.learning_dna.engine import set_ege_remediation_status
 from src.ai_engine.diagnostics import (
     CONTROL_PROBES,
     apply_ai_probe_wording,
@@ -668,3 +669,19 @@ def test_unconfirmed_ege_case_does_not_change_learning_dna_or_plan():
     assert dna["processed_evidence_ids"] == []
     assert dna["trajectory"]["individual_plan"] == []
     assert dna["trajectory"]["next_focus"] is None
+
+
+def test_remediation_status_updates_existing_task14_plan():
+    attempt = ExamAttempt(attempt_id="attempt-remediation", current_task=28)
+    case = open_diagnostic_case(14, "wrong", "expected", json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    ))
+    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    attempt.diagnostics[14] = case
+    dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
+
+    updated = set_ege_remediation_status(dna, 14, "ready_for_retest")
+
+    assert updated["trajectory"]["individual_plan"][0]["learning_status"] == "ready_for_retest"
+    assert updated["trajectory"]["remediation_status"] == "ready_for_retest"

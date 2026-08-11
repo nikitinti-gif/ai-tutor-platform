@@ -193,6 +193,7 @@ class ExamAttempt:
     results: dict[int, bool] = field(default_factory=dict)
     skipped: list[int] = field(default_factory=list)
     diagnostics: dict[int, dict] = field(default_factory=dict)
+    remediation: dict = field(default_factory=dict)
 
     @property
     def finished(self) -> bool:
@@ -215,7 +216,129 @@ class ExamAttempt:
             {int(k): bool(v) for k, v in data.get("results", {}).items()},
             [int(x) for x in data.get("skipped", [])],
             {int(k): dict(v) for k, v in data.get("diagnostics", {}).items()},
+            dict(data.get("remediation", {})),
         )
+
+
+TASK14_REMEDIATION = {
+    "BASE_REMAINDER_EXTRACTION": {
+        "explanation": (
+            "При переводе десятичного числа в другую систему каждый остаток "
+            "становится очередной цифрой справа. На первом шаге достаточно "
+            "вычислить n % base."
+        ),
+        "example": "Например: 130 = 3 × 36 + 22, поэтому первый остаток равен 22.",
+        "control_prompt": "Контроль: чему равен первый остаток при делении 200 на 36?",
+        "control_answers": ("20",),
+        "retest_prompt": (
+            "Возврат к заданию типа №14: число 1298 переводят в 36-ричную "
+            "систему. Какой остаток получится на первом шаге?"
+        ),
+        "retest_answers": ("2",),
+    },
+    "BASE_DIGIT_VALUE_PROPERTY": {
+        "explanation": (
+            "В системах с основанием больше 10 буква — это цифра с числовым "
+            "значением: A=10, B=11, C=12 и так далее. Свойство проверяют по значению."
+        ),
+        "example": "Например, C означает 12, поэтому C — цифра с чётным значением.",
+        "control_prompt": "Контроль: имеет ли цифра F чётное значение? Ответь да или нет.",
+        "control_answers": ("нет", "no"),
+        "retest_prompt": (
+            "Возврат к заданию типа №14: учитывается ли цифра E при подсчёте "
+            "цифр с чётным числовым значением? Ответь да или нет."
+        ),
+        "retest_answers": ("да", "yes"),
+    },
+    "BASE_MOST_SIGNIFICANT_DIGIT": {
+        "explanation": (
+            "Когда деление заканчивается, последнее ненулевое частное тоже "
+            "становится цифрой записи. Его нельзя потерять."
+        ),
+        "example": (
+            "Например, получены остатки 5, 0, 2, а последнее частное равно 1: "
+            "в записи четыре цифры — 1, 2, 0, 5."
+        ),
+        "control_prompt": (
+            "Контроль: получены остатки 4 и 3, последнее ненулевое частное равно 2. "
+            "Сколько цифр в записи?"
+        ),
+        "control_answers": ("3",),
+        "retest_prompt": (
+            "Возврат к заданию типа №14: получены остатки 5, 0 и 2, затем осталось "
+            "частное 1. Сколько всего цифр в записи?"
+        ),
+        "retest_answers": ("4",),
+    },
+}
+
+
+def _confirmed_task14_gap(attempt: ExamAttempt) -> str | None:
+    case = attempt.diagnostics.get(14, {})
+    if case.get("status") != "confirmed":
+        return None
+    for evidence in reversed(case.get("evidence", [])):
+        gap_id = evidence.get("gap_id")
+        if gap_id in TASK14_REMEDIATION and not evidence.get("is_correct"):
+            return gap_id
+    return None
+
+
+def start_task14_remediation(attempt: ExamAttempt) -> dict | None:
+    """Start one deterministic teaching cycle for a confirmed task 14 gap."""
+    if attempt.remediation:
+        return attempt.remediation
+    gap_id = _confirmed_task14_gap(attempt)
+    if not gap_id:
+        return None
+    attempt.remediation = {
+        "task_number": 14,
+        "gap_id": gap_id,
+        "status": "remediating",
+        "stage": "control",
+        "control_attempts": 0,
+        "retest_attempts": 0,
+    }
+    return attempt.remediation
+
+
+def render_task14_remediation(attempt: ExamAttempt, *, include_lesson: bool = False) -> str:
+    remediation = attempt.remediation
+    lesson = TASK14_REMEDIATION[remediation["gap_id"]]
+    if remediation["stage"] == "control":
+        intro = ""
+        if include_lesson:
+            intro = (
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "🧭 КОРОТКОЕ ОБУЧЕНИЕ · №14\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Правило: {lesson['explanation']}\n\n"
+                f"Разобранный пример: {lesson['example']}\n\n"
+            )
+        return intro + lesson["control_prompt"] + "\n\nОтправь только ответ."
+    return lesson["retest_prompt"] + "\n\nОтправь только ответ."
+
+
+def submit_task14_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
+    remediation = attempt.remediation
+    if not remediation or remediation.get("status") != "remediating":
+        raise ValueError("Обучающий цикл №14 не запущен.")
+    lesson = TASK14_REMEDIATION[remediation["gap_id"]]
+    stage = remediation["stage"]
+    normalized = answer.strip().lower().replace("ё", "е")
+    expected = {item.lower().replace("ё", "е") for item in lesson[f"{stage}_answers"]}
+    remediation[f"{stage}_attempts"] += 1
+    is_correct = normalized in expected
+    if is_correct and stage == "control":
+        remediation["stage"] = "retest"
+    elif is_correct:
+        remediation["status"] = "ready_for_retest"
+        remediation["stage"] = "completed"
+    return {
+        "is_correct": is_correct,
+        "status": remediation["status"],
+        "stage": remediation["stage"],
+    }
 
 
 def get_task(number: int) -> EgeTask:
