@@ -228,6 +228,7 @@ TASK14_REMEDIATION = {
             "вычислить n % base."
         ),
         "example": "Например: 130 = 3 × 36 + 22, поэтому первый остаток равен 22.",
+        "hint": "Представь 200 как 36 × q + r, где остаток r меньше 36.",
         "control_prompt": "Контроль: чему равен первый остаток при делении 200 на 36?",
         "control_answers": ("20",),
         "retest_prompt": (
@@ -242,6 +243,7 @@ TASK14_REMEDIATION = {
             "значением: A=10, B=11, C=12 и так далее. Свойство проверяют по значению."
         ),
         "example": "Например, C означает 12, поэтому C — цифра с чётным значением.",
+        "hint": "Сначала замени букву числом: A=10, B=11, …, F=15.",
         "control_prompt": "Контроль: имеет ли цифра F чётное значение? Ответь да или нет.",
         "control_answers": ("нет", "no"),
         "retest_prompt": (
@@ -259,6 +261,7 @@ TASK14_REMEDIATION = {
             "Например, получены остатки 5, 0, 2, а последнее частное равно 1: "
             "в записи четыре цифры — 1, 2, 0, 5."
         ),
+        "hint": "Посчитай все остатки и добавь к ним последнее ненулевое частное.",
         "control_prompt": (
             "Контроль: получены остатки 4 и 3, последнее ненулевое частное равно 2. "
             "Сколько цифр в записи?"
@@ -302,10 +305,16 @@ def start_task14_remediation(attempt: ExamAttempt) -> dict | None:
     return attempt.remediation
 
 
-def render_task14_remediation(attempt: ExamAttempt, *, include_lesson: bool = False) -> str:
+def render_task14_remediation(
+    attempt: ExamAttempt,
+    *,
+    include_lesson: bool | None = None,
+) -> str:
     remediation = attempt.remediation
     lesson = TASK14_REMEDIATION[remediation["gap_id"]]
     if remediation["stage"] == "control":
+        if include_lesson is None:
+            include_lesson = remediation["control_attempts"] == 0
         intro = ""
         if include_lesson:
             intro = (
@@ -315,8 +324,19 @@ def render_task14_remediation(attempt: ExamAttempt, *, include_lesson: bool = Fa
                 f"Правило: {lesson['explanation']}\n\n"
                 f"Разобранный пример: {lesson['example']}\n\n"
             )
+        elif remediation["control_attempts"]:
+            intro = (
+                f"💡 Подсказка: {lesson['hint']}\n\n"
+                f"Правило ещё раз: {lesson['explanation']}\n\n"
+            )
         return intro + lesson["control_prompt"] + "\n\nОтправь только ответ."
-    return lesson["retest_prompt"] + "\n\nОтправь только ответ."
+    intro = ""
+    if remediation["retest_attempts"]:
+        intro = (
+            "💡 Почти получилось. Примени то же правило к новым данным.\n"
+            f"{lesson['hint']}\n\n"
+        )
+    return intro + lesson["retest_prompt"] + "\n\nОтправь только ответ."
 
 
 def submit_task14_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:

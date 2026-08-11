@@ -84,6 +84,9 @@ def test_task14_remediation_survives_roundtrip_and_reaches_ready_for_retest():
     wrong = submit_task14_remediation_answer(attempt, "999")
     assert wrong["status"] == "remediating"
     assert wrong["stage"] == "control"
+    retry_text = render_task14_remediation(attempt)
+    assert "Подсказка" in retry_text
+    assert "Правило ещё раз" in retry_text
 
     control = submit_task14_remediation_answer(attempt, "20")
     assert control["stage"] == "retest"
@@ -92,3 +95,26 @@ def test_task14_remediation_survives_roundtrip_and_reaches_ready_for_retest():
 
     retest = submit_task14_remediation_answer(restored, "2")
     assert retest["status"] == "ready_for_retest"
+
+
+def test_task14_remediation_restores_full_lesson_before_first_control_answer():
+    attempt = _confirmed_task14_attempt()
+    start_task14_remediation(attempt)
+
+    restored = ExamAttempt.from_dict(attempt.to_dict())
+    text = render_task14_remediation(restored)
+
+    assert "КОРОТКОЕ ОБУЧЕНИЕ" in text
+    assert "Правило:" in text
+    assert "Разобранный пример:" in text
+
+
+def test_task14_retest_wrong_answer_gets_transfer_hint():
+    attempt = _confirmed_task14_attempt()
+    start_task14_remediation(attempt)
+    submit_task14_remediation_answer(attempt, "20")
+
+    wrong = submit_task14_remediation_answer(attempt, "999")
+
+    assert wrong["stage"] == "retest"
+    assert "Почти получилось" in render_task14_remediation(attempt)

@@ -396,9 +396,9 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
         save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
         await state.clear()
         await message.answer(
-            "✅ Повтор задания типа №14 выполнен верно.\n\n"
-            "Статус: ready_for_retest. Пробел ещё не отмечен mastered: "
-            "для этого позже нужна независимая отложенная проверка."
+            "✅ Отлично! Ты правильно применил правило уже в новой задаче.\n\n"
+            "Этот шаг пройден. Позже я дам ещё одну независимую задачу, "
+            "чтобы убедиться, что навык закрепился."
         )
         return
 
@@ -409,9 +409,12 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
     )
     await state.update_data(ege_attempt=attempt.to_dict())
     if result["is_correct"]:
-        await message.answer("✅ Правило применено верно. Теперь вернёмся к заданию типа №14.")
+        await message.answer(
+            "✅ Верно. Теперь проверим, сможешь ли ты применить это правило "
+            "в новой задаче типа №14."
+        )
     else:
-        await message.answer("Пока неверно. Разберём этот же шаг ещё раз — статус остаётся remediating.")
+        await message.answer("Пока неверно — ничего страшного. Посмотри на подсказку и попробуй ещё раз.")
     await message.answer(render_task14_remediation(attempt))
 
 
