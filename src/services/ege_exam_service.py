@@ -442,12 +442,15 @@ def submit_diagnostic_answer(attempt: ExamAttempt, answer: str) -> dict:
         answer,
     )
     attempt.diagnostics[task_number] = case
+    evidence = case["evidence"][-1]
     return {
         "task_number": task_number,
         "probe_id": probe["probe_id"],
-        "is_correct": case["evidence"][-1]["is_correct"],
+        "is_correct": evidence["is_correct"],
         "status": case["status"],
         "failed_step": case.get("failed_step"),
+        "gap_id": evidence.get("gap_id"),
+        "probe_role": evidence.get("probe_role"),
     }
 
 
@@ -466,12 +469,24 @@ def render_diagnostic_probe(attempt: ExamAttempt) -> str:
         source = f"⚠️ Источник: FALLBACK_PROBE\n{detail}"
     else:
         source = ""
+    role_text = {
+        "discrimination": "Различающая проба: отделяем пробел от случайной ошибки.",
+        "transfer": "Проба на перенос: проверяем то же правило на новых данных.",
+    }.get(probe.get("probe_role"), "Проверяем один конкретный шаг решения.")
+    gap_text = ""
+    if probe.get("description") and probe.get("required_rule"):
+        gap_text = (
+            f"\nГипотеза: {probe['description']}\n"
+            f"Почему эта проба подходит: для ответа нужно применить правило — "
+            f"{probe['required_rule']}\n"
+        )
     return (
         "━━━━━━━━━━━━━━━━━━━━\n"
         "🔎 ДИАГНОСТИКА ОШИБКИ\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"Задание КЕГЭ №{probe['task_number']}\n"
-        "Проверяем один конкретный шаг решения.\n\n"
+        f"{role_text}\n"
+        f"{gap_text}\n"
         f"{source}"
         f"{probe['prompt']}\n\n"
         "✍️ Отправь только ответ."

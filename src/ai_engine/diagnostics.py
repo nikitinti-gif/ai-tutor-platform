@@ -19,6 +19,31 @@ DIAGNOSIS_PROBABLE = "probable"
 DIAGNOSIS_CONFIRMED = "confirmed"
 
 
+TASK14_GAPS = {
+    0: {
+        "gap_id": "BASE_REMAINDER_EXTRACTION",
+        "description": "Не понимает, как остатки при делении образуют цифры записи числа.",
+        "required_rule": "Каждый остаток от деления на основание является очередной цифрой, записываемой справа налево.",
+    },
+    1: {
+        "gap_id": "BASE_DIGIT_VALUE_PROPERTY",
+        "description": "Смешивает символ цифры и её числовое значение.",
+        "required_rule": "Свойство цифры проверяют по её числовому значению, включая буквенные цифры.",
+    },
+    2: {
+        "gap_id": "BASE_MOST_SIGNIFICANT_DIGIT",
+        "description": "Теряет последний ненулевой разряд после завершения деления.",
+        "required_rule": "Последнее ненулевое частное тоже является цифрой записи и должно быть учтено.",
+    },
+}
+
+
+def _gap_for_operation(task_number: int, operation_index: int) -> dict | None:
+    if task_number == 14:
+        return TASK14_GAPS.get(operation_index)
+    return None
+
+
 # The first production-quality probe set.  Each probe checks exactly one
 # operation from the official task map and has a locally verifiable answer.
 # Further KЕГЭ tasks must use this same contract; free-form AI judgements are
@@ -228,7 +253,11 @@ def next_control_probe(case: dict) -> dict | None:
                 "operation_index": operation_index,
                 "prompt": probe["prompt"],
                 "tested_step": operations[operation_index],
+                "probe_role": "discrimination" if failure_count == 0 else "transfer",
             }
+            gap = _gap_for_operation(int(case.get("task_number", 0)), operation_index)
+            if gap:
+                result.update(gap)
             pending = case.get("pending_probe") or {}
             if pending.get("base_probe_id", pending.get("probe_id")) == probe["id"]:
                 result.update({key: pending[key] for key in ("probe_id", "base_probe_id", "prompt", "source") if key in pending})
@@ -262,6 +291,15 @@ def answer_control_probe(case: dict, probe_id: str, answer: str) -> dict:
         tested_step=tested_step,
         is_correct=is_correct,
         observed_answer=answer,
+        gap=_gap_for_operation(int(case.get("task_number", 0)), probe["operation_index"]),
+        probe_role=pending.get(
+            "probe_role",
+            "transfer" if any(
+                item.get("base_probe_id", item.get("probe_id")) == base_probe_id
+                and not item.get("is_correct")
+                for item in case.get("evidence", [])
+            ) else "discrimination",
+        ),
     )
     pending = updated.pop("pending_probe", None) or {}
     if updated.get("evidence"):
@@ -278,6 +316,13 @@ def confirmed_case_to_check_result(case: dict) -> dict:
     if case not in confirmed_cases([case]):
         raise ValueError("В Learning DNA можно передать только подтверждённую ошибку.")
     skill_ids = case.get("skill_ids", [])
+    confirmed_hypothesis = next(
+        (
+            item for item in case.get("gap_hypotheses", [])
+            if item.get("status") == "confirmed"
+        ),
+        None,
+    )
     return {
         "status": "has_error",
         "topic": case.get("task_title", f"Задание {case.get('task_number')}"),
@@ -287,6 +332,7 @@ def confirmed_case_to_check_result(case: dict) -> dict:
         "feedback": f"Подтверждена ошибка на шаге: {case.get('failed_step')}.",
         "recommendation": case.get("learning_action"),
         "diagnostic_evidence": deepcopy(case.get("evidence", [])),
+        "confirmed_gap": deepcopy(confirmed_hypothesis),
         "source": "local_control_probe",
     }
 
@@ -310,6 +356,22 @@ def open_diagnostic_case(
     """Create an unresolved case without inventing a failed step."""
     task = _task_definition(task_number, skill_map)
     diagnostic_path = task_diagnostic_path(task_number, skill_map)
+    hypotheses = []
+    if task_number == 14:
+        hypotheses = [
+            {
+                **gap,
+                "operation_index": operation_index,
+                "status": "suspected",
+                "supporting_evidence": [],
+                "alternative_explanations": [
+                    "случайная вычислительная ошибка",
+                    "невнимательность",
+                    "непонятое обозначение в условии",
+                ],
+            }
+            for operation_index, gap in TASK14_GAPS.items()
+        ]
     return {
         "task_number": task_number,
         "task_title": task.get("title", f"Задание {task_number}"),
@@ -320,6 +382,7 @@ def open_diagnostic_case(
         "active_skill_id": diagnostic_path[-1] if diagnostic_path else None,
         "operations": list(task.get("operations", [])),
         "candidate_errors": list(task.get("typical_errors", [])),
+        "gap_hypotheses": hypotheses,
         "failed_step": None,
         "error_type": None,
         "status": DIAGNOSIS_NEEDS_EVIDENCE,
@@ -362,34 +425,46 @@ def record_control_probe(
     tested_step: str,
     is_correct: bool,
     observed_answer: str,
+    gap: dict | None = None,
+    probe_role: str = "discrimination",
 ) -> dict:
     """Apply an independently checked mini-probe to a diagnostic case."""
     if not probe_id.strip() or not tested_step.strip():
         raise ValueError("Контрольная проба должна иметь ID и проверяемый шаг.")
     updated = deepcopy(case)
-    updated["evidence"].append(
-        {
+    evidence = {
             "kind": "control_probe",
             "probe_id": probe_id,
             "tested_step": tested_step,
             "is_correct": bool(is_correct),
             "value": observed_answer,
             "proves_failed_step": not is_correct,
+            "probe_role": probe_role,
         }
-    )
+    if gap:
+        evidence["gap_id"] = gap["gap_id"]
+        evidence["required_rule"] = gap["required_rule"]
+    updated["evidence"].append(evidence)
     failed_probes = [
         item for item in updated["evidence"]
         if item.get("kind") in {"control_probe", "ai_control_probe"}
         and item.get("proves_failed_step")
         and item.get("tested_step") == tested_step
     ]
+    failed_roles = {
+        item.get("probe_role")
+        for item in failed_probes
+        if not gap or item.get("gap_id") == gap.get("gap_id")
+    }
     if is_correct:
         updated["status"] = DIAGNOSIS_NEEDS_EVIDENCE
         updated["confidence"] = 0.0
         updated["failed_step"] = None
         updated["error_type"] = None
         updated["learning_action"] = None
-    elif len(failed_probes) < 2:
+    elif (
+        gap and not {"discrimination", "transfer"}.issubset(failed_roles)
+    ) or (not gap and len(failed_probes) < 2):
         updated["status"] = DIAGNOSIS_PROBABLE
         updated["confidence"] = 0.6
         updated["failed_step"] = tested_step
@@ -401,6 +476,20 @@ def record_control_probe(
         updated["failed_step"] = tested_step
         updated["error_type"] = f"failed_step:{probe_id}"
         updated["learning_action"] = f"Отработать шаг: {tested_step}."
+    if gap:
+        for hypothesis in updated.get("gap_hypotheses", []):
+            if hypothesis.get("gap_id") != gap["gap_id"]:
+                continue
+            hypothesis["supporting_evidence"] = [
+                item.get("probe_id") for item in updated["evidence"]
+                if item.get("gap_id") == gap["gap_id"] and not item.get("is_correct")
+            ]
+            if is_correct:
+                hypothesis["status"] = "not_confirmed"
+            elif updated["status"] == DIAGNOSIS_CONFIRMED:
+                hypothesis["status"] = "confirmed"
+            else:
+                hypothesis["status"] = "probing"
     return updated
 
 

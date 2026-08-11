@@ -359,6 +359,49 @@ def test_one_failed_control_probe_is_only_probable():
     assert confirmed_cases([case]) == []
 
 
+def test_task14_opens_named_gap_hypotheses():
+    case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
+
+    assert [item["gap_id"] for item in case["gap_hypotheses"]] == [
+        "BASE_REMAINDER_EXTRACTION",
+        "BASE_DIGIT_VALUE_PROPERTY",
+        "BASE_MOST_SIGNIFICANT_DIGIT",
+    ]
+    assert all(item["status"] == "suspected" for item in case["gap_hypotheses"])
+
+
+def test_task14_requires_discrimination_and_transfer_to_confirm_gap():
+    case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
+    first = next_control_probe(case)
+    assert first["probe_role"] == "discrimination"
+    assert first["gap_id"] == "BASE_REMAINDER_EXTRACTION"
+
+    case = answer_control_probe(case, first["probe_id"], "wrong")
+    assert case["status"] == DIAGNOSIS_PROBABLE
+    assert case["gap_hypotheses"][0]["status"] == "probing"
+
+    transfer = next_control_probe(case)
+    assert transfer["probe_role"] == "transfer"
+    case = answer_control_probe(case, transfer["probe_id"], "wrong")
+
+    assert case["status"] == DIAGNOSIS_CONFIRMED
+    assert case["gap_hypotheses"][0]["status"] == "confirmed"
+    signal = confirmed_case_to_check_result(case)
+    assert signal["confirmed_gap"]["gap_id"] == "BASE_REMAINDER_EXTRACTION"
+
+
+def test_passed_transfer_rejects_task14_gap_hypothesis():
+    case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
+    first = next_control_probe(case)
+    case = answer_control_probe(case, first["probe_id"], "wrong")
+    transfer = next_control_probe(case)
+    case = answer_control_probe(case, transfer["probe_id"], "2")
+
+    assert case["status"] == DIAGNOSIS_NEEDS_EVIDENCE
+    assert case["gap_hypotheses"][0]["status"] == "not_confirmed"
+    assert confirmed_cases([case]) == []
+
+
 def test_failure_in_another_step_does_not_confirm_current_skill():
     case = open_diagnostic_case(14, "wrong", "expected", SKILL_MAP)
     case = record_control_probe(case, probe_id="first", tested_step=case["operations"][0], is_correct=False, observed_answer="x")
