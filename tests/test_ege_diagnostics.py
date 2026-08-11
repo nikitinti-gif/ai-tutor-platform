@@ -1,6 +1,10 @@
+import asyncio
 import json
 from pathlib import Path
 import random
+import tempfile
+
+import src.services.ege_exam_service as ege_exam_service
 
 from src.services.ege_exam_service import (
     ExamAttempt,
@@ -230,6 +234,52 @@ def test_all_pilot_scenarios_accept_valid_independent_wording():
         )
         assert generated["prompt"]
         assert generated["expected_answers"]
+
+
+def test_pilot_gap_names_are_atomic_and_explain_what_to_practise():
+    skill_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    operations = {
+        task["number"]: task["operations"][0]
+        for task in skill_map["tasks"]
+        if task["number"] in {5, 27}
+    }
+
+    assert operations[5] == "перевести число между десятичной и двоичной системами"
+    assert operations[27] == "определить количество кластеров по пространственной близости"
+
+
+def test_live_self_check_does_not_send_service_message_to_telegram():
+    class BotThatMustStaySilent:
+        async def send_message(self, *_args, **_kwargs):
+            raise AssertionError("Служебная самопроверка не должна писать в Telegram")
+
+    original_generator = ege_exam_service._generate_self_check_probe
+    original_path = ege_exam_service.SELF_CHECK_RESULT_PATH
+    try:
+        ege_exam_service._generate_self_check_probe = lambda task, operation: {
+            "variant": "test",
+            "prompt": f"task={task}, operation={operation}",
+            "python_inputs": {},
+            "scenario_fields": {},
+            "expected_answers": ("ok",),
+            "generation_attempts": 1,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            result_path = Path(directory) / "self-check.json"
+            ege_exam_service.SELF_CHECK_RESULT_PATH = result_path
+            asyncio.run(
+                ege_exam_service.run_live_diagnostic_self_check(
+                    BotThatMustStaySilent()
+                )
+            )
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+    finally:
+        ege_exam_service._generate_self_check_probe = original_generator
+        ege_exam_service.SELF_CHECK_RESULT_PATH = original_path
+
+    assert result["status"] == "11/11 AI_PROBE"
 
 
 def test_suffix_probe_accepts_natural_gemini_wording_without_literal_right():

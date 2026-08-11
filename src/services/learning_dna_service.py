@@ -65,8 +65,11 @@ def format_learning_dna_for_teacher(dna: dict) -> str:
         )
     skills_text = "\n".join(skill_lines) or "• данных пока нет"
 
+    individual_plan = trajectory.get("individual_plan") or []
     recommendation = (
-        recommendations[-1]
+        individual_plan[0].get("action")
+        if individual_plan and individual_plan[0].get("action")
+        else recommendations[-1]
         if recommendations
         else "Сначала накопить ещё подтверждённые работы."
     )

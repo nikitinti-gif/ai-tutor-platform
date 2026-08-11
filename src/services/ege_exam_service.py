@@ -121,10 +121,8 @@ def _generate_self_check_probe(task_number: int, operation_index: int) -> dict:
     raise RuntimeError(" | ".join(errors))
 
 
-async def run_live_diagnostic_self_check(bot) -> None:
-    """Run all 11 pilot scenarios against real Gemini and notify the admin."""
-    from config import ADMIN_TELEGRAM_ID
-
+async def run_live_diagnostic_self_check(_bot) -> None:
+    """Run all 11 pilot scenarios and expose the result through logs/health."""
     scenarios = ((5, 4), (14, 3), (27, 4))
     passed: list[str] = []
     failed: list[str] = []
@@ -185,10 +183,6 @@ async def run_live_diagnostic_self_check(bot) -> None:
         ),
         encoding="utf-8",
     )
-    message = f"🧪 Реальная самопроверка Gemini завершена: {status}."
-    if failed:
-        message += "\n\nОшибки:\n" + "\n".join(f"• {item}" for item in failed)
-    await bot.send_message(int(ADMIN_TELEGRAM_ID), message[:4000])
 
 
 @dataclass(slots=True)

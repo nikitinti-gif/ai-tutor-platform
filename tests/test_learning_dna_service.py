@@ -86,6 +86,26 @@ class LearningDNAServiceTest(unittest.TestCase):
         self.assertIn("Сначала накопить", text)
         self.assertIn("данных пока нет", text)
 
+    def test_teacher_card_aligns_recommendation_with_first_plan_step(self):
+        text = format_learning_dna_for_teacher(
+            {
+                "student_id": 1,
+                "signals": [],
+                "trajectory": {
+                    "next_focus": "первый шаг",
+                    "recommendations": ["Отработать первый шаг.", "Отработать третий шаг."],
+                    "individual_plan": [
+                        {"failed_step": "первый шаг", "action": "Отработать первый шаг."},
+                        {"failed_step": "третий шаг", "action": "Отработать третий шаг."},
+                    ],
+                },
+            }
+        )
+
+        self.assertIn("Следующий фокус: первый шаг", text)
+        self.assertIn("Рекомендация: Отработать первый шаг.", text)
+        self.assertNotIn("Рекомендация: Отработать третий шаг.", text)
+
 
 if __name__ == "__main__":
     unittest.main()
