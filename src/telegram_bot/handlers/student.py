@@ -528,7 +528,8 @@ async def receive_ege_diagnostic_answer(
 
     if result["is_correct"]:
         await message.answer(
-            "✅ Этот шаг выполнен верно — гипотеза об ошибке не подтверждена."
+            "✅ Этот шаг выполнен верно — гипотеза об ошибке не подтверждена. "
+            "Проверяем следующий шаг этого же задания."
         )
     elif result["status"] == "confirmed":
         await message.answer(

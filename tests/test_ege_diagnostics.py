@@ -128,6 +128,37 @@ def test_binary_conversion_uses_python_owned_direction_and_data():
         raise AssertionError("Посторонние числа вне атомарного действия должны отклоняться")
 
 
+def test_task5_branch_probe_accepts_only_verified_zero_and_one_constants():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(5, "wrong", "expected", full_map)
+    base = CONTROL_PROBES[5][1]
+    valid = build_live_probe(
+        case,
+        {"id": base["id"], "operation_index": 1},
+        json.dumps({
+            "prompt_template": (
+                "Для N={n} выберите ветку: 1, если последний двоичный бит равен 1, "
+                "или 0, если он равен 0?"
+            ),
+            "values": [11],
+        }),
+    )
+    assert valid["expected_answers"] == ("1", "ветка 1")
+
+    invalid = json.dumps({
+        "prompt_template": "Для N={n} выберите ветку 1, 0 или 2?",
+        "values": [11],
+    })
+    try:
+        build_live_probe(case, {"id": base["id"], "operation_index": 1}, invalid)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Непроверяемая константа 2 должна отклоняться")
+
+
 def test_gemini_429_retries_same_request_after_declared_delay(monkeypatch):
     class FakeClient:
         calls = 0

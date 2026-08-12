@@ -146,7 +146,12 @@ def _validate_template(
     names = _field_names(template)
     if set(names) != set(fields) or any(names.count(name) != 1 for name in names):
         raise ValueError("Формулировка должна использовать каждый разрешённый параметр ровно один раз.")
-    allowed_constants: set[str] = set()
+    # Some operations are defined by fixed constants. They are safe because
+    # Python owns their meaning and the solver, while every answer-bearing
+    # value still arrives through a placeholder.
+    allowed_constants = {
+        (5, 1): {"0", "1"},
+    }.get((task, operation), set())
     numeric_literals = set(re.findall(r"\d+", template))
     if numeric_literals - allowed_constants:
         raise ValueError("AI добавил непроверяемые числа вне плейсхолдеров.")
@@ -210,12 +215,16 @@ def build_live_probe(
     _validate_no_answer_leak(prompt, answer)
     _validate_variety(prompt, previous_prompts or [])
 
+    expected_answers = (str(answer),)
+    if (task, operation) == (5, 1):
+        expected_answers = (str(answer), f"ветка {answer}")
+
     return {
         "probe_id": f"{base_probe['id']}:{uuid4().hex[:10]}",
         "base_probe_id": base_probe["id"],
         "operation_index": operation,
         "variant": scenario_data["variant"],
         "prompt": prompt,
-        "expected_answers": (str(answer),),
+        "expected_answers": expected_answers,
         "source": "ai_wording_parameters_python_solver",
     }

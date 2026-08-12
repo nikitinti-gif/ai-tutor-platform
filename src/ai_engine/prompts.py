@@ -261,6 +261,9 @@ def build_live_diagnostic_probe_prompt(*, task_number: int, operation_index: int
     }
     placeholders = ", ".join("{" + name + "}" for name in placeholders_by_operation[(task_number, operation_index)])
     preview = ", ".join(f"{name}={value}" for name, value in fields.items())
+    allowed_constants = {
+        (5, 1): " Разрешены только фиксированные цифры 0 и 1: они обозначают две ветки алгоритма.",
+    }.get((task_number, operation_index), "")
     return f"""
 Создай новую короткую диагностическую мини-пробу по навыку {skill_id}.
 Проверяемое действие: {intents[(task_number, operation_index)]}.
@@ -271,7 +274,7 @@ Python уже создал и проверил данные: {preview}.
 Жёсткие правила prompt_template:
 - сам придумай композицию и формулировку, не копируй предыдущие вопросы;
 - используй каждый плейсхолдер ровно один раз: {placeholders};
-- не используй другие плейсхолдеры и не пиши цифры вне плейсхолдеров;
+- не используй другие плейсхолдеры и не пиши цифры вне плейсхолдеров.{allowed_constants}
 - не сообщай и не подсказывай ответ;
 - проверяй только указанное действие, без второго вычислительного шага;
 - задай явный вопрос со знаком вопроса; длина до 500 символов;
