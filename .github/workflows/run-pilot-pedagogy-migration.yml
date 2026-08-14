@@ -1,0 +1,32 @@
+name: Run pilot pedagogy migration
+on:
+  push:
+    branches:
+      - release/0.1-diagnostics
+permissions:
+  contents: write
+jobs:
+  migrate:
+    if: ${{ github.event.head_commit.message == 'Run pilot pedagogy migration' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/_tmp_unify_pilot_pedagogy.py
+      - run: pip install -r requirements.txt pytest
+      - run: pytest -q tests/test_ege_diagnostics.py tests/test_diagnostic_evidence_integrity.py tests/test_pilot_full_student_loop.py tests/test_pilot_full_telegram_loop.py tests/test_pilot_learning_dna_flow.py tests/test_task5_remediation.py tests/test_task27_remediation.py
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+      - run: |
+          rm scripts/_tmp_unify_pilot_pedagogy.py
+          rm .github/workflows/run-pilot-pedagogy-migration.yml
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Align pilot hypotheses with atomic student skills'
+          git push origin HEAD:release/0.1-diagnostics
