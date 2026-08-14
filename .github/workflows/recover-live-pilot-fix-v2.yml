@@ -1,0 +1,53 @@
+name: Retry live pilot remediation migration safely
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  recover:
+    if: github.event.head_commit.message == 'Retry live pilot remediation migration safely'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute migration preserving embedded source indentation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/live-pilot-remediation-fix.yml').read_text()
+          body = source.split("python - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
+          out = []
+          raw = False
+          for line in body.splitlines():
+              if not raw and ("block = r'''" in line or "test.write_text(r'''" in line):
+                  out.append(line[10:] if line.startswith('          ') else line)
+                  raw = True
+                  continue
+              if raw:
+                  out.append(line)
+                  if line.startswith("'''") or line.startswith("''',"):
+                      raw = False
+                  continue
+              out.append(line[10:] if line.startswith('          ') else line)
+          exec(compile('\n'.join(out), 'recovered_migration.py', 'exec'))
+          PY
+      - name: Run regression suite
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          pytest -q tests/test_task5_remediation.py tests/test_task27_remediation.py tests/test_pilot_full_student_loop.py tests/test_pilot_full_telegram_loop.py tests/test_pilot_learning_dna_flow.py tests/test_diagnostic_evidence_integrity.py tests/test_student_diagnostic_handler_flow.py
+      - name: Commit fix
+        run: |
+          rm -f .github/workflows/live-pilot-remediation-fix.yml .github/workflows/recover-live-pilot-fix.yml .github/workflows/recover-live-pilot-fix-v2.yml
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Teach confirmed task5 gaps before later remediation'
+          git push origin HEAD:release/0.1-diagnostics
