@@ -124,3 +124,16 @@ def test_pedagogical_gate_rejects_internal_meta_language():
     }, ensure_ascii=False)
     with pytest.raises(ValueError, match="педагогически неестественна"):
         build_live_probe(case, base, raw, values=[5])
+
+
+def test_live_prompt_families_use_current_python_fields_and_teacher_language():
+    from src.ai_engine.live_diagnostic_probes import _scenario
+    from src.ai_engine.prompts import build_live_diagnostic_probe_prompt
+    for task, op, data in ((14, 2, {"values": [4]}), (27, 0, {"values": [20, 8]})):
+        fields, _ = _scenario(task, op, data)
+        prompt = build_live_diagnostic_probe_prompt(task_number=task, operation_index=op, skill_id="test.skill", fields=fields)
+        for field in fields:
+            assert "{" + field + "}" in prompt
+        assert "Педагогическая семья:" in prompt
+        assert "Пример хорошего стиля:" in prompt
+        assert "remainder_count" not in prompt
