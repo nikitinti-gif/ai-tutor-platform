@@ -579,10 +579,12 @@ async def receive_ege_diagnostic_answer(
             "Проверяем следующий шаг этого же задания."
         )
     elif result["status"] == "confirmed":
-        await message.answer(
-            "🔴 Точка ошибки подтверждена локальной пробой:\n"
-            f"{result['failed_step']}"
-        )
+        diagnosis = result.get("diagnosis") or result.get("failed_step") or "Точка ошибки подтверждена."
+        rule = result.get("required_rule")
+        text = "🔴 Точка ошибки подтверждена двумя независимыми пробами:\n" + diagnosis
+        if rule:
+            text += "\n\n📌 Что нужно повторить:\n" + rule
+        await message.answer(text)
     else:
         await message.answer(
             "🟡 Получено первое свидетельство ошибки. "

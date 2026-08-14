@@ -914,6 +914,10 @@ def submit_diagnostic_answer(
     )
     attempt.diagnostics[task_number] = case
     evidence = case["evidence"][-1]
+    confirmed_gap = next(
+        (item for item in case.get("gap_hypotheses", []) if item.get("status") == "confirmed"),
+        None,
+    )
     return {
         "task_number": task_number,
         "probe_id": probe["probe_id"],
@@ -922,6 +926,8 @@ def submit_diagnostic_answer(
         "failed_step": case.get("failed_step"),
         "gap_id": evidence.get("gap_id"),
         "probe_role": evidence.get("probe_role"),
+        "diagnosis": confirmed_gap.get("description") if confirmed_gap else None,
+        "required_rule": confirmed_gap.get("required_rule") if confirmed_gap else None,
     }
 
 

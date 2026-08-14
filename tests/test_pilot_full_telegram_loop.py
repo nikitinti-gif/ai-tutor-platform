@@ -168,6 +168,9 @@ def test_pilot_full_telegram_loop_updates_verified_learning_dna(monkeypatch):
     assert not any(item["task_number"] == 5 for item in plan)
     assert sessions[42]["status"] == "remediation_in_progress"
     assert any("КОРОТКОЕ ОБУЧЕНИЕ · №14" in text for text in transcript)
+    assert any("Точка ошибки подтверждена двумя независимыми пробами" in text for text in transcript)
+    assert any("Что нужно повторить:" in text for text in transcript)
+    assert any("Ошибается при вычислении остатка" in text for text in transcript)
 
     _drive_remediation(state, transcript)
 
