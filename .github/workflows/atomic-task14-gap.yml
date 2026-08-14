@@ -1,0 +1,52 @@
+name: Align task14 atomic gap
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Align task14 gap with atomic remainder skill'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch atomic hypothesis
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/ai_engine/diagnostics.py')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace(
+              '"description": "Не понимает, как остатки при делении образуют цифры записи числа.",\n        "required_rule": "Каждый остаток от деления на основание является очередной цифрой, записываемой справа налево.",',
+              '"description": "Ошибается при вычислении остатка от деления числа на основание системы счисления.",\n        "required_rule": "На первом шаге перевода остаток вычисляется как N % base; ответ здесь — обычное десятичное число.",',
+              1,
+          )
+          p.write_text(text, encoding='utf-8')
+
+          t = Path('tests/test_ege_diagnostics.py')
+          text = t.read_text(encoding='utf-8')
+          addition = '''\n\ndef test_task14_remainder_hypothesis_is_atomic():\n    from src.ai_engine.diagnostics import TASK14_GAPS\n    gap = TASK14_GAPS[0]\n    assert "остатка" in gap["description"].lower()\n    assert "N % base" in gap["required_rule"]\n    assert "образуют цифры" not in gap["description"].lower()\n'''
+          if 'test_task14_remainder_hypothesis_is_atomic' not in text:
+              text += addition
+          t.write_text(text, encoding='utf-8')
+          PY
+      - name: Test
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          pytest -q tests/test_ege_diagnostics.py tests/test_probe_quality_gate.py tests/test_pilot_full_student_loop.py tests/test_pilot_full_telegram_loop.py
+      - name: Commit and clean
+        run: |
+          rm .github/workflows/atomic-task14-gap.yml
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Make task14 remainder diagnosis atomic'
+          git push origin HEAD:release/0.1-diagnostics
