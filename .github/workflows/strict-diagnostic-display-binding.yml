@@ -1,0 +1,104 @@
+name: One-shot strict diagnostic display binding
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add one-shot strict diagnostic display binding'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bind shown probes and remove legacy fallback
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path('src/services/ege_exam_service.py')
+          text = service.read_text(encoding='utf-8')
+          anchor = '''def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:\n'''
+          helper = '''def bind_current_diagnostic_probe(attempt: ExamAttempt) -> dict | None:\n    \"\"\"Bind the exact probe that is about to be shown to the student's next answer.\"\"\"\n    probe = next_attempt_diagnostic_probe(attempt)\n    if probe is None:\n        return None\n    task_number = probe[\"task_number\"]\n    case = attempt.diagnostics[task_number]\n    pending = case.get(\"pending_probe\") or {}\n    if pending:\n        if str(pending.get(\"probe_id\", \"\")) != str(probe[\"probe_id\"]):\n            raise ValueError(\"Активная диагностическая проба не соответствует показываемому вопросу.\")\n        return probe\n    attempt.diagnostics[task_number] = apply_live_probe(case, probe)\n    return next_attempt_diagnostic_probe(attempt)\n\n\n'''
+          if 'def bind_current_diagnostic_probe' not in text:
+              text = text.replace(anchor, helper + anchor, 1)
+          old = '''    task_number = probe["task_number"]\n    current_case = attempt.diagnostics[task_number]\n    if current_case.get("pending_probe"):\n        case = answer_bound_control_probe(\n            current_case,\n            probe["probe_id"],\n            answer,\n        )\n    else:\n        # Transitional compatibility for internal callers that have not yet\n        # modelled the display step. This evidence is intentionally legacy\n        # and cannot pass the Learning DNA evidence gate.\n        case = answer_control_probe(\n            current_case,\n            probe["probe_id"],\n            answer,\n        )\n'''
+          new = '''    task_number = probe["task_number"]\n    current_case = attempt.diagnostics[task_number]\n    if not current_case.get("pending_probe"):\n        raise ValueError(\"Нет привязанной показанной диагностической пробы.\")\n    case = answer_bound_control_probe(\n        current_case,\n        probe["probe_id"],\n        answer,\n    )\n'''
+          if old not in text:
+              raise SystemExit('legacy submit block not found')
+          text = text.replace(old, new, 1)
+          service.write_text(text, encoding='utf-8')
+
+          student = Path('src/telegram_bot/handlers/student.py')
+          text = student.read_text(encoding='utf-8')
+          text = text.replace(
+              '''        diagnostic_summary,\n        next_attempt_diagnostic_probe,\n        render_diagnostic_probe,\n    )\n\n    await _prepare_ai_probe_for_admin(message, attempt)\n    probe = next_attempt_diagnostic_probe(attempt)\n''',
+              '''        bind_current_diagnostic_probe,\n        diagnostic_summary,\n        next_attempt_diagnostic_probe,\n        render_diagnostic_probe,\n    )\n\n    await _prepare_ai_probe_for_admin(message, attempt)\n    probe = bind_current_diagnostic_probe(attempt)\n''',
+              1,
+          )
+          text = text.replace(
+              '''        diagnostic_summary,\n        next_attempt_diagnostic_probe,\n        render_diagnostic_probe,\n        submit_diagnostic_answer,\n    )\n''',
+              '''        bind_current_diagnostic_probe,\n        diagnostic_summary,\n        next_attempt_diagnostic_probe,\n        render_diagnostic_probe,\n        submit_diagnostic_answer,\n    )\n''',
+              1,
+          )
+          text = text.replace(
+              '''    await _prepare_ai_probe_for_admin(message, attempt)\n    await state.update_data(ege_attempt=attempt.to_dict())\n    save_ege_session(\n''',
+              '''    await _prepare_ai_probe_for_admin(message, attempt)\n    bind_current_diagnostic_probe(attempt)\n    await state.update_data(ege_attempt=attempt.to_dict())\n    save_ege_session(\n''',
+              1,
+          )
+          restart_old = '''        await _prepare_ai_probe_for_admin(message, attempt)\n        await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)\n        await state.update_data(ege_attempt=attempt.to_dict())\n        await message.answer("▶️ Продолжаем диагностику ошибок.")\n        from src.services.ege_exam_service import render_diagnostic_probe\n        await message.answer(render_diagnostic_probe(attempt))\n'''
+          restart_new = '''        await _prepare_ai_probe_for_admin(message, attempt)\n        from src.services.ege_exam_service import bind_current_diagnostic_probe, render_diagnostic_probe\n        bind_current_diagnostic_probe(attempt)\n        await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)\n        await state.update_data(ege_attempt=attempt.to_dict())\n        save_ege_session(\n            message.from_user.id,\n            attempt.to_dict(),\n            status="diagnostics_in_progress",\n        )\n        await message.answer("▶️ Продолжаем диагностику ошибок.")\n        await message.answer(render_diagnostic_probe(attempt))\n'''
+          if restart_old not in text:
+              raise SystemExit('restart block not found')
+          text = text.replace(restart_old, restart_new, 1)
+          student.write_text(text, encoding='utf-8')
+
+          pilot = Path('tests/test_pilot_diagnostic_flow.py')
+          text = pilot.read_text(encoding='utf-8')
+          text = text.replace('    create_pilot_diagnostic_attempt,\n', '    bind_current_diagnostic_probe,\n    create_pilot_diagnostic_attempt,\n', 1)
+          text = text.replace('    result = submit_diagnostic_answer(attempt, "10011")\n', '    bind_current_diagnostic_probe(attempt)\n    result = submit_diagnostic_answer(attempt, "10011")\n', 1)
+          text = text.replace('        first_result = submit_diagnostic_answer(attempt, "definitely-wrong")\n', '        bind_current_diagnostic_probe(attempt)\n        first_result = submit_diagnostic_answer(attempt, "definitely-wrong")\n', 1)
+          text = text.replace('        second_result = submit_diagnostic_answer(attempt, "still-wrong")\n', '        bind_current_diagnostic_probe(attempt)\n        second_result = submit_diagnostic_answer(attempt, "still-wrong")\n', 1)
+          text += '''\n\ndef test_submit_rejects_answer_when_probe_was_not_shown():\n    import pytest\n    attempt = create_pilot_diagnostic_attempt()\n    with pytest.raises(ValueError, match="показан|привязан"):\n        submit_diagnostic_answer(attempt, "10011")\n'''
+          pilot.write_text(text, encoding='utf-8')
+
+          diag = Path('tests/test_ege_diagnostics.py')
+          text = diag.read_text(encoding='utf-8')
+          text = text.replace('    _rate_limit_retry_delay,\n', '    _rate_limit_retry_delay,\n    bind_current_diagnostic_probe,\n', 1)
+          old_block = '''    passed = submit_diagnostic_answer(\n        attempt,\n        CONTROL_PROBES[1][0]["expected_answers"][0],\n    )\n'''
+          new_block = '''    bind_current_diagnostic_probe(attempt)\n    passed = submit_diagnostic_answer(\n        attempt,\n        CONTROL_PROBES[1][0]["expected_answers"][0],\n    )\n'''
+          text = text.replace(old_block, new_block, 1)
+          text = text.replace('    failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n', '    bind_current_diagnostic_probe(attempt)\n    failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n', 1)
+          text = text.replace('    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2\n', '    bind_current_diagnostic_probe(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2\n', 1)
+          text = text.replace('    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    assert attempt.diagnostics[1]["status"] == DIAGNOSIS_CONFIRMED\n', '    bind_current_diagnostic_probe(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    bind_current_diagnostic_probe(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    assert attempt.diagnostics[1]["status"] == DIAGNOSIS_CONFIRMED\n', 1)
+          diag.write_text(text, encoding='utf-8')
+
+          handler_test = Path('tests/test_student_diagnostic_handler_flow.py')
+          text = handler_test.read_text(encoding='utf-8')
+          text = text.replace(
+              '''        assert case["status"] == "confirmed"\n        assert case["confidence"] == 0.95\n''',
+              '''        assert case["status"] == "confirmed"\n        assert case["confidence"] == 0.95\n        control_evidence = [item for item in case["evidence"] if item.get("kind") == "control_probe"]\n        assert len(control_evidence) >= 2\n        assert all(item.get("evidence_valid") is True for item in control_evidence[-2:])\n        assert all(item.get("question") for item in control_evidence[-2:])\n        assert all(item.get("student_answer") is not None for item in control_evidence[-2:])\n''',
+              1,
+          )
+          handler_test.write_text(text, encoding='utf-8')
+
+          Path('.github/workflows/strict-diagnostic-display-binding.yml').unlink()
+          PY
+      - name: Run diagnostic regression suite
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py
+      - name: Commit strict display binding
+        run: |
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Require displayed probe before diagnostic answer'
+          git push origin HEAD:release/0.1-diagnostics
