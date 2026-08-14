@@ -221,6 +221,129 @@ class ExamAttempt:
         )
 
 
+TASK5_REMEDIATION = {
+    "number_systems.decimal_binary_conversion": {
+        "explanation": "Чтобы перевести десятичное число в двоичное, последовательно дели его на 2 и читай остатки снизу вверх.",
+        "example": "Например, 13 = 1101₂: 13→6 остаток 1, 6→3 остаток 0, 3→1 остаток 1, затем старшая 1.",
+        "hint": "Дели на 2, записывай остатки 0/1 и прочитай их в обратном порядке.",
+        "control_prompt": "Контроль: переведи 10 из десятичной системы в двоичную.",
+        "control_answers": ("1010",),
+        "retest_prompt": "Перенос: переведи 25 из десятичной системы в двоичную.",
+        "retest_answers": ("11001",),
+        "verification_prompt": "Независимая проверка без подсказки: переведи 42 из десятичной системы в двоичную.",
+        "verification_answers": ("101010",),
+    },
+    "algorithms.branch_from_last_bit": {
+        "explanation": "Младший бит — последняя цифра двоичной записи. Именно по нему выбирается ветка алгоритма.",
+        "example": "У 101101 последний бит 1, значит выбирается ветка для 1.",
+        "hint": "Смотри только на крайнюю правую цифру двоичной записи.",
+        "control_prompt": "Контроль: у записи 110010 какой младший бит?",
+        "control_answers": ("0",),
+        "retest_prompt": "Перенос: у записи 101011 какой младший бит?",
+        "retest_answers": ("1",),
+        "verification_prompt": "Независимая проверка: у записи 111100 какой младший бит?",
+        "verification_answers": ("0",),
+    },
+    "algorithms.binary_suffix_append": {
+        "explanation": "Приписать суффикс справа — значит оставить исходную двоичную запись без изменений и добавить указанные биты в конец.",
+        "example": "К 101 приписать 11 → 10111.",
+        "hint": "Не складывай числа: просто добавь указанные символы справа.",
+        "control_prompt": "Контроль: к двоичной записи 1101 припиши справа 0.",
+        "control_answers": ("11010",),
+        "retest_prompt": "Перенос: к записи 1010 припиши справа 11.",
+        "retest_answers": ("101011",),
+        "verification_prompt": "Независимая проверка: к записи 11100 припиши справа 1.",
+        "verification_answers": ("111001",),
+    },
+    "algorithms.integer_boundary_inequality": {
+        "explanation": "Для строгого неравенства сначала найди границу, затем выбери наибольшее целое, которое всё ещё удовлетворяет знаку <.",
+        "example": "3N+2<20 → N<6, значит наибольшее целое N равно 5.",
+        "hint": "Реши неравенство и отдельно проверь ближайшее целое у границы.",
+        "control_prompt": "Контроль: какое наибольшее целое N удовлетворяет 2N+1<12?",
+        "control_answers": ("5",),
+        "retest_prompt": "Перенос: какое наибольшее целое N удовлетворяет 4N+3<28?",
+        "retest_answers": ("6",),
+        "verification_prompt": "Независимая проверка: какое наибольшее целое N удовлетворяет 5N+2<38?",
+        "verification_answers": ("7",),
+    },
+}
+
+
+def _confirmed_task5_skill(attempt: ExamAttempt) -> str | None:
+    case = attempt.diagnostics.get(5, {})
+    if case.get("status") != "confirmed":
+        return None
+    for evidence in reversed(case.get("evidence", [])):
+        skill_id = evidence.get("skill_id")
+        if skill_id in TASK5_REMEDIATION and evidence.get("evidence_valid") is True and not evidence.get("is_correct"):
+            return skill_id
+    return None
+
+
+def start_task5_remediation(attempt: ExamAttempt) -> dict | None:
+    if attempt.remediation:
+        return attempt.remediation
+    skill_id = _confirmed_task5_skill(attempt)
+    if not skill_id:
+        return None
+    attempt.remediation = {
+        "task_number": 5, "skill_id": skill_id, "status": "remediating", "stage": "control",
+        "control_attempts": 0, "retest_attempts": 0, "verification_attempts": 0,
+        "learning_round": 1, "stage_history": [],
+    }
+    return attempt.remediation
+
+
+def render_task5_remediation(attempt: ExamAttempt, *, include_lesson: bool | None = None) -> str:
+    remediation = attempt.remediation
+    lesson = TASK5_REMEDIATION[remediation["skill_id"]]
+    stage = remediation["stage"]
+    if stage == "control":
+        if include_lesson is None:
+            include_lesson = remediation["control_attempts"] == 0
+        intro = ""
+        if include_lesson:
+            intro = "━━━━━━━━━━━━━━━━━━━━\n🧭 КОРОТКОЕ ОБУЧЕНИЕ · №5\n━━━━━━━━━━━━━━━━━━━━\n\nПравило: " + lesson["explanation"] + "\n\nРазобранный пример: " + lesson["example"] + "\n\n"
+        elif remediation["control_attempts"]:
+            intro = "💡 Подсказка: " + lesson["hint"] + "\n\nПравило ещё раз: " + lesson["explanation"] + "\n\n"
+        return intro + lesson["control_prompt"] + "\n\nОтправь только ответ."
+    if stage == "verification":
+        return "━━━━━━━━━━━━━━━━━━━━\n🎯 НЕЗАВИСИМАЯ ПРОВЕРКА · №5\n━━━━━━━━━━━━━━━━━━━━\n\nЗдесь нет подсказки; данные отличаются от примеров.\n\n" + lesson["verification_prompt"] + "\n\nОтправь только ответ."
+    intro = ""
+    if remediation["retest_attempts"]:
+        intro = "💡 Примени то же правило к новым данным.\n" + lesson["hint"] + "\n\n"
+    return intro + lesson["retest_prompt"] + "\n\nОтправь только ответ."
+
+
+def submit_task5_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
+    remediation = attempt.remediation
+    if not remediation or remediation.get("task_number") != 5 or remediation.get("status") not in {"remediating", "retesting"}:
+        raise ValueError("Обучающий цикл №5 не запущен.")
+    lesson = TASK5_REMEDIATION[remediation["skill_id"]]
+    stage = remediation["stage"]
+    normalized = answer.strip().lower().replace("ё", "е")
+    expected = {item.lower().replace("ё", "е") for item in lesson[f"{stage}_answers"]}
+    remediation[f"{stage}_attempts"] += 1
+    is_correct = normalized in expected
+    remediation.setdefault("stage_history", []).append({
+        "stage": stage, "question": lesson[f"{stage}_prompt"],
+        "canonical_answer": str(lesson[f"{stage}_answers"][0]), "student_answer": answer,
+        "validator_result": is_correct, "is_correct": is_correct,
+        "learning_round": remediation.get("learning_round", 1), "timestamp": time.time(),
+    })
+    if is_correct and stage == "control":
+        remediation["stage"] = "retest"
+    elif is_correct and stage == "retest":
+        remediation["status"] = "retesting"; remediation["stage"] = "verification"
+    elif is_correct:
+        remediation["status"] = "mastered"; remediation["stage"] = "completed"
+    elif stage == "verification":
+        remediation["status"] = "remediating"; remediation["stage"] = "control"
+        remediation["control_attempts"] = 0; remediation["retest_attempts"] = 0
+        remediation["learning_round"] += 1
+    return {"is_correct": is_correct, "status": remediation["status"], "stage": remediation["stage"]}
+
+
 TASK14_REMEDIATION = {
     "BASE_REMAINDER_EXTRACTION": {
         "explanation": (
