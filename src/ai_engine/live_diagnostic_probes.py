@@ -144,8 +144,21 @@ def _validate_template(
     if not template or len(template) > MAX_PROMPT_LENGTH:
         raise ValueError("AI вернул пустую или слишком длинную формулировку.")
     names = _field_names(template)
-    if set(names) != set(fields) or any(names.count(name) != 1 for name in names):
-        raise ValueError("Формулировка должна использовать каждый разрешённый параметр ровно один раз.")
+    unknown = set(names) - set(fields)
+    missing = set(fields) - set(names)
+    if unknown:
+        raise ValueError(
+            "Формулировка использует неизвестные параметры: "
+            + ", ".join(sorted(unknown))
+        )
+    if missing:
+        raise ValueError(
+            "Формулировка не использует обязательные параметры: "
+            + ", ".join(sorted(missing))
+        )
+    # Repeating a Python-owned placeholder is safe: it only repeats the same
+    # already-validated value. Requiring exactly one occurrence made natural
+    # wording brittle (notably task 14, where the base is often mentioned twice).
     # Some operations are defined by fixed constants. They are safe because
     # Python owns their meaning and the solver, while every answer-bearing
     # value still arrives through a placeholder.
