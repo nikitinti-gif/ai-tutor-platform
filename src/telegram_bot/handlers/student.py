@@ -335,11 +335,15 @@ async def _complete_ege_diagnostics(
     from src.services.ege_exam_service import (
         render_task14_remediation,
         start_task14_remediation,
+        render_task27_remediation,
+        start_task27_remediation,
     )
 
     remediation = start_task14_remediation(attempt)
+    if not remediation:
+        remediation = start_task27_remediation(attempt)
     if remediation:
-        dna = set_ege_remediation_status(dna, 14, "remediating")
+        dna = set_ege_remediation_status(dna, int(remediation["task_number"]), "remediating")
     LearningDNARepository.save(message.from_user.id, dna)
     save_ege_session(
         message.from_user.id,
@@ -362,7 +366,8 @@ async def _complete_ege_diagnostics(
     if remediation:
         await state.set_state(StudentEgeExamStates.waiting_remediation_answer)
         await state.update_data(ege_attempt=attempt.to_dict())
-        await message.answer(render_task14_remediation(attempt, include_lesson=True))
+        renderer = render_task14_remediation if remediation["task_number"] == 14 else render_task27_remediation
+        await message.answer(renderer(attempt, include_lesson=True))
     else:
         await state.clear()
 
@@ -376,6 +381,9 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
         ExamAttempt,
         render_task14_remediation,
         submit_task14_remediation_answer,
+        render_task27_remediation,
+        submit_task27_remediation_answer,
+        start_task27_remediation,
     )
 
     data = await state.get_data()
@@ -389,18 +397,33 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
         return
 
     attempt = ExamAttempt.from_dict(attempt_data)
-    result = submit_task14_remediation_answer(attempt, message.text or "")
+    remediation_task = int((attempt.remediation or {}).get("task_number", 14))
+    submitter = submit_task14_remediation_answer if remediation_task == 14 else submit_task27_remediation_answer
+    renderer = render_task14_remediation if remediation_task == 14 else render_task27_remediation
+    result = submitter(attempt, message.text or "")
     dna = LearningDNARepository.get(message.from_user.id)
     if dna:
         if result["status"] == "mastered":
             dna = confirm_ege_remediation_mastery(
-                dna, 14, attempt.attempt_id, attempt.remediation
+                dna, remediation_task, attempt.attempt_id, attempt.remediation
             )
         else:
-            dna = set_ege_remediation_status(dna, 14, result["status"])
+            dna = set_ege_remediation_status(dna, remediation_task, result["status"])
         LearningDNARepository.save(message.from_user.id, dna)
 
     if result["status"] == "mastered":
+        if remediation_task == 14:
+            attempt.remediation = {}
+            next_remediation = start_task27_remediation(attempt)
+            if next_remediation:
+                if dna:
+                    dna = set_ege_remediation_status(dna, 27, "remediating")
+                    LearningDNARepository.save(message.from_user.id, dna)
+                save_ege_session(message.from_user.id, attempt.to_dict(), status="remediation_in_progress")
+                await state.update_data(ege_attempt=attempt.to_dict())
+                await message.answer("✅ Навык №14 подтверждён. Переходим к следующему доказанному пробелу — №27.")
+                await message.answer(render_task27_remediation(attempt, include_lesson=True))
+                return
         save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
         await state.clear()
         next_focus = (dna or {}).get("trajectory", {}).get("next_focus")
@@ -441,7 +464,7 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
         )
     else:
         await message.answer("Пока неверно — ничего страшного. Посмотри на подсказку и попробуй ещё раз.")
-    await message.answer(render_task14_remediation(attempt))
+    await message.answer(renderer(attempt))
 
 
 async def _begin_ege_diagnostics(
@@ -572,13 +595,15 @@ async def start_ege_exam(message: Message, state: FSMContext):
 
     saved = get_ege_session(message.from_user.id)
     if saved and saved.get("status") == "remediation_in_progress":
-        from src.services.ege_exam_service import render_task14_remediation
+        from src.services.ege_exam_service import render_task14_remediation, render_task27_remediation
 
         attempt = ExamAttempt.from_dict(saved.get("attempt"))
+        task_number = int((attempt.remediation or {}).get("task_number", 14))
+        renderer = render_task14_remediation if task_number == 14 else render_task27_remediation
         await state.set_state(StudentEgeExamStates.waiting_remediation_answer)
         await state.update_data(ege_attempt=attempt.to_dict())
-        await message.answer("▶️ Продолжаем короткое обучение по заданию №14.")
-        await message.answer(render_task14_remediation(attempt))
+        await message.answer(f"▶️ Продолжаем короткое обучение по заданию №{task_number}.")
+        await message.answer(renderer(attempt))
         return
     if saved and saved.get("status") == "diagnostics_in_progress":
         attempt = ExamAttempt.from_dict(saved.get("attempt"))

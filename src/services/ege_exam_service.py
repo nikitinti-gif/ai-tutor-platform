@@ -409,6 +409,129 @@ def submit_task14_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
     }
 
 
+TASK27_REMEDIATION = {
+    "programming.cluster_count_from_separation": {
+        "explanation": "Группы выделяют по сравнению расстояний: внутри группы точки близки, а между группами расстояние заметно больше.",
+        "example": "Если внутри двух пар расстояние 2, а между парами минимум 14, это две явно разделённые группы.",
+        "hint": "Сравни максимальное расстояние внутри группы с минимальным расстоянием между группами.",
+        "control_prompt": "Контроль: внутри предполагаемых групп расстояния не больше 2, а между ними не меньше 12. Сколько явно разделённых групп: 1 или 2?",
+        "control_answers": ("2",),
+        "retest_prompt": "Перенос: есть три компактные пары точек. Внутри каждой пары расстояние 1, а между любыми парами не меньше 10. Сколько явно разделённых групп?",
+        "retest_answers": ("3",),
+        "verification_prompt": "Независимая проверка: точки образуют две компактные тройки; внутри тройки расстояния не больше 3, между тройками не меньше 18. Сколько групп подтверждается расстояниями?",
+        "verification_answers": ("2",),
+    },
+    "programming.medoid_minimum": {
+        "explanation": "Медоид выбирают по минимальной сумме расстояний до объектов своего кластера.",
+        "example": "Если A=12, B=9, C=15, медоид B, потому что 9 — минимум.",
+        "hint": "Выбери букву с наименьшей суммой.",
+        "control_prompt": "Контроль: суммы A=14, B=11, C=17. Какой медоид выбрать?",
+        "control_answers": ("B", "Б"),
+        "retest_prompt": "Перенос: суммы A=21, B=16, C=19. Какой медоид оптимален?",
+        "retest_answers": ("B", "Б"),
+        "verification_prompt": "Независимая проверка: суммы A=18, B=23, C=15. Какой медоид оптимален?",
+        "verification_answers": ("C", "С"),
+    },
+    "programming.cluster_label_count": {
+        "explanation": "Размер кластера получают подсчётом объектов с нужной меткой.",
+        "example": "В метках 1,2,1,3,1 метка 1 встречается три раза.",
+        "hint": "Считай только метки, равные целевой.",
+        "control_prompt": "Контроль: метки 1,2,2,3,2,1. Сколько объектов имеет метку 2?",
+        "control_answers": ("3",),
+        "retest_prompt": "Перенос: метки 3,1,3,2,3,3,1. Сколько объектов имеет метку 3?",
+        "retest_answers": ("4",),
+        "verification_prompt": "Независимая проверка: метки 2,2,1,3,1,1,2,1. Сколько объектов имеет метку 1?",
+        "verification_answers": ("4",),
+    },
+    "programming.max_cluster_distance": {
+        "explanation": "Максимальное расстояние — наибольшее из вычисленных значений.",
+        "example": "Среди 4, 7, 3, 6 максимум равен 7.",
+        "hint": "Сравни все значения и выбери наибольшее.",
+        "control_prompt": "Контроль: расстояния 5, 12, 8, 9. Какое максимальное?",
+        "control_answers": ("12",),
+        "retest_prompt": "Перенос: расстояния 14, 6, 17, 11. Какое максимальное?",
+        "retest_answers": ("17",),
+        "verification_prompt": "Независимая проверка: расстояния 13, 19, 18, 7. Какое максимальное?",
+        "verification_answers": ("19",),
+    },
+}
+
+
+def _confirmed_task27_skill(attempt: ExamAttempt) -> str | None:
+    case = attempt.diagnostics.get(27, {})
+    if case.get("status") != "confirmed":
+        return None
+    for evidence in reversed(case.get("evidence", [])):
+        skill_id = evidence.get("skill_id")
+        if skill_id in TASK27_REMEDIATION and evidence.get("evidence_valid") is True and not evidence.get("is_correct"):
+            return skill_id
+    return None
+
+
+def start_task27_remediation(attempt: ExamAttempt) -> dict | None:
+    if attempt.remediation:
+        return attempt.remediation
+    skill_id = _confirmed_task27_skill(attempt)
+    if not skill_id:
+        return None
+    attempt.remediation = {
+        "task_number": 27, "skill_id": skill_id, "status": "remediating", "stage": "control",
+        "control_attempts": 0, "retest_attempts": 0, "verification_attempts": 0,
+        "learning_round": 1, "stage_history": [],
+    }
+    return attempt.remediation
+
+
+def render_task27_remediation(attempt: ExamAttempt, *, include_lesson: bool | None = None) -> str:
+    remediation = attempt.remediation
+    lesson = TASK27_REMEDIATION[remediation["skill_id"]]
+    stage = remediation["stage"]
+    if stage == "control":
+        if include_lesson is None:
+            include_lesson = remediation["control_attempts"] == 0
+        intro = ""
+        if include_lesson:
+            intro = "━━━━━━━━━━━━━━━━━━━━\n🧭 КОРОТКОЕ ОБУЧЕНИЕ · №27\n━━━━━━━━━━━━━━━━━━━━\n\nПравило: " + lesson["explanation"] + "\n\nРазобранный пример: " + lesson["example"] + "\n\n"
+        elif remediation["control_attempts"]:
+            intro = "💡 Подсказка: " + lesson["hint"] + "\n\nПравило ещё раз: " + lesson["explanation"] + "\n\n"
+        return intro + lesson["control_prompt"] + "\n\nОтправь только ответ."
+    if stage == "verification":
+        return "━━━━━━━━━━━━━━━━━━━━\n🎯 НЕЗАВИСИМАЯ ПРОВЕРКА · №27\n━━━━━━━━━━━━━━━━━━━━\n\nЗдесь нет подсказки; данные отличаются от примеров.\n\n" + lesson["verification_prompt"] + "\n\nОтправь только ответ."
+    intro = ""
+    if remediation["retest_attempts"]:
+        intro = "💡 Примени то же правило к новым данным.\n" + lesson["hint"] + "\n\n"
+    return intro + lesson["retest_prompt"] + "\n\nОтправь только ответ."
+
+
+def submit_task27_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
+    remediation = attempt.remediation
+    if not remediation or remediation.get("task_number") != 27 or remediation.get("status") not in {"remediating", "retesting"}:
+        raise ValueError("Обучающий цикл №27 не запущен.")
+    lesson = TASK27_REMEDIATION[remediation["skill_id"]]
+    stage = remediation["stage"]
+    normalized = answer.strip().lower().replace("ё", "е")
+    expected = {item.lower().replace("ё", "е") for item in lesson[f"{stage}_answers"]}
+    remediation[f"{stage}_attempts"] += 1
+    is_correct = normalized in expected
+    remediation.setdefault("stage_history", []).append({
+        "stage": stage, "question": lesson[f"{stage}_prompt"],
+        "canonical_answer": str(lesson[f"{stage}_answers"][0]),
+        "student_answer": answer, "validator_result": is_correct, "is_correct": is_correct,
+        "learning_round": remediation.get("learning_round", 1), "timestamp": time.time(),
+    })
+    if is_correct and stage == "control":
+        remediation["stage"] = "retest"
+    elif is_correct and stage == "retest":
+        remediation["status"] = "retesting"; remediation["stage"] = "verification"
+    elif is_correct:
+        remediation["status"] = "mastered"; remediation["stage"] = "completed"
+    elif stage == "verification":
+        remediation["status"] = "remediating"; remediation["stage"] = "control"
+        remediation["control_attempts"] = 0; remediation["retest_attempts"] = 0; remediation["verification_attempts"] = 0
+        remediation["learning_round"] += 1
+    return {"is_correct": is_correct, "status": remediation["status"], "stage": remediation["stage"]}
+
+
 def get_task(number: int) -> EgeTask:
     return OPEN_VARIANT_2026[number]
 
