@@ -1,6 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
 import src.telegram_bot.handlers.student as student_handler
 
 
@@ -36,9 +38,14 @@ class FakeMessage:
         self.answers.append(text)
 
 
-def test_admin_can_run_5_14_27_pilot_through_telegram_handlers(monkeypatch):
-    sessions = {}
+class FailingProbeMessage(FakeMessage):
+    async def answer(self, text, **_kwargs):
+        if "Задание КЕГЭ №" in text:
+            raise RuntimeError("telegram delivery failed")
+        await super().answer(text, **_kwargs)
 
+
+def _patch_sessions(monkeypatch, sessions):
     monkeypatch.setattr(student_handler, "ADMIN_TELEGRAM_ID", "42")
     monkeypatch.setattr(student_handler, "AI_DIAGNOSTIC_PROBES_ENABLED", False)
     monkeypatch.setattr(
@@ -58,6 +65,11 @@ def test_admin_can_run_5_14_27_pilot_through_telegram_handlers(monkeypatch):
         "get_ege_session",
         lambda user_id: sessions.get(user_id),
     )
+
+
+def test_admin_can_run_5_14_27_pilot_through_telegram_handlers(monkeypatch):
+    sessions = {}
+    _patch_sessions(monkeypatch, sessions)
 
     completed = []
 
@@ -97,14 +109,29 @@ def test_admin_can_run_5_14_27_pilot_through_telegram_handlers(monkeypatch):
         case = finished_attempt["diagnostics"][task_number]
         assert case["status"] == "confirmed"
         assert case["confidence"] == 0.95
-        control = [e for e in case["evidence"] if e.get("kind") == "control_probe"]
-        assert all(e.get("evidence_valid") is True for e in control[-2:])
-        assert all(e.get("question") and e.get("student_answer") is not None for e in control[-2:])
-        control_evidence = [item for item in case["evidence"] if item.get("kind") == "control_probe"]
+        control_evidence = [
+            item for item in case["evidence"]
+            if item.get("kind") == "control_probe"
+        ]
         assert len(control_evidence) >= 2
         assert all(item.get("evidence_valid") is True for item in control_evidence[-2:])
         assert all(item.get("question") for item in control_evidence[-2:])
         assert all(item.get("student_answer") is not None for item in control_evidence[-2:])
+
+
+def test_failed_probe_delivery_is_not_persisted_as_displayed(monkeypatch):
+    """STATE_ERROR guard: a Telegram send failure must never create answerable evidence."""
+    sessions = {}
+    _patch_sessions(monkeypatch, sessions)
+    state = FakeState()
+    message = FailingProbeMessage()
+
+    with pytest.raises(RuntimeError, match="telegram delivery failed"):
+        asyncio.run(student_handler.start_ege_diagnostic_pilot(message, state))
+
+    assert sessions == {}
+    assert state.state is None
+    assert "ege_attempt" not in state.data
 
 
 def test_non_admin_cannot_start_diagnostic_pilot(monkeypatch):
