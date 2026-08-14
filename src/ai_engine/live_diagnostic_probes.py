@@ -75,7 +75,12 @@ def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | 
     if task == 14 and op == 1:
         (value,) = _ints(data, 1, 10, 35); digit = str(value) if value < 10 else chr(55 + value); return {"digit": digit, "value": value}, "да" if value % 2 == 0 else "нет"
     if task == 14 and op == 2:
-        (remainder_count,) = _ints(data, 1, 2, 8); return {"remainder_count": remainder_count}, remainder_count + 1
+        (seed,) = _ints(data, 1, 2, 8)
+        remainders = [seed % 5, (seed + 2) % 5, (seed + 4) % 5]
+        last_quotient = 1 + seed % 4
+        remainder_text = ", ".join(map(str, remainders))
+        final_record = str(last_quotient) + "".join(map(str, reversed(remainders)))
+        return {"remainders": remainder_text, "last_quotient": last_quotient}, final_record
     if task == 27 and op == 0:
         gap, spread_seed = _ints(data, 2, 6, 30); spread = 1 + spread_seed % 3
         if gap <= spread * 2: raise ValueError("Группы точек недостаточно разделены.")
@@ -105,13 +110,37 @@ def _validate_template(template: str, fields: dict[str, object], task: int, oper
     if not template or len(template) > MAX_PROMPT_LENGTH: raise ValueError("AI вернул пустую или слишком длинную формулировку.")
     names = _field_names(template); unknown = set(names) - set(fields); missing = set(fields) - set(names)
     if unknown: raise ValueError("Формулировка использует неизвестные параметры: " + ", ".join(sorted(unknown)))
-    # Legacy unit tests used AI-owned values and predate the production quality contract.
-    # The real student path always supplies Python-owned `values` and therefore remains strict.
     if missing and strict: raise ValueError("Формулировка не использует обязательные параметры: " + ", ".join(sorted(missing)))
     allowed_constants = {(5, 1): {"0", "1"}}.get((task, operation), set())
     if set(re.findall(r"\d+", template)) - allowed_constants: raise ValueError("AI добавил непроверяемые числа вне плейсхолдеров.")
     if "?" not in template: raise ValueError("Мини-проба должна содержать явный вопрос.")
     if any(marker in template.lower() for marker in ("правильный ответ", "ответ равен", "ответ:", "получится ответ")): raise ValueError("Формулировка раскрывает правильный ответ.")
+
+
+def _validate_pedagogical_style(prompt: str, task: int, operation: int) -> None:
+    """Reject mathematically valid but teacher-unfriendly meta wording.
+
+    Diagnostic probes should sound like short school/exam exercises, not like
+    questions about the tutor's internal representation of an algorithm.
+    """
+    text = prompt.lower().replace("ё", "е")
+    banned = (
+        "значимых элементов",
+        "значимые элементы",
+        "общее количество всех",
+        "в рамках записи многозначного числа мы выделили",
+        "в процессе перевода большого числа",
+        "какой этот показатель",
+    )
+    if any(marker in text for marker in banned):
+        raise ValueError("Формулировка педагогически неестественна и не похожа на учебную задачу.")
+    if len(prompt) > 360:
+        raise ValueError("Диагностическая проба слишком многословна для одного атомарного навыка.")
+    if task == 14 and operation == 2:
+        if "остат" not in text or "частн" not in text or not any(marker in text for marker in ("запись", "число", "цифр")):
+            raise ValueError("Проба №14.2 должна просить восстановить реальную запись из остатков и последнего частного.")
+        if any(marker in text for marker in ("сколько разрядов", "сколько всего разрядов", "сколько цифр будет")):
+            raise ValueError("Проба №14.2 должна проверять сохранение старшего разряда через запись числа, а не мета-подсчёт элементов.")
 
 
 def _validate_atomic_skill(prompt: str, task: int, operation: int) -> None:
@@ -123,8 +152,6 @@ def _validate_atomic_skill(prompt: str, task: int, operation: int) -> None:
     if (task, operation) == (14, 2):
         if "остат" not in text or "частн" not in text:
             raise ValueError("Проба №14.2 должна явно назвать остатки и последнее ненулевое частное.")
-        if any(marker in text for marker in ("общее количество", "всех этих значимых", "всего элементов")):
-            raise ValueError("Проба №14.2 не должна выдавать число остатков за общее число цифр.")
     if (task, operation) == (27, 0):
         if not all(marker in text for marker in ("расстоя", "групп")): raise ValueError("Проба №27.0 должна обосновывать группы через расстояния.")
         if any(marker in text for marker in ("естествен", "на глаз", "логически")): raise ValueError("Проба №27.0 не должна опираться на субъективное выделение кластеров.")
@@ -154,7 +181,9 @@ def build_live_probe(case: dict, base_probe: dict, raw_result: str, previous_pro
     try: prompt = template.format(**fields)
     except (KeyError, ValueError) as error: raise ValueError("AI вернул нерабочий шаблон вопроса.") from error
     if len(prompt) > MAX_PROMPT_LENGTH: raise ValueError("Итоговая формулировка слишком длинная.")
-    if strict: _validate_atomic_skill(prompt, task, operation)
+    if strict:
+        _validate_atomic_skill(prompt, task, operation)
+        _validate_pedagogical_style(prompt, task, operation)
     _validate_no_answer_leak(prompt, answer); _validate_variety(prompt, previous_prompts or [])
     expected_answers = (str(answer),)
     if (task, operation) == (5, 1): expected_answers = (str(answer), f"ветка {answer}")
