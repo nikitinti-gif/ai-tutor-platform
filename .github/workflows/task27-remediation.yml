@@ -6,7 +6,6 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Add one-shot task27 remediation migration'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,298 +23,35 @@ jobs:
           text = p.read_text(encoding='utf-8')
           anchor = '\n\ndef get_task(number: int) -> EgeTask:\n'
           if 'TASK27_REMEDIATION = {' not in text:
-              block = r'''
-
-TASK27_REMEDIATION = {
-    "programming.cluster_count_from_separation": {
-        "explanation": (
-            "Группы выделяют по сравнению расстояний: внутри одной группы точки близки, "
-            "а между группами расстояние заметно больше. Сначала сравни внутригрупповые "
-            "и межгрупповые расстояния, затем считай явно разделённые группы."
-        ),
-        "example": (
-            "Например, две пары точек имеют расстояния внутри пар 2 и 2, а между парами "
-            "минимальное расстояние 14. Большой разрыв показывает две группы."
-        ),
-        "hint": "Сравни самое большое расстояние внутри группы с самым маленьким расстоянием между группами.",
-        "control_prompt": "Контроль: внутри предполагаемых групп расстояния не больше 2, а между ними не меньше 12. Сколько явно разделённых групп: 1 или 2?",
-        "control_answers": ("2",),
-        "retest_prompt": "Перенос: есть три компактные пары точек. Внутри каждой пары расстояние 1, а между любыми парами не меньше 10. Сколько явно разделённых групп?",
-        "retest_answers": ("3",),
-        "verification_prompt": "Независимая проверка: точки образуют две компактные тройки; внутри тройки расстояния не больше 3, между тройками не меньше 18. Сколько групп подтверждается расстояниями?",
-        "verification_answers": ("2",),
-    },
-    "programming.medoid_minimum": {
-        "explanation": "Медоид выбирают по минимальной сумме расстояний до объектов своего кластера.",
-        "example": "Если суммы A=12, B=9, C=15, медоид — B, потому что 9 минимально.",
-        "hint": "Выбери букву с наименьшей суммой.",
-        "control_prompt": "Контроль: суммы расстояний A=14, B=11, C=17. Какой медоид выбрать?",
-        "control_answers": ("B", "Б"),
-        "retest_prompt": "Перенос: суммы A=21, B=16, C=19. Какой медоид оптимален?",
-        "retest_answers": ("B", "Б"),
-        "verification_prompt": "Независимая проверка: суммы A=18, B=23, C=15. Какой медоид оптимален?",
-        "verification_answers": ("C", "С"),
-    },
-    "programming.cluster_label_count": {
-        "explanation": "Чтобы узнать размер кластера, посчитай объекты с нужной меткой и не учитывай остальные.",
-        "example": "Для меток 1,2,1,3,1 кластер 1 содержит три объекта.",
-        "hint": "Считай только метки, равные целевой.",
-        "control_prompt": "Контроль: метки 1,2,2,3,2,1. Сколько объектов имеет метку 2?",
-        "control_answers": ("3",),
-        "retest_prompt": "Перенос: метки 3,1,3,2,3,3,1. Сколько объектов имеет метку 3?",
-        "retest_answers": ("4",),
-        "verification_prompt": "Независимая проверка: метки 2,2,1,3,1,1,2,1. Сколько объектов имеет метку 1?",
-        "verification_answers": ("4",),
-    },
-    "programming.max_cluster_distance": {
-        "explanation": "Максимальное расстояние в наборе — это наибольшее из вычисленных расстояний; сравни значения напрямую.",
-        "example": "Среди 4, 7, 3 и 6 максимум равен 7.",
-        "hint": "Просмотри все значения и выбери наибольшее.",
-        "control_prompt": "Контроль: расстояния 5, 12, 8, 9. Какое максимальное?",
-        "control_answers": ("12",),
-        "retest_prompt": "Перенос: расстояния 14, 6, 17, 11. Какое максимальное?",
-        "retest_answers": ("17",),
-        "verification_prompt": "Независимая проверка: расстояния 13, 19, 18, 7. Какое максимальное?",
-        "verification_answers": ("19",),
-    },
-}
-
-
-def _confirmed_task27_skill(attempt: ExamAttempt) -> str | None:
-    case = attempt.diagnostics.get(27, {})
-    if case.get("status") != "confirmed":
-        return None
-    for evidence in reversed(case.get("evidence", [])):
-        skill_id = evidence.get("skill_id")
-        if skill_id in TASK27_REMEDIATION and evidence.get("evidence_valid") is True and not evidence.get("is_correct"):
-            return skill_id
-    return None
-
-
-def start_task27_remediation(attempt: ExamAttempt) -> dict | None:
-    """Start a deterministic teaching cycle for the confirmed atomic task 27 skill."""
-    if attempt.remediation:
-        return attempt.remediation
-    skill_id = _confirmed_task27_skill(attempt)
-    if not skill_id:
-        return None
-    attempt.remediation = {
-        "task_number": 27,
-        "skill_id": skill_id,
-        "status": "remediating",
-        "stage": "control",
-        "control_attempts": 0,
-        "retest_attempts": 0,
-        "verification_attempts": 0,
-        "learning_round": 1,
-        "stage_history": [],
-    }
-    return attempt.remediation
-
-
-def render_task27_remediation(attempt: ExamAttempt, *, include_lesson: bool | None = None) -> str:
-    remediation = attempt.remediation
-    lesson = TASK27_REMEDIATION[remediation["skill_id"]]
-    stage = remediation["stage"]
-    if stage == "control":
-        if include_lesson is None:
-            include_lesson = remediation["control_attempts"] == 0
-        intro = ""
-        if include_lesson:
-            intro = (
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "🧭 КОРОТКОЕ ОБУЧЕНИЕ · №27\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"Правило: {lesson['explanation']}\n\n"
-                f"Разобранный пример: {lesson['example']}\n\n"
-            )
-        elif remediation["control_attempts"]:
-            intro = f"💡 Подсказка: {lesson['hint']}\n\nПравило ещё раз: {lesson['explanation']}\n\n"
-        return intro + lesson["control_prompt"] + "\n\nОтправь только ответ."
-    if stage == "verification":
-        return (
-            "━━━━━━━━━━━━━━━━━━━━\n🎯 НЕЗАВИСИМАЯ ПРОВЕРКА · №27\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Здесь нет подсказки; данные отличаются от примеров.\n\n"
-            + lesson["verification_prompt"] + "\n\nОтправь только ответ."
-        )
-    intro = ""
-    if remediation["retest_attempts"]:
-        intro = f"💡 Примени то же правило к новым данным.\n{lesson['hint']}\n\n"
-    return intro + lesson["retest_prompt"] + "\n\nОтправь только ответ."
-
-
-def submit_task27_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
-    remediation = attempt.remediation
-    if not remediation or remediation.get("task_number") != 27 or remediation.get("status") not in {"remediating", "retesting"}:
-        raise ValueError("Обучающий цикл №27 не запущен.")
-    lesson = TASK27_REMEDIATION[remediation["skill_id"]]
-    stage = remediation["stage"]
-    normalized = answer.strip().lower().replace("ё", "е")
-    expected = {item.lower().replace("ё", "е") for item in lesson[f"{stage}_answers"]}
-    remediation[f"{stage}_attempts"] += 1
-    is_correct = normalized in expected
-    remediation.setdefault("stage_history", []).append({
-        "stage": stage,
-        "question": lesson[f"{stage}_prompt"],
-        "canonical_answer": str(lesson[f"{stage}_answers"][0]),
-        "student_answer": answer,
-        "validator_result": is_correct,
-        "is_correct": is_correct,
-        "learning_round": remediation.get("learning_round", 1),
-        "timestamp": time.time(),
-    })
-    if is_correct and stage == "control":
-        remediation["stage"] = "retest"
-    elif is_correct and stage == "retest":
-        remediation["status"] = "retesting"
-        remediation["stage"] = "verification"
-    elif is_correct:
-        remediation["status"] = "mastered"
-        remediation["stage"] = "completed"
-    elif stage == "verification":
-        remediation["status"] = "remediating"
-        remediation["stage"] = "control"
-        remediation["control_attempts"] = 0
-        remediation["retest_attempts"] = 0
-        remediation["verification_attempts"] = 0
-        remediation["learning_round"] += 1
-    return {"is_correct": is_correct, "status": remediation["status"], "stage": remediation["stage"]}
-'''
+              block = '''\n\nTASK27_REMEDIATION = {\n    "programming.cluster_count_from_separation": {\n        "explanation": "Группы выделяют по сравнению расстояний: внутри группы точки близки, а между группами расстояние заметно больше.",\n        "example": "Если внутри двух пар расстояние 2, а между парами минимум 14, это две явно разделённые группы.",\n        "hint": "Сравни максимальное расстояние внутри группы с минимальным расстоянием между группами.",\n        "control_prompt": "Контроль: внутри предполагаемых групп расстояния не больше 2, а между ними не меньше 12. Сколько явно разделённых групп: 1 или 2?",\n        "control_answers": ("2",),\n        "retest_prompt": "Перенос: есть три компактные пары точек. Внутри каждой пары расстояние 1, а между любыми парами не меньше 10. Сколько явно разделённых групп?",\n        "retest_answers": ("3",),\n        "verification_prompt": "Независимая проверка: точки образуют две компактные тройки; внутри тройки расстояния не больше 3, между тройками не меньше 18. Сколько групп подтверждается расстояниями?",\n        "verification_answers": ("2",),\n    },\n    "programming.medoid_minimum": {\n        "explanation": "Медоид выбирают по минимальной сумме расстояний до объектов своего кластера.",\n        "example": "Если A=12, B=9, C=15, медоид B, потому что 9 — минимум.",\n        "hint": "Выбери букву с наименьшей суммой.",\n        "control_prompt": "Контроль: суммы A=14, B=11, C=17. Какой медоид выбрать?",\n        "control_answers": ("B", "Б"),\n        "retest_prompt": "Перенос: суммы A=21, B=16, C=19. Какой медоид оптимален?",\n        "retest_answers": ("B", "Б"),\n        "verification_prompt": "Независимая проверка: суммы A=18, B=23, C=15. Какой медоид оптимален?",\n        "verification_answers": ("C", "С"),\n    },\n    "programming.cluster_label_count": {\n        "explanation": "Размер кластера получают подсчётом объектов с нужной меткой.",\n        "example": "В метках 1,2,1,3,1 метка 1 встречается три раза.",\n        "hint": "Считай только метки, равные целевой.",\n        "control_prompt": "Контроль: метки 1,2,2,3,2,1. Сколько объектов имеет метку 2?",\n        "control_answers": ("3",),\n        "retest_prompt": "Перенос: метки 3,1,3,2,3,3,1. Сколько объектов имеет метку 3?",\n        "retest_answers": ("4",),\n        "verification_prompt": "Независимая проверка: метки 2,2,1,3,1,1,2,1. Сколько объектов имеет метку 1?",\n        "verification_answers": ("4",),\n    },\n    "programming.max_cluster_distance": {\n        "explanation": "Максимальное расстояние — наибольшее из вычисленных значений.",\n        "example": "Среди 4, 7, 3, 6 максимум равен 7.",\n        "hint": "Сравни все значения и выбери наибольшее.",\n        "control_prompt": "Контроль: расстояния 5, 12, 8, 9. Какое максимальное?",\n        "control_answers": ("12",),\n        "retest_prompt": "Перенос: расстояния 14, 6, 17, 11. Какое максимальное?",\n        "retest_answers": ("17",),\n        "verification_prompt": "Независимая проверка: расстояния 13, 19, 18, 7. Какое максимальное?",\n        "verification_answers": ("19",),\n    },\n}\n\n\ndef _confirmed_task27_skill(attempt: ExamAttempt) -> str | None:\n    case = attempt.diagnostics.get(27, {})\n    if case.get("status") != "confirmed":\n        return None\n    for evidence in reversed(case.get("evidence", [])):\n        skill_id = evidence.get("skill_id")\n        if skill_id in TASK27_REMEDIATION and evidence.get("evidence_valid") is True and not evidence.get("is_correct"):\n            return skill_id\n    return None\n\n\ndef start_task27_remediation(attempt: ExamAttempt) -> dict | None:\n    if attempt.remediation:\n        return attempt.remediation\n    skill_id = _confirmed_task27_skill(attempt)\n    if not skill_id:\n        return None\n    attempt.remediation = {\n        "task_number": 27, "skill_id": skill_id, "status": "remediating", "stage": "control",\n        "control_attempts": 0, "retest_attempts": 0, "verification_attempts": 0,\n        "learning_round": 1, "stage_history": [],\n    }\n    return attempt.remediation\n\n\ndef render_task27_remediation(attempt: ExamAttempt, *, include_lesson: bool | None = None) -> str:\n    remediation = attempt.remediation\n    lesson = TASK27_REMEDIATION[remediation["skill_id"]]\n    stage = remediation["stage"]\n    if stage == "control":\n        if include_lesson is None:\n            include_lesson = remediation["control_attempts"] == 0\n        intro = ""\n        if include_lesson:\n            intro = "━━━━━━━━━━━━━━━━━━━━\\n🧭 КОРОТКОЕ ОБУЧЕНИЕ · №27\\n━━━━━━━━━━━━━━━━━━━━\\n\\nПравило: " + lesson["explanation"] + "\\n\\nРазобранный пример: " + lesson["example"] + "\\n\\n"\n        elif remediation["control_attempts"]:\n            intro = "💡 Подсказка: " + lesson["hint"] + "\\n\\nПравило ещё раз: " + lesson["explanation"] + "\\n\\n"\n        return intro + lesson["control_prompt"] + "\\n\\nОтправь только ответ."\n    if stage == "verification":\n        return "━━━━━━━━━━━━━━━━━━━━\\n🎯 НЕЗАВИСИМАЯ ПРОВЕРКА · №27\\n━━━━━━━━━━━━━━━━━━━━\\n\\nЗдесь нет подсказки; данные отличаются от примеров.\\n\\n" + lesson["verification_prompt"] + "\\n\\nОтправь только ответ."\n    intro = ""\n    if remediation["retest_attempts"]:\n        intro = "💡 Примени то же правило к новым данным.\\n" + lesson["hint"] + "\\n\\n"\n    return intro + lesson["retest_prompt"] + "\\n\\nОтправь только ответ."\n\n\ndef submit_task27_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:\n    remediation = attempt.remediation\n    if not remediation or remediation.get("task_number") != 27 or remediation.get("status") not in {"remediating", "retesting"}:\n        raise ValueError("Обучающий цикл №27 не запущен.")\n    lesson = TASK27_REMEDIATION[remediation["skill_id"]]\n    stage = remediation["stage"]\n    normalized = answer.strip().lower().replace("ё", "е")\n    expected = {item.lower().replace("ё", "е") for item in lesson[f"{stage}_answers"]}\n    remediation[f"{stage}_attempts"] += 1\n    is_correct = normalized in expected\n    remediation.setdefault("stage_history", []).append({\n        "stage": stage, "question": lesson[f"{stage}_prompt"],\n        "canonical_answer": str(lesson[f"{stage}_answers"][0]),\n        "student_answer": answer, "validator_result": is_correct, "is_correct": is_correct,\n        "learning_round": remediation.get("learning_round", 1), "timestamp": time.time(),\n    })\n    if is_correct and stage == "control":\n        remediation["stage"] = "retest"\n    elif is_correct and stage == "retest":\n        remediation["status"] = "retesting"; remediation["stage"] = "verification"\n    elif is_correct:\n        remediation["status"] = "mastered"; remediation["stage"] = "completed"\n    elif stage == "verification":\n        remediation["status"] = "remediating"; remediation["stage"] = "control"\n        remediation["control_attempts"] = 0; remediation["retest_attempts"] = 0; remediation["verification_attempts"] = 0\n        remediation["learning_round"] += 1\n    return {"is_correct": is_correct, "status": remediation["status"], "stage": remediation["stage"]}\n'''
               if anchor not in text:
                   raise SystemExit('get_task anchor not found')
               text = text.replace(anchor, block + anchor, 1)
               p.write_text(text, encoding='utf-8')
 
-          # Telegram: start task 27 if task 14 is absent, and resume/render by task number.
           p = Path('src/telegram_bot/handlers/student.py')
           text = p.read_text(encoding='utf-8')
-          text = text.replace(
-              '        render_task14_remediation,\n        start_task14_remediation,\n',
-              '        render_task14_remediation,\n        start_task14_remediation,\n        render_task27_remediation,\n        start_task27_remediation,\n',
-              1,
-          )
-          text = text.replace(
-              '    remediation = start_task14_remediation(attempt)\n    if remediation:\n        dna = set_ege_remediation_status(dna, 14, "remediating")\n',
-              '    remediation = start_task14_remediation(attempt)\n    if not remediation:\n        remediation = start_task27_remediation(attempt)\n    if remediation:\n        dna = set_ege_remediation_status(dna, int(remediation["task_number"]), "remediating")\n',
-              1,
-          )
-          text = text.replace(
-              '        await message.answer(render_task14_remediation(attempt, include_lesson=True))\n',
-              '        renderer = render_task14_remediation if remediation["task_number"] == 14 else render_task27_remediation\n        await message.answer(renderer(attempt, include_lesson=True))\n',
-              1,
-          )
-
-          old_import = '''        ExamAttempt,\n        render_task14_remediation,\n        submit_task14_remediation_answer,\n    )\n'''
-          new_import = '''        ExamAttempt,\n        render_task14_remediation,\n        submit_task14_remediation_answer,\n        render_task27_remediation,\n        submit_task27_remediation_answer,\n        start_task27_remediation,\n    )\n'''
-          if old_import not in text:
-              raise SystemExit('remediation import block not found')
-          text = text.replace(old_import, new_import, 1)
-          text = text.replace(
-              '    result = submit_task14_remediation_answer(attempt, message.text or "")\n',
-              '    remediation_task = int((attempt.remediation or {}).get("task_number", 14))\n    submitter = submit_task14_remediation_answer if remediation_task == 14 else submit_task27_remediation_answer\n    renderer = render_task14_remediation if remediation_task == 14 else render_task27_remediation\n    result = submitter(attempt, message.text or "")\n',
-              1,
-          )
-          text = text.replace(
-              '                dna, 14, attempt.attempt_id, attempt.remediation\n',
-              '                dna, remediation_task, attempt.attempt_id, attempt.remediation\n',
-              1,
-          )
-          text = text.replace(
-              '            dna = set_ege_remediation_status(dna, 14, result["status"])\n',
-              '            dna = set_ege_remediation_status(dna, remediation_task, result["status"])\n',
-              1,
-          )
-          # When task 14 mastery is complete, continue directly to confirmed task 27.
-          mastery_marker = '''    if result["status"] == "mastered":\n        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")\n        await state.clear()\n'''
-          replacement = '''    if result["status"] == "mastered":\n        if remediation_task == 14:\n            attempt.remediation = {}\n            next_remediation = start_task27_remediation(attempt)\n            if next_remediation:\n                if dna:\n                    dna = set_ege_remediation_status(dna, 27, "remediating")\n                    LearningDNARepository.save(message.from_user.id, dna)\n                save_ege_session(message.from_user.id, attempt.to_dict(), status="remediation_in_progress")\n                await state.update_data(ege_attempt=attempt.to_dict())\n                await message.answer("✅ Навык №14 подтверждён. Переходим к следующему доказанному пробелу — №27.")\n                await message.answer(render_task27_remediation(attempt, include_lesson=True))\n                return\n        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")\n        await state.clear()\n'''
-          if mastery_marker not in text:
+          text = text.replace('        render_task14_remediation,\n        start_task14_remediation,\n', '        render_task14_remediation,\n        start_task14_remediation,\n        render_task27_remediation,\n        start_task27_remediation,\n', 1)
+          text = text.replace('    remediation = start_task14_remediation(attempt)\n    if remediation:\n        dna = set_ege_remediation_status(dna, 14, "remediating")\n', '    remediation = start_task14_remediation(attempt)\n    if not remediation:\n        remediation = start_task27_remediation(attempt)\n    if remediation:\n        dna = set_ege_remediation_status(dna, int(remediation["task_number"]), "remediating")\n', 1)
+          text = text.replace('        await message.answer(render_task14_remediation(attempt, include_lesson=True))\n', '        renderer = render_task14_remediation if remediation["task_number"] == 14 else render_task27_remediation\n        await message.answer(renderer(attempt, include_lesson=True))\n', 1)
+          text = text.replace('        render_task14_remediation,\n        submit_task14_remediation_answer,\n    )\n', '        render_task14_remediation,\n        submit_task14_remediation_answer,\n        render_task27_remediation,\n        submit_task27_remediation_answer,\n        start_task27_remediation,\n    )\n', 1)
+          text = text.replace('    result = submit_task14_remediation_answer(attempt, message.text or "")\n', '    remediation_task = int((attempt.remediation or {}).get("task_number", 14))\n    submitter = submit_task14_remediation_answer if remediation_task == 14 else submit_task27_remediation_answer\n    renderer = render_task14_remediation if remediation_task == 14 else render_task27_remediation\n    result = submitter(attempt, message.text or "")\n', 1)
+          text = text.replace('                dna, 14, attempt.attempt_id, attempt.remediation\n', '                dna, remediation_task, attempt.attempt_id, attempt.remediation\n', 1)
+          text = text.replace('            dna = set_ege_remediation_status(dna, 14, result["status"])\n', '            dna = set_ege_remediation_status(dna, remediation_task, result["status"])\n', 1)
+          marker = '    if result["status"] == "mastered":\n        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")\n        await state.clear()\n'
+          replacement = '    if result["status"] == "mastered":\n        if remediation_task == 14:\n            attempt.remediation = {}\n            next_remediation = start_task27_remediation(attempt)\n            if next_remediation:\n                if dna:\n                    dna = set_ege_remediation_status(dna, 27, "remediating")\n                    LearningDNARepository.save(message.from_user.id, dna)\n                save_ege_session(message.from_user.id, attempt.to_dict(), status="remediation_in_progress")\n                await state.update_data(ege_attempt=attempt.to_dict())\n                await message.answer("✅ Навык №14 подтверждён. Переходим к следующему доказанному пробелу — №27.")\n                await message.answer(render_task27_remediation(attempt, include_lesson=True))\n                return\n        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")\n        await state.clear()\n'
+          if marker not in text:
               raise SystemExit('mastery marker not found')
-          text = text.replace(mastery_marker, replacement, 1)
+          text = text.replace(marker, replacement, 1)
           text = text.replace('    await message.answer(render_task14_remediation(attempt))\n', '    await message.answer(renderer(attempt))\n', 1)
-
-          # Resume existing remediation according to the stored task number.
-          old_resume = '''        from src.services.ege_exam_service import render_task14_remediation\n\n        attempt = ExamAttempt.from_dict(saved.get("attempt"))\n        await state.set_state(StudentEgeExamStates.waiting_remediation_answer)\n        await state.update_data(ege_attempt=attempt.to_dict())\n        await message.answer("▶️ Продолжаем короткое обучение по заданию №14.")\n        await message.answer(render_task14_remediation(attempt))\n'''
-          new_resume = '''        from src.services.ege_exam_service import render_task14_remediation, render_task27_remediation\n\n        attempt = ExamAttempt.from_dict(saved.get("attempt"))\n        task_number = int((attempt.remediation or {}).get("task_number", 14))\n        renderer = render_task14_remediation if task_number == 14 else render_task27_remediation\n        await state.set_state(StudentEgeExamStates.waiting_remediation_answer)\n        await state.update_data(ege_attempt=attempt.to_dict())\n        await message.answer(f"▶️ Продолжаем короткое обучение по заданию №{task_number}.")\n        await message.answer(renderer(attempt))\n'''
-          if old_resume not in text:
+          old = '        from src.services.ege_exam_service import render_task14_remediation\n\n        attempt = ExamAttempt.from_dict(saved.get("attempt"))\n        await state.set_state(StudentEgeExamStates.waiting_remediation_answer)\n        await state.update_data(ege_attempt=attempt.to_dict())\n        await message.answer("▶️ Продолжаем короткое обучение по заданию №14.")\n        await message.answer(render_task14_remediation(attempt))\n'
+          new = '        from src.services.ege_exam_service import render_task14_remediation, render_task27_remediation\n\n        attempt = ExamAttempt.from_dict(saved.get("attempt"))\n        task_number = int((attempt.remediation or {}).get("task_number", 14))\n        renderer = render_task14_remediation if task_number == 14 else render_task27_remediation\n        await state.set_state(StudentEgeExamStates.waiting_remediation_answer)\n        await state.update_data(ege_attempt=attempt.to_dict())\n        await message.answer(f"▶️ Продолжаем короткое обучение по заданию №{task_number}.")\n        await message.answer(renderer(attempt))\n'
+          if old not in text:
               raise SystemExit('resume block not found')
-          text = text.replace(old_resume, new_resume, 1)
+          text = text.replace(old, new, 1)
           p.write_text(text, encoding='utf-8')
 
-          # Dedicated service-level regression tests for all four task 27 atomic skills.
-          t = Path('tests/test_task27_remediation.py')
-          t.write_text(r'''import json
-from pathlib import Path
-
-import pytest
-
-from src.ai_engine.diagnostic_evidence_gate import answer_bound_control_probe
-from src.ai_engine.diagnostics import apply_live_probe, next_control_probe, open_diagnostic_case
-from src.learning_dna.engine import apply_confirmed_ege_diagnostics, confirm_ege_remediation_mastery
-from src.services.ege_exam_service import (
-    ExamAttempt,
-    TASK27_REMEDIATION,
-    render_task27_remediation,
-    start_task27_remediation,
-    submit_task27_remediation_answer,
-)
-
-
-def _confirmed_task27_attempt() -> ExamAttempt:
-    skill_map = json.loads((Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8"))
-    attempt = ExamAttempt(attempt_id="task27-remediation", current_task=28)
-    case = open_diagnostic_case(27, "wrong", "expected", skill_map)
-    for answer in ("wrong", "wrong-again"):
-        probe = next_control_probe(case)
-        case = apply_live_probe(case, probe)
-        case["pending_probe"]["displayed"] = True
-        case = answer_bound_control_probe(case, probe["probe_id"], answer, student_id=123, attempt_id=attempt.attempt_id)
-    attempt.diagnostics[27] = case
-    return attempt
-
-
-def test_task27_remediation_runs_rule_control_transfer_verify_and_marks_atomic_skill():
-    attempt = _confirmed_task27_attempt()
-    dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
-    remediation = start_task27_remediation(attempt)
-    assert remediation is not None
-    assert remediation["skill_id"] == "programming.cluster_count_from_separation"
-    assert "расстоя" in render_task27_remediation(attempt).lower()
-
-    lesson = TASK27_REMEDIATION[remediation["skill_id"]]
-    for stage in ("control", "retest", "verification"):
-        assert attempt.remediation["stage"] == stage
-        result = submit_task27_remediation_answer(attempt, lesson[f"{stage}_answers"][0])
-        assert result["is_correct"] is True
-
-    assert attempt.remediation["status"] == "mastered"
-    dna = confirm_ege_remediation_mastery(dna, 27, attempt.attempt_id, attempt.remediation)
-    skill = dna["skills"]["programming.cluster_count_from_separation"]
-    assert skill["mastered"] is True
-    assert [e["stage"] for e in skill["remediation_evidence"]] == ["control", "retest", "verification"]
-
-
-def test_task27_failed_blind_verification_restarts_fresh_learning_round():
-    attempt = _confirmed_task27_attempt()
-    remediation = start_task27_remediation(attempt)
-    lesson = TASK27_REMEDIATION[remediation["skill_id"]]
-    submit_task27_remediation_answer(attempt, lesson["control_answers"][0])
-    submit_task27_remediation_answer(attempt, lesson["retest_answers"][0])
-    result = submit_task27_remediation_answer(attempt, "wrong")
-    assert result["is_correct"] is False
-    assert attempt.remediation["stage"] == "control"
-    assert attempt.remediation["learning_round"] == 2
-
-
-def test_task27_mastery_rejects_incomplete_evidence():
-    attempt = _confirmed_task27_attempt()
-    dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
-    remediation = start_task27_remediation(attempt)
-    lesson = TASK27_REMEDIATION[remediation["skill_id"]]
-    submit_task27_remediation_answer(attempt, lesson["control_answers"][0])
-    with pytest.raises(ValueError):
-        confirm_ege_remediation_mastery(dna, 27, attempt.attempt_id, attempt.remediation)
-''', encoding='utf-8')
-
+          Path('tests/test_task27_remediation.py').write_text('''import json\nfrom pathlib import Path\nimport pytest\nfrom src.ai_engine.diagnostic_evidence_gate import answer_bound_control_probe\nfrom src.ai_engine.diagnostics import apply_live_probe, next_control_probe, open_diagnostic_case\nfrom src.learning_dna.engine import apply_confirmed_ege_diagnostics, confirm_ege_remediation_mastery\nfrom src.services.ege_exam_service import ExamAttempt, TASK27_REMEDIATION, render_task27_remediation, start_task27_remediation, submit_task27_remediation_answer\n\ndef _attempt():\n    skill_map=json.loads((Path(__file__).parents[1]/"src"/"skills"/"ege_informatics_2026.json").read_text(encoding="utf-8"))\n    attempt=ExamAttempt(attempt_id="task27-remediation", current_task=28)\n    case=open_diagnostic_case(27,"wrong","expected",skill_map)\n    for answer in ("wrong","wrong-again"):\n        probe=next_control_probe(case); case=apply_live_probe(case,probe); case["pending_probe"]["displayed"]=True\n        case=answer_bound_control_probe(case,probe["probe_id"],answer,student_id=123,attempt_id=attempt.attempt_id)\n    attempt.diagnostics[27]=case\n    return attempt\n\ndef test_task27_full_learning_cycle_marks_atomic_skill():\n    attempt=_attempt(); dna,_=apply_confirmed_ege_diagnostics(None,123,attempt); remediation=start_task27_remediation(attempt)\n    assert remediation["skill_id"]=="programming.cluster_count_from_separation"\n    assert "расстоя" in render_task27_remediation(attempt).lower()\n    lesson=TASK27_REMEDIATION[remediation["skill_id"]]\n    for stage in ("control","retest","verification"):\n        result=submit_task27_remediation_answer(attempt,lesson[f"{stage}_answers"][0]); assert result["is_correct"] is True\n    dna=confirm_ege_remediation_mastery(dna,27,attempt.attempt_id,attempt.remediation)\n    skill=dna["skills"]["programming.cluster_count_from_separation"]\n    assert skill["mastered"] is True\n    assert [e["stage"] for e in skill["remediation_evidence"]]==["control","retest","verification"]\n\ndef test_task27_failed_verification_restarts_round():\n    attempt=_attempt(); remediation=start_task27_remediation(attempt); lesson=TASK27_REMEDIATION[remediation["skill_id"]]\n    submit_task27_remediation_answer(attempt,lesson["control_answers"][0]); submit_task27_remediation_answer(attempt,lesson["retest_answers"][0])\n    result=submit_task27_remediation_answer(attempt,"wrong")\n    assert result["is_correct"] is False and attempt.remediation["stage"]=="control" and attempt.remediation["learning_round"]==2\n\ndef test_task27_mastery_rejects_incomplete_evidence():\n    attempt=_attempt(); dna,_=apply_confirmed_ege_diagnostics(None,123,attempt); remediation=start_task27_remediation(attempt); lesson=TASK27_REMEDIATION[remediation["skill_id"]]\n    submit_task27_remediation_answer(attempt,lesson["control_answers"][0])\n    with pytest.raises(ValueError): confirm_ege_remediation_mastery(dna,27,attempt.attempt_id,attempt.remediation)\n''', encoding='utf-8')
           Path('.github/workflows/task27-remediation.yml').unlink()
           PY
       - name: Run diagnostic regression suite
@@ -327,8 +63,8 @@ def test_task27_mastery_rejects_incomplete_evidence():
           pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py tests/test_task27_remediation.py
       - name: Commit task27 remediation
         run: |
-          git config user.name 'nikitinti-gif'
-          git config user.email 'nikitinti@gmail.com'
+          git config user.name nikitinti-gif
+          git config user.email nikitinti@gmail.com
           git add -A
           git commit -m 'Teach confirmed task27 atomic skills'
           git push origin HEAD:release/0.1-diagnostics
