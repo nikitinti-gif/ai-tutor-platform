@@ -45,7 +45,6 @@ new = '''        await message.answer(\n            "✅ Верно. Тепер�
 if old not in text:
     raise SystemExit('hard-coded №14 feedback not found')
 text = text.replace(old, new, 1)
-# Student-facing next focus should use the plan's pedagogical skill name, not an internal operation string.
 old = '''    next_focus = dna.get("trajectory", {}).get("next_focus")\n'''
 new = '''    next_focus = (plan[0].get("skill_name") if plan else None) or dna.get("trajectory", {}).get("next_focus")\n'''
 if old not in text:
@@ -53,10 +52,16 @@ if old not in text:
 text = text.replace(old, new, 1)
 p.write_text(text, encoding='utf-8')
 
-# Regression protection for all three live findings.
+# Regression protection for live findings.
 t = Path('tests/test_pilot_full_telegram_loop.py')
 txt = t.read_text(encoding='utf-8')
-addition = '''\n\ndef test_task27_medoid_numeric_minimum_is_not_misdiagnosed_as_concept_gap(monkeypatch):\n    sessions = {}\n    dna_store = {}\n    _patch_storage(monkeypatch, sessions, dna_store)\n    from src.services.ege_exam_service import ExamAttempt, bind_current_diagnostic_probe, mark_current_diagnostic_probe_displayed, submit_diagnostic_answer\n    from src.ai_engine.diagnostics import open_diagnostic_case\n    from src.skills.skill_graph import load_skill_map\n    attempt = ExamAttempt()\n    attempt.diagnostics = {27: open_diagnostic_case(27, "wrong", "expected", load_skill_map())}\n    # Skip operation 0 correctly, then answer the medoid with the minimum sum (5), not label B.\n    bind_current_diagnostic_probe(attempt); mark_current_diagnostic_probe_displayed(attempt)\n    submit_diagnostic_answer(attempt, "2")\n    bind_current_diagnostic_probe(attempt); mark_current_diagnostic_probe_displayed(attempt)\n    result = submit_diagnostic_answer(attempt, "5")\n    assert result["is_correct"] is True\n    assert attempt.diagnostics[27]["status"] != "confirmed"\n\n\ndef test_task27_remediation_accepts_numeric_minimum_as_concept_evidence():\n    from src.services.ege_exam_service import ExamAttempt, TASK27_REMEDIATION, submit_task27_remediation_answer\n    attempt = ExamAttempt()\n    attempt.remediation = {\n        "task_number": 27, "skill_id": "programming.medoid_minimum", "status": "remediating", "stage": "control",\n        "control_attempts": 0, "retest_attempts": 0, "verification_attempts": 0, "learning_round": 1, "stage_history": []\n    }\n    result = submit_task27_remediation_answer(attempt, "11")\n    assert result["is_correct"] is True\n    assert attempt.remediation["stage"] == "retest"\n'''
+addition = '''\n\ndef test_task27_medoid_numeric_minimum_is_not_misdiagnosed_as_concept_gap(monkeypatch):\n    sessions = {}\n    dna_store = {}\n    _patch_storage(monkeypatch, sessions, dna_store)\n    from src.services.ege_exam_service import ExamAttempt, bind_current_diagnostic_probe, mark_current_diagnostic_probe_displayed, submit_diagnostic_answer\n    from src.ai_engine.diagnostics import open_diagnostic_case\n    from src.skills.skill_graph import load_skill_map\n    attempt = ExamAttempt()\n    attempt.diagnostics = {27: open_diagnostic_case(27, "wrong", "expected", load_skill_map())}\n    bind_current_diagnostic_probe(attempt); mark_current_diagnostic_probe_displayed(attempt)\n    submit_diagnostic_answer(attempt, "2")\n    bind_current_diagnostic_probe(attempt); mark_current_diagnostic_probe_displayed(attempt)\n    result = submit_diagnostic_answer(attempt, "5")\n    assert result["is_correct"] is True\n    assert attempt.diagnostics[27]["status"] != "confirmed"\n\n\ndef test_task27_remediation_accepts_numeric_minimum_as_concept_evidence():\n    from src.services.ege_exam_service import ExamAttempt, submit_task27_remediation_answer\n    attempt = ExamAttempt()\n    attempt.remediation = {\n        "task_number": 27, "skill_id": "programming.medoid_minimum", "status": "remediating", "stage": "control",\n        "control_attempts": 0, "retest_attempts": 0, "verification_attempts": 0, "learning_round": 1, "stage_history": []\n    }\n    result = submit_task27_remediation_answer(attempt, "11")\n    assert result["is_correct"] is True\n    assert attempt.remediation["stage"] == "retest"\n'''
 if 'test_task27_medoid_numeric_minimum_is_not_misdiagnosed_as_concept_gap' not in txt:
     txt += addition
+t.write_text(txt, encoding='utf-8')
+
+# Existing live-probe contract now intentionally accepts both the label and the minimum sum.
+t = Path('tests/test_ege_diagnostics.py')
+txt = t.read_text(encoding='utf-8')
+txt = txt.replace('assert generated["expected_answers"] == ("B",)', 'assert generated["expected_answers"] == ("B", "5")')
 t.write_text(txt, encoding='utf-8')
