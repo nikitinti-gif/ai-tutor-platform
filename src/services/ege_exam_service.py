@@ -228,20 +228,20 @@ TASK14_REMEDIATION = {
             "становится очередной цифрой справа. На первом шаге достаточно "
             "вычислить n % base."
         ),
-        "example": "Например: 130 = 3 × 36 + 22, поэтому первый остаток равен 22.",
-        "hint": "Представь 200 как 36 × q + r, где остаток r меньше 36.",
-        "control_prompt": "Контроль: чему равен первый остаток при делении 200 на 36?",
-        "control_answers": ("20",),
+        "example": "Например: 83 = 13 × 6 + 5, поэтому первый остаток равен 5.",
+        "hint": "Представь число как base × q + r, где 0 ≤ r < base.",
+        "control_prompt": "Контроль: чему равен остаток при делении 74 на 6?",
+        "control_answers": ("2",),
         "retest_prompt": (
-            "Возврат к заданию типа №14: число 1298 переводят в 36-ричную "
-            "систему. Какой остаток получится на первом шаге?"
-        ),
-        "retest_answers": ("2",),
-        "verification_prompt": (
-            "Независимая проверка: число 777 переводят в 36-ричную систему. "
+            "Перенос: число 95 переводят в систему с основанием 7. "
             "Какой остаток получится на первом шаге?"
         ),
-        "verification_answers": ("21",),
+        "retest_answers": ("4",),
+        "verification_prompt": (
+            "Независимая проверка без подсказки: число 143 переводят в систему "
+            "с основанием 9. Какой остаток получится на первом шаге?"
+        ),
+        "verification_answers": ("8",),
     },
     "BASE_DIGIT_VALUE_PROPERTY": {
         "explanation": (
@@ -319,6 +319,7 @@ def start_task14_remediation(attempt: ExamAttempt) -> dict | None:
         "retest_attempts": 0,
         "verification_attempts": 0,
         "learning_round": 1,
+        "stage_history": [],
     }
     return attempt.remediation
 
@@ -375,6 +376,12 @@ def submit_task14_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
     expected = {item.lower().replace("ё", "е") for item in lesson[f"{stage}_answers"]}
     remediation[f"{stage}_attempts"] += 1
     is_correct = normalized in expected
+    remediation.setdefault("stage_history", []).append({
+        "stage": stage,
+        "student_answer": answer,
+        "is_correct": is_correct,
+        "learning_round": remediation.get("learning_round", 1),
+    })
     if is_correct and stage == "control":
         remediation["stage"] = "retest"
     elif is_correct and stage == "retest":

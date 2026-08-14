@@ -730,6 +730,36 @@ def test_unconfirmed_ege_case_does_not_change_learning_dna_or_plan():
     assert dna["trajectory"]["next_focus"] is None
 
 
+def test_task14_remainder_remediation_uses_simple_numeric_ladder():
+    attempt = ExamAttempt(current_task=28)
+    attempt.diagnostics[14] = {
+        "status": "confirmed",
+        "evidence": [{"gap_id": "BASE_REMAINDER_EXTRACTION", "is_correct": False}],
+    }
+    remediation = ege_exam_service.start_task14_remediation(attempt)
+    assert remediation is not None
+    rendered = ege_exam_service.render_task14_remediation(attempt, include_lesson=True)
+    assert "83 = 13 × 6 + 5" in rendered
+    assert "74 на 6" in rendered
+    assert "основанием 36" not in rendered
+
+    first = ege_exam_service.submit_task14_remediation_answer(attempt, "2")
+    assert first["is_correct"] is True
+    assert attempt.remediation["stage"] == "retest"
+    assert "95" in ege_exam_service.render_task14_remediation(attempt)
+
+    second = ege_exam_service.submit_task14_remediation_answer(attempt, "4")
+    assert second["is_correct"] is True
+    assert attempt.remediation["stage"] == "verification"
+    assert "143" in ege_exam_service.render_task14_remediation(attempt)
+
+    third = ege_exam_service.submit_task14_remediation_answer(attempt, "8")
+    assert third["status"] == "mastered"
+    assert [item["stage"] for item in attempt.remediation["stage_history"]] == [
+        "control", "retest", "verification"
+    ]
+
+
 def test_remediation_status_updates_existing_task14_plan():
     attempt = ExamAttempt(attempt_id="attempt-remediation", current_task=28)
     case = open_diagnostic_case(14, "wrong", "expected", json.loads(
