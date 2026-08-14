@@ -256,6 +256,23 @@ CONTROL_PROBES = {
 }
 
 
+# A second local probe must use genuinely new data. Repeating the same question
+# cannot count as independent evidence for a Learning DNA weakness.
+PILOT_TRANSFER_PROBES = {
+    (5, 0): {"prompt": "Переведите число 23 в двоичную систему. Запишите только двоичную запись.", "expected_answers": ("10111",)},
+    (5, 1): {"prompt": "Алгоритм проверяет последнюю цифру двоичной записи: если она равна 1, справа дописывается 0; иначе дописывается 11. Для N=10 выберите применяемую ветку: ветка 1 или ветка 0.", "expected_answers": ("ветка 0", "0")},
+    (5, 2): {"prompt": "Для N=10 двоичная запись равна 1010. По правилу для последней цифры 0 справа дописывается 11. Запишите получившуюся двоичную строку.", "expected_answers": ("101011",)},
+    (5, 3): {"prompt": "Известно, что N=20 удовлетворяет условию поиска, а N=21 уже не удовлетворяет. Какое наибольшее целое N подходит?", "expected_answers": ("20",)},
+    (14, 0): {"prompt": "При переводе числа 725 в систему счисления с основанием 12 сначала делят 725 на 12. Какой остаток получится?", "expected_answers": ("5",)},
+    (14, 1): {"prompt": "В 16-ричной системе цифра F имеет значение 15. Учитывается ли F при подсчёте цифр с чётным числовым значением? Ответьте да или нет.", "expected_answers": ("нет", "no")},
+    (14, 2): {"prompt": "При переводе числа остатки получались в порядке 4, 1, 3. Последнее ненулевое частное равно 2. Запишите итоговую запись числа.", "expected_answers": ("2314",)},
+    (27, 0): {"prompt": "Даны точки (0,0), (0,3), (12,12), (15,12). Внутри каждой пары расстояние равно 3, а между парами значительно больше. Сколько явно разделённых кластеров получается по этим расстояниям?", "expected_answers": ("2",)},
+    (27, 1): {"prompt": "Для трёх точек одного кластера суммы расстояний до остальных равны: A — 9, B — 13, C — 6. Какая точка является медоидом?", "expected_answers": ("C", "С")},
+    (27, 2): {"prompt": "После кластеризации получены метки 1, 3, 3, 2, 3, 1. Сколько точек относится к кластеру с меткой 3?", "expected_answers": ("3",)},
+    (27, 3): {"prompt": "Расстояния от медоида до остальных точек кластера равны 6, 2 и 9. Каково максимальное расстояние?", "expected_answers": ("9",)},
+}
+
+
 def _normalize_probe_answer(value: str) -> str:
     normalized = " ".join(re.findall(r"[a-zа-яё]+|[-+]?\d+", value.lower()))
     # Telegram users may answer letter-labelled choices from a Russian keyboard.
@@ -313,11 +330,15 @@ def next_control_probe(case: dict) -> dict | None:
                 if item.get("base_probe_id", item.get("probe_id")) == probe["id"]
                 and not item.get("is_correct")
             )
+            transfer = PILOT_TRANSFER_PROBES.get((int(case.get("task_number", 0)), operation_index)) if failure_count else None
+            prompt = transfer["prompt"] if transfer else probe["prompt"]
+            expected_answers = transfer["expected_answers"] if transfer else probe["expected_answers"]
             result = {
                 "probe_id": probe["id"] if failure_count == 0 else f"{probe['id']}:retry{failure_count + 1}",
                 "base_probe_id": probe["id"],
                 "operation_index": operation_index,
-                "prompt": probe["prompt"],
+                "prompt": prompt,
+                "expected_answers": expected_answers,
                 "tested_step": operations[operation_index],
                 "probe_role": "discrimination" if failure_count == 0 else "transfer",
             }
@@ -326,7 +347,7 @@ def next_control_probe(case: dict) -> dict | None:
                 result.update(gap)
             pending = case.get("pending_probe") or {}
             if pending.get("base_probe_id", pending.get("probe_id")) == probe["id"]:
-                result.update({key: pending[key] for key in ("probe_id", "base_probe_id", "prompt", "source") if key in pending})
+                result.update({key: pending[key] for key in ("probe_id", "base_probe_id", "prompt", "expected_answers", "probe_role", "source") if key in pending})
             return result
     return None
 

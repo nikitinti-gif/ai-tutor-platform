@@ -932,3 +932,36 @@ def test_fallback_probe_hides_provider_error_from_student():
     assert "RateLimitError" not in rendered
     assert "SECRET_PROVIDER_DETAIL" not in rendered
     assert "Причина:" not in rendered
+
+
+def test_pilot_fallback_transfer_uses_new_question_and_new_data():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    for task_number in (5, 14, 27):
+        case = open_diagnostic_case(task_number, "wrong", "expected", full_map)
+        first = next_control_probe(case)
+        first_prompt = first["prompt"]
+        case = _answer_displayed_probe(case, first["probe_id"], "definitely-wrong")
+        second = next_control_probe(case)
+        assert second["probe_role"] == "transfer"
+        assert second["base_probe_id"] == first["base_probe_id"]
+        assert second["prompt"] != first_prompt
+        assert tuple(second["expected_answers"]) != tuple(first["expected_answers"]) or second["prompt"] != first_prompt
+
+
+def test_task14_remainder_fallback_requires_two_distinct_questions_before_confirmation():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(14, "wrong", "expected", full_map)
+    first = next_control_probe(case)
+    case = _answer_displayed_probe(case, first["probe_id"], "34")
+    assert case["status"] != DIAGNOSIS_CONFIRMED
+    second = next_control_probe(case)
+    assert "725" in second["prompt"]
+    assert second["prompt"] != first["prompt"]
+    case = _answer_displayed_probe(case, second["probe_id"], "34")
+    assert case["status"] == DIAGNOSIS_CONFIRMED
+    failed = [e for e in case["evidence"] if e.get("kind") == "control_probe" and not e.get("is_correct")]
+    assert len({e.get("display_prompt") for e in failed[-2:]}) == 2
