@@ -13,7 +13,6 @@ import re
 from string import Formatter
 from uuid import uuid4
 
-
 PILOT_TASKS = {5, 14, 27}
 MAX_PROMPT_LENGTH = 500
 
@@ -28,39 +27,30 @@ def generate_live_probe_values(task: int, op: int, rng: random.Random | None = N
         (27, 1): ((3, 30), (3, 30), (3, 30)),
         (27, 2): ((1, 3),) * 6, (27, 3): ((1, 30),) * 4,
     }
-    try:
-        bounds = ranges[(task, op)]
-    except KeyError as error:
-        raise ValueError("Для этого шага нет генератора данных живой пробы.") from error
+    try: bounds = ranges[(task, op)]
+    except KeyError as error: raise ValueError("Для этого шага нет генератора данных живой пробы.") from error
     for _ in range(20):
         values = [rng.randint(low, high) for low, high in bounds]
-        try:
-            _scenario(task, op, {"values": values})
-            return values
-        except ValueError:
-            continue
+        try: _scenario(task, op, {"values": values}); return values
+        except ValueError: continue
     raise ValueError("Python не смог создать допустимые данные мини-пробы.")
 
 
 def generate_live_probe_data(task: int, op: int, rng: random.Random | None = None) -> dict[str, object]:
-    rng = rng or random.SystemRandom()
-    variants = {(5, 0): ("decimal_to_binary", "binary_to_decimal")}
+    rng = rng or random.SystemRandom(); variants = {(5, 0): ("decimal_to_binary", "binary_to_decimal")}
     return {"variant": rng.choice(variants.get((task, op), ("default",))), "values": generate_live_probe_values(task, op, rng)}
 
 
 def _ints(data: dict, count: int, low: int, high: int) -> list[int]:
     values = data.get("values")
-    if not isinstance(values, list) or len(values) != count:
-        raise ValueError("AI вернул неверное число параметров.")
-    if any(type(value) is not int or not low <= value <= high for value in values):
-        raise ValueError("Параметры AI выходят за безопасный диапазон.")
+    if not isinstance(values, list) or len(values) != count: raise ValueError("AI вернул неверное число параметров.")
+    if any(type(value) is not int or not low <= value <= high for value in values): raise ValueError("Параметры AI выходят за безопасный диапазон.")
     return values
 
 
 def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | int]:
     if task == 5 and op == 0:
-        (n,) = _ints(data, 1, 10, 250)
-        variant = data.get("variant", "decimal_to_binary")
+        (n,) = _ints(data, 1, 10, 250); variant = data.get("variant", "decimal_to_binary")
         if variant == "decimal_to_binary": return {"source_number": n, "source_system": "десятичной", "target_system": "двоичной"}, bin(n)[2:]
         if variant == "binary_to_decimal": return {"source_number": bin(n)[2:], "source_system": "двоичной", "target_system": "десятичной"}, n
         raise ValueError("Неизвестный вариант преобразования системы счисления.")
@@ -75,17 +65,12 @@ def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | 
     if task == 14 and op == 1:
         (value,) = _ints(data, 1, 10, 35); digit = str(value) if value < 10 else chr(55 + value); return {"digit": digit, "value": value}, "да" if value % 2 == 0 else "нет"
     if task == 14 and op == 2:
-        (seed,) = _ints(data, 1, 2, 8)
-        remainders = [seed % 5, (seed + 2) % 5, (seed + 4) % 5]
-        last_quotient = 1 + seed % 4
-        remainder_text = ", ".join(map(str, remainders))
-        final_record = str(last_quotient) + "".join(map(str, reversed(remainders)))
-        return {"remainders": remainder_text, "last_quotient": last_quotient}, final_record
+        (seed,) = _ints(data, 1, 2, 8); remainders = [seed % 5, (seed + 2) % 5, (seed + 4) % 5]; last_quotient = 1 + seed % 4
+        return {"remainders": ", ".join(map(str, remainders)), "last_quotient": last_quotient}, str(last_quotient) + "".join(map(str, reversed(remainders)))
     if task == 27 and op == 0:
         gap, spread_seed = _ints(data, 2, 6, 30); spread = 1 + spread_seed % 3
         if gap <= spread * 2: raise ValueError("Группы точек недостаточно разделены.")
-        points = f"(0,0), (0,{spread}), ({gap},{gap}), ({gap + spread},{gap})"
-        return {"points": points, "within_distance": spread, "between_min": gap}, 2
+        return {"points": f"(0,0), (0,{spread}), ({gap},{gap}), ({gap + spread},{gap})", "within_distance": spread, "between_min": gap}, 2
     if task == 27 and op == 1:
         a, b, c = _ints(data, 3, 3, 30); vals = [a,b,c]
         if len(set(vals)) != 3: raise ValueError("Для медоида нужен единственный минимум.")
@@ -102,8 +87,7 @@ def _field_names(template: str) -> list[str]:
     except ValueError as error: raise ValueError("AI повредил плейсхолдеры вопроса.") from error
 
 
-def _normalise_wording(prompt: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"\d+", "#", prompt.lower())).strip()
+def _normalise_wording(prompt: str) -> str: return re.sub(r"\s+", " ", re.sub(r"\d+", "#", prompt.lower())).strip()
 
 
 def _validate_template(template: str, fields: dict[str, object], task: int, operation: int, *, strict: bool) -> None:
@@ -118,29 +102,28 @@ def _validate_template(template: str, fields: dict[str, object], task: int, oper
 
 
 def _validate_pedagogical_style(prompt: str, task: int, operation: int) -> None:
-    """Reject mathematically valid but teacher-unfriendly meta wording.
-
-    Diagnostic probes should sound like short school/exam exercises, not like
-    questions about the tutor's internal representation of an algorithm.
-    """
     text = prompt.lower().replace("ё", "е")
-    banned = (
-        "значимых элементов",
-        "значимые элементы",
-        "общее количество всех",
-        "в рамках записи многозначного числа мы выделили",
-        "в процессе перевода большого числа",
-        "какой этот показатель",
-    )
-    if any(marker in text for marker in banned):
-        raise ValueError("Формулировка педагогически неестественна и не похожа на учебную задачу.")
-    if len(prompt) > 360:
-        raise ValueError("Диагностическая проба слишком многословна для одного атомарного навыка.")
-    if task == 14 and operation == 2:
-        if "остат" not in text or "частн" not in text or not any(marker in text for marker in ("запись", "число", "цифр")):
-            raise ValueError("Проба №14.2 должна просить восстановить реальную запись из остатков и последнего частного.")
-        if any(marker in text for marker in ("сколько разрядов", "сколько всего разрядов", "сколько цифр будет")):
-            raise ValueError("Проба №14.2 должна проверять сохранение старшего разряда через запись числа, а не мета-подсчёт элементов.")
+    banned = ("значимых элементов", "значимые элементы", "общее количество всех", "в рамках записи многозначного числа мы выделили", "в процессе перевода большого числа", "какой этот показатель", "представь, что мы", "представь, что у нас", "в рамках алгоритма", "в ходе анализа набора данных")
+    if any(marker in text for marker in banned): raise ValueError("Формулировка педагогически неестественна и не похожа на учебную задачу.")
+    if len(prompt) > 300: raise ValueError("Диагностическая проба слишком многословна для одного атомарного навыка.")
+    contracts = {
+        (5, 0): (("перевед",), ("двоич", "десятич")),
+        (5, 1): (("последн",), ("двоич",)),
+        (5, 2): (("допис", "припиш"), ("двоич",)),
+        (5, 3): (("наибольш", "максим"), ("цел", "n")),
+        (14, 0): (("остат",), ("дел",)),
+        (14, 1): (("чет", "нечет"), ("значен", "цифр")),
+        (14, 2): (("остат",), ("частн", "запис")),
+        (27, 0): (("кластер", "групп"), ("расстоя",)),
+        (27, 1): (("медоид", "центр"), ("сумм", "расстоя")),
+        (27, 2): (("сколько",), ("кластер", "метк")),
+        (27, 3): (("максим", "наибольш"), ("расстоя",)),
+    }
+    any_terms, required_terms = contracts[(task, operation)]
+    if not any(term in text for term in any_terms) or not all(term in text for term in required_terms):
+        raise ValueError("Формулировка не соответствует учебному паттерну диагностируемого навыка.")
+    if task == 14 and operation == 2 and any(marker in text for marker in ("сколько разрядов", "сколько всего разрядов", "сколько цифр будет")):
+        raise ValueError("Проба №14.2 должна проверять сохранение старшего разряда через запись числа, а не мета-подсчёт элементов.")
 
 
 def _validate_atomic_skill(prompt: str, task: int, operation: int) -> None:
@@ -149,9 +132,7 @@ def _validate_atomic_skill(prompt: str, task: int, operation: int) -> None:
         if "остат" not in text: raise ValueError("Проба №14.0 должна напрямую проверять вычисление остатка.")
         if not any(marker in text for marker in ("десятич", "обычным числом", "числом")): raise ValueError("Проба №14.0 должна требовать однозначный числовой ответ.")
         if any(marker in text for marker in ("цифра справа", "первой цифр", "букв", "символ")): raise ValueError("Проба №14.0 смешивает остаток с представлением цифры.")
-    if (task, operation) == (14, 2):
-        if "остат" not in text or "частн" not in text:
-            raise ValueError("Проба №14.2 должна явно назвать остатки и последнее ненулевое частное.")
+    if (task, operation) == (14, 2) and ("остат" not in text or "частн" not in text): raise ValueError("Проба №14.2 должна явно назвать остатки и последнее ненулевое частное.")
     if (task, operation) == (27, 0):
         if not all(marker in text for marker in ("расстоя", "групп")): raise ValueError("Проба №27.0 должна обосновывать группы через расстояния.")
         if any(marker in text for marker in ("естествен", "на глаз", "логически")): raise ValueError("Проба №27.0 не должна опираться на субъективное выделение кластеров.")
@@ -170,20 +151,16 @@ def _validate_variety(prompt: str, previous_prompts: list[str]) -> None:
 def build_live_probe(case: dict, base_probe: dict, raw_result: str, previous_prompts: list[str] | None = None, values: list[int] | None = None, variant: str | None = None) -> dict:
     try: data = json.loads(raw_result)
     except (TypeError, json.JSONDecodeError) as error: raise ValueError("AI вернул некорректный JSON мини-пробы.") from error
-    strict = values is not None
-    expected_keys = {"prompt_template"} if strict else {"prompt_template", "values"}
+    strict = values is not None; expected_keys = {"prompt_template"} if strict else {"prompt_template", "values"}
     if set(data) != expected_keys: raise ValueError("AI нарушил контракт живой мини-пробы.")
     task = int(case["task_number"]); operation = int(base_probe["operation_index"])
     if task not in PILOT_TASKS: raise ValueError("Живая генерация ещё не включена для этого задания.")
     scenario_data = {"values": values if strict else data["values"], "variant": variant or data.get("variant", "decimal_to_binary" if (task, operation) == (5, 0) else "default")}
-    fields, answer = _scenario(task, operation, scenario_data); template = str(data["prompt_template"]).strip()
-    _validate_template(template, fields, task, operation, strict=strict)
+    fields, answer = _scenario(task, operation, scenario_data); template = str(data["prompt_template"]).strip(); _validate_template(template, fields, task, operation, strict=strict)
     try: prompt = template.format(**fields)
     except (KeyError, ValueError) as error: raise ValueError("AI вернул нерабочий шаблон вопроса.") from error
     if len(prompt) > MAX_PROMPT_LENGTH: raise ValueError("Итоговая формулировка слишком длинная.")
-    if strict:
-        _validate_atomic_skill(prompt, task, operation)
-        _validate_pedagogical_style(prompt, task, operation)
+    if strict: _validate_atomic_skill(prompt, task, operation); _validate_pedagogical_style(prompt, task, operation)
     _validate_no_answer_leak(prompt, answer); _validate_variety(prompt, previous_prompts or [])
     expected_answers = (str(answer),)
     if (task, operation) == (5, 1): expected_answers = (str(answer), f"ветка {answer}")
