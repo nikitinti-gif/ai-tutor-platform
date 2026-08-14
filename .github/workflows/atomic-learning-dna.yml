@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Repair atomic Learning DNA migration'
+    if: github.event.head_commit.message == 'Finish atomic Learning DNA migration'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,11 +23,10 @@ jobs:
           p = Path('src/learning_dna/engine.py')
           text = p.read_text(encoding='utf-8')
           old = '''        check_result = confirmed_case_to_check_result(case)\n        check_result.update({"evidence_id": evidence_id, "attempt_id": attempt.attempt_id, "difficulty": "exam_level"})\n        dna = update_learning_dna_after_check(dna, student_id, check_result)\n'''
-          new = '''        evidence = _confirmed_evidence(case)\n        check_result = confirmed_case_to_check_result(case)\n        # Learning DNA must describe the exact skill carried by the confirmed\n        # evidence instead of blindly taking the first broad skill of the task.\n        evidence_skill_id = evidence.get("skill_id") if evidence else None\n        if evidence_skill_id and get_skill(evidence_skill_id):\n            check_result["skill_id"] = evidence_skill_id\n        check_result.update({\n            "evidence_id": evidence_id,\n            "attempt_id": attempt.attempt_id,\n            "difficulty": "exam_level",\n            "hypothesis_id": evidence.get("hypothesis_id") if evidence else None,\n            "probe_id": evidence.get("probe_id") if evidence else None,\n        })\n        dna = update_learning_dna_after_check(dna, student_id, check_result)\n'''
+          new = '''        evidence = _confirmed_evidence(case)\n        check_result = confirmed_case_to_check_result(case)\n        evidence_skill_id = evidence.get("skill_id") if evidence else None\n        if evidence_skill_id and get_skill(evidence_skill_id):\n            check_result["skill_id"] = evidence_skill_id\n        check_result.update({\n            "evidence_id": evidence_id,\n            "attempt_id": attempt.attempt_id,\n            "difficulty": "exam_level",\n            "hypothesis_id": evidence.get("hypothesis_id") if evidence else None,\n            "probe_id": evidence.get("probe_id") if evidence else None,\n        })\n        dna = update_learning_dna_after_check(dna, student_id, check_result)\n'''
           if old not in text:
               raise SystemExit('Learning DNA write block not found')
           text = text.replace(old, new, 1)
-
           old = '''        skill_ids = case.get("skill_ids") or []\n        skill_id = skill_ids[0] if skill_ids else None\n        skill = get_skill(skill_id) if skill_id else None\n'''
           new = '''        evidence = _confirmed_evidence(case)\n        skill_ids = case.get("skill_ids") or []\n        evidence_skill_id = evidence.get("skill_id") if evidence else None\n        skill_id = evidence_skill_id if evidence_skill_id and get_skill(evidence_skill_id) else (skill_ids[0] if skill_ids else None)\n        skill = get_skill(skill_id) if skill_id else None\n'''
           if old not in text:
@@ -38,36 +37,23 @@ jobs:
           t = Path('tests/test_pilot_learning_dna_flow.py')
           text = t.read_text(encoding='utf-8')
           marker = '''    assert all(item["action"] for item in plan)\n\n    assert dna["trajectory"]["next_focus"] == plan[0]["failed_step"]\n'''
-          addition = '''    # Stored weakness and plan must use the same skill as the evidence.\n    for item in plan:\n        case = attempt.diagnostics[item["task_number"]]\n        failed = [\n            evidence for evidence in case["evidence"]\n            if evidence.get("kind") == "control_probe"\n            and evidence.get("evidence_valid") is True\n            and evidence.get("validator_result") is False\n        ]\n        assert failed\n        assert item["skill_id"] == failed[-1]["skill_id"]\n        assert item["skill_id"] in dna["skills"]\n        assert dna["skills"][item["skill_id"]]["mistakes"] >= 1\n\n    assert dna["trajectory"]["next_focus"] == plan[0]["failed_step"]\n'''
+          addition = '''    for item in plan:\n        case = attempt.diagnostics[item["task_number"]]\n        failed = [\n            evidence for evidence in case["evidence"]\n            if evidence.get("kind") == "control_probe"\n            and evidence.get("evidence_valid") is True\n            and evidence.get("validator_result") is False\n        ]\n        assert failed\n        assert item["skill_id"] == failed[-1]["skill_id"]\n        assert item["skill_id"] in dna["skills"]\n        assert dna["skills"][item["skill_id"]]["mistakes"] >= 1\n\n    assert dna["trajectory"]["next_focus"] == plan[0]["failed_step"]\n'''
           if marker not in text:
               raise SystemExit('pilot test marker not found')
           text = text.replace(marker, '''    assert all(item["action"] for item in plan)\n\n''' + addition, 1)
           t.write_text(text, encoding='utf-8')
 
-          # Two older tests asserted the former broad task skill directly.
-          # They now follow the exact skill selected into the individual plan.
           t = Path('tests/test_ege_diagnostics.py')
           text = t.read_text(encoding='utf-8')
-          text = text.replace(
-              '    skill_attempts = dna["skills"]["number_systems.base_conversion"]["attempts"]\n',
-              '    plan_skill_id = dna["trajectory"]["individual_plan"][0]["skill_id"]\n    skill_attempts = dna["skills"][plan_skill_id]["attempts"]\n',
-              1,
-          )
-          text = text.replace(
-              '    assert dna["skills"]["number_systems.base_conversion"]["attempts"] == skill_attempts\n',
-              '    assert dna["skills"][plan_skill_id]["attempts"] == skill_attempts\n',
-              1,
-          )
-          text = text.replace(
-              '    evidence_count = updated["skills"]["number_systems.base_conversion"]["evidence_count"]\n',
-              '    plan_skill_id = updated["trajectory"]["individual_plan"][0]["skill_id"]\n    evidence_count = updated["skills"][plan_skill_id]["evidence_count"]\n',
-              1,
-          )
-          text = text.replace(
-              '    assert updated_again["skills"]["number_systems.base_conversion"]["evidence_count"] == evidence_count\n',
-              '    assert updated_again["skills"][plan_skill_id]["evidence_count"] == evidence_count\n',
-              1,
-          )
+          replacements = [
+              ('    skill_attempts = dna["skills"]["number_systems.base_conversion"]["attempts"]\n', '    plan_skill_id = dna["trajectory"]["individual_plan"][0]["skill_id"]\n    skill_attempts = dna["skills"][plan_skill_id]["attempts"]\n'),
+              ('    assert dna["skills"]["number_systems.base_conversion"]["attempts"] == skill_attempts\n', '    assert dna["skills"][plan_skill_id]["attempts"] == skill_attempts\n'),
+              ('    evidence_count = updated["skills"]["number_systems.base_conversion"]["evidence_count"]\n', '    plan_skill_id = updated["trajectory"]["individual_plan"][0]["skill_id"]\n    evidence_count = updated["skills"][plan_skill_id]["evidence_count"]\n'),
+              ('    skill = updated["skills"]["number_systems.base_conversion"]\n', '    skill = updated["skills"][plan_skill_id]\n'),
+              ('    assert updated_again["skills"]["number_systems.base_conversion"]["evidence_count"] == evidence_count\n', '    assert updated_again["skills"][plan_skill_id]["evidence_count"] == evidence_count\n'),
+          ]
+          for old, new in replacements:
+              text = text.replace(old, new, 1)
           t.write_text(text, encoding='utf-8')
 
           Path('.github/workflows/atomic-learning-dna.yml').unlink()
