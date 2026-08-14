@@ -110,8 +110,18 @@ def apply_confirmed_ege_diagnostics(current_dna: dict | None, student_id: int, a
         evidence_id = f"ege:{attempt.attempt_id}:task:{case['task_number']}:probe:{probe_id}"
         if evidence_id in processed_set:
             continue
+        evidence = _confirmed_evidence(case)
         check_result = confirmed_case_to_check_result(case)
-        check_result.update({"evidence_id": evidence_id, "attempt_id": attempt.attempt_id, "difficulty": "exam_level"})
+        evidence_skill_id = evidence.get("skill_id") if evidence else None
+        if evidence_skill_id and get_skill(evidence_skill_id):
+            check_result["skill_id"] = evidence_skill_id
+        check_result.update({
+            "evidence_id": evidence_id,
+            "attempt_id": attempt.attempt_id,
+            "difficulty": "exam_level",
+            "hypothesis_id": evidence.get("hypothesis_id") if evidence else None,
+            "probe_id": evidence.get("probe_id") if evidence else None,
+        })
         dna = update_learning_dna_after_check(dna, student_id, check_result)
         processed.append(evidence_id)
         processed_set.add(evidence_id)
@@ -123,8 +133,10 @@ def apply_confirmed_ege_diagnostics(current_dna: dict | None, student_id: int, a
         if step_key in seen_steps:
             continue
         seen_steps.add(step_key)
+        evidence = _confirmed_evidence(case)
         skill_ids = case.get("skill_ids") or []
-        skill_id = skill_ids[0] if skill_ids else None
+        evidence_skill_id = evidence.get("skill_id") if evidence else None
+        skill_id = evidence_skill_id if evidence_skill_id and get_skill(evidence_skill_id) else (skill_ids[0] if skill_ids else None)
         skill = get_skill(skill_id) if skill_id else None
         plan.append({"order": len(plan) + 1, "task_number": case.get("task_number"), "skill_id": skill_id,
                      "skill_name": get_skill_name(skill_id) if skill_id else case.get("task_title"),

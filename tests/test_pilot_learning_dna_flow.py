@@ -56,6 +56,19 @@ def test_confirmed_pilot_diagnostics_build_learning_dna_plan_and_focus():
     assert all(item["failed_step"] for item in plan)
     assert all(item["action"] for item in plan)
 
+    for item in plan:
+        case = attempt.diagnostics[item["task_number"]]
+        failed = [
+            evidence for evidence in case["evidence"]
+            if evidence.get("kind") == "control_probe"
+            and evidence.get("evidence_valid") is True
+            and evidence.get("validator_result") is False
+        ]
+        assert failed
+        assert item["skill_id"] == failed[-1]["skill_id"]
+        assert item["skill_id"] in dna["skills"]
+        assert dna["skills"][item["skill_id"]]["mistakes"] >= 1
+
     assert dna["trajectory"]["next_focus"] == plan[0]["failed_step"]
     assert dna["trajectory"]["next_focus_skill_id"] == plan[0]["skill_id"]
     assert result["next_focus"] == plan[0]["failed_step"]

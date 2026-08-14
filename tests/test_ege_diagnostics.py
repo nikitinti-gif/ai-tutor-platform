@@ -698,7 +698,8 @@ def test_confirmed_ege_evidence_is_applied_to_learning_dna_exactly_once():
 
     dna, first = apply_confirmed_ege_diagnostics(None, 123, attempt)
     signal_count = len(dna["signals"])
-    skill_attempts = dna["skills"]["number_systems.base_conversion"]["attempts"]
+    plan_skill_id = dna["trajectory"]["individual_plan"][0]["skill_id"]
+    skill_attempts = dna["skills"][plan_skill_id]["attempts"]
 
     dna, second = apply_confirmed_ege_diagnostics(dna, 123, attempt)
 
@@ -706,7 +707,7 @@ def test_confirmed_ege_evidence_is_applied_to_learning_dna_exactly_once():
     assert second["applied_count"] == 0
     assert len(dna["processed_evidence_ids"]) == 1
     assert len(dna["signals"]) == signal_count
-    assert dna["skills"]["number_systems.base_conversion"]["attempts"] == skill_attempts
+    assert dna["skills"][plan_skill_id]["attempts"] == skill_attempts
     assert len(dna["trajectory"]["individual_plan"]) == 1
     assert dna["trajectory"]["next_focus"] == attempt.diagnostics[14]["failed_step"]
 
@@ -756,10 +757,11 @@ def test_verified_task14_remediation_marks_skill_mastered_once():
     dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
 
     updated = confirm_ege_remediation_mastery(dna, 14, attempt.attempt_id)
-    evidence_count = updated["skills"]["number_systems.base_conversion"]["evidence_count"]
+    plan_skill_id = updated["trajectory"]["individual_plan"][0]["skill_id"]
+    evidence_count = updated["skills"][plan_skill_id]["evidence_count"]
     updated = confirm_ege_remediation_mastery(updated, 14, attempt.attempt_id)
 
-    skill = updated["skills"]["number_systems.base_conversion"]
+    skill = updated["skills"][plan_skill_id]
     assert skill["mastered"] is True
     assert skill["mastery_level"] == 100
     assert skill["evidence_count"] == evidence_count
