@@ -75,7 +75,7 @@ def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | 
     if task == 14 and op == 1:
         (value,) = _ints(data, 1, 10, 35); digit = str(value) if value < 10 else chr(55 + value); return {"digit": digit, "value": value}, "да" if value % 2 == 0 else "нет"
     if task == 14 and op == 2:
-        (count,) = _ints(data, 1, 2, 8); return {"count": count}, count + 1
+        (remainder_count,) = _ints(data, 1, 2, 8); return {"remainder_count": remainder_count}, remainder_count + 1
     if task == 27 and op == 0:
         gap, spread_seed = _ints(data, 2, 6, 30); spread = 1 + spread_seed % 3
         if gap <= spread * 2: raise ValueError("Группы точек недостаточно разделены.")
@@ -120,6 +120,11 @@ def _validate_atomic_skill(prompt: str, task: int, operation: int) -> None:
         if "остат" not in text: raise ValueError("Проба №14.0 должна напрямую проверять вычисление остатка.")
         if not any(marker in text for marker in ("десятич", "обычным числом", "числом")): raise ValueError("Проба №14.0 должна требовать однозначный числовой ответ.")
         if any(marker in text for marker in ("цифра справа", "первой цифр", "букв", "символ")): raise ValueError("Проба №14.0 смешивает остаток с представлением цифры.")
+    if (task, operation) == (14, 2):
+        if "остат" not in text or "частн" not in text:
+            raise ValueError("Проба №14.2 должна явно назвать остатки и последнее ненулевое частное.")
+        if any(marker in text for marker in ("общее количество", "всех этих значимых", "всего элементов")):
+            raise ValueError("Проба №14.2 не должна выдавать число остатков за общее число цифр.")
     if (task, operation) == (27, 0):
         if not all(marker in text for marker in ("расстоя", "групп")): raise ValueError("Проба №27.0 должна обосновывать группы через расстояния.")
         if any(marker in text for marker in ("естествен", "на глаз", "логически")): raise ValueError("Проба №27.0 не должна опираться на субъективное выделение кластеров.")
