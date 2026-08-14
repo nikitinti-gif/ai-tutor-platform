@@ -378,9 +378,13 @@ def submit_task14_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
     is_correct = normalized in expected
     remediation.setdefault("stage_history", []).append({
         "stage": stage,
+        "question": lesson[f"{stage}_prompt"],
+        "canonical_answer": str(lesson[f"{stage}_answers"][0]),
         "student_answer": answer,
+        "validator_result": is_correct,
         "is_correct": is_correct,
         "learning_round": remediation.get("learning_round", 1),
+        "timestamp": time.time(),
     })
     if is_correct and stage == "control":
         remediation["stage"] = "retest"

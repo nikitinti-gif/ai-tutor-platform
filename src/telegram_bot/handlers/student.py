@@ -394,7 +394,7 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
     if dna:
         if result["status"] == "mastered":
             dna = confirm_ege_remediation_mastery(
-                dna, 14, attempt.attempt_id
+                dna, 14, attempt.attempt_id, attempt.remediation
             )
         else:
             dna = set_ege_remediation_status(dna, 14, result["status"])

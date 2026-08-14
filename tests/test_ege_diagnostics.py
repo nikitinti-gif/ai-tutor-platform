@@ -776,6 +776,26 @@ def test_remediation_status_updates_existing_task14_plan():
     assert updated["trajectory"]["remediation_status"] == "retesting"
 
 
+def test_remediation_mastery_rejects_missing_transfer_evidence():
+    attempt = ExamAttempt(attempt_id="attempt-incomplete", current_task=28)
+    case = open_diagnostic_case(14, "wrong", "expected", json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    ))
+    case = _answer_displayed_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    case = _answer_displayed_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    attempt.diagnostics[14] = case
+    dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
+    ege_exam_service.start_task14_remediation(attempt)
+    ege_exam_service.submit_task14_remediation_answer(attempt, "2")
+
+    try:
+        confirm_ege_remediation_mastery(dna, 14, attempt.attempt_id, attempt.remediation)
+    except ValueError as exc:
+        assert "полного" in str(exc)
+    else:
+        raise AssertionError("Incomplete remediation evidence must not master the skill")
+
+
 def test_verified_task14_remediation_marks_skill_mastered_once():
     attempt = ExamAttempt(attempt_id="attempt-verified", current_task=28)
     case = open_diagnostic_case(14, "wrong", "expected", json.loads(
@@ -786,10 +806,14 @@ def test_verified_task14_remediation_marks_skill_mastered_once():
     attempt.diagnostics[14] = case
     dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
 
-    updated = confirm_ege_remediation_mastery(dna, 14, attempt.attempt_id)
+    ege_exam_service.start_task14_remediation(attempt)
+    ege_exam_service.submit_task14_remediation_answer(attempt, "2")
+    ege_exam_service.submit_task14_remediation_answer(attempt, "4")
+    ege_exam_service.submit_task14_remediation_answer(attempt, "8")
+    updated = confirm_ege_remediation_mastery(dna, 14, attempt.attempt_id, attempt.remediation)
     plan_skill_id = updated["trajectory"]["individual_plan"][0]["skill_id"]
     evidence_count = updated["skills"][plan_skill_id]["evidence_count"]
-    updated = confirm_ege_remediation_mastery(updated, 14, attempt.attempt_id)
+    updated = confirm_ege_remediation_mastery(updated, 14, attempt.attempt_id, attempt.remediation)
 
     skill = updated["skills"][plan_skill_id]
     assert skill["mastered"] is True

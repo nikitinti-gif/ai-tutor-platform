@@ -172,8 +172,22 @@ def set_ege_remediation_status(dna: dict, task_number: int, status: str) -> dict
     return dna
 
 
-def confirm_ege_remediation_mastery(dna: dict, task_number: int, attempt_id: str) -> dict:
+def confirm_ege_remediation_mastery(dna: dict, task_number: int, attempt_id: str, remediation: dict | None = None) -> dict:
     evidence_id = f"ege:{attempt_id}:task:{task_number}:remediation:verified"
+    history = list((remediation or {}).get("stage_history", []))
+    round_id = (remediation or {}).get("learning_round")
+    successful = [
+        item for item in history
+        if item.get("learning_round") == round_id
+        and item.get("validator_result") is True
+        and item.get("question")
+        and item.get("canonical_answer") is not None
+        and item.get("student_answer") is not None
+        and item.get("timestamp") is not None
+    ]
+    stages = [item.get("stage") for item in successful[-3:]]
+    if stages != ["control", "retest", "verification"]:
+        raise ValueError("Нельзя подтвердить навык без полного RULE → CONTROL → TRANSFER → VERIFY evidence.")
     processed = dna.setdefault("processed_evidence_ids", [])
     dna = set_ege_remediation_status(dna, task_number, "mastered")
     if evidence_id in processed:
@@ -186,7 +200,8 @@ def confirm_ege_remediation_mastery(dna: dict, task_number: int, attempt_id: str
                       "evidence_count": int(state.get("evidence_count", 0) or 0) + 3,
                       "attempts": int(state.get("attempts", 0) or 0) + 3,
                       "successes": int(state.get("successes", 0) or 0) + 3,
-                      "difficulty_max": "exam_level", "last_evidence_id": evidence_id})
+                      "difficulty_max": "exam_level", "last_evidence_id": evidence_id,
+                      "remediation_evidence": successful[-3:]})
         next_skill = select_next_focus_from_graph(dna)
         trajectory = dna["trajectory"]
         trajectory["next_focus_skill_id"] = next_skill
