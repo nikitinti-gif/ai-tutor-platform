@@ -368,7 +368,7 @@ def test_task27_medoid_uses_one_atomic_placeholder_for_all_sums():
         }),
     )
     assert "A — 12, B — 5, C — 9" in generated["prompt"]
-    assert generated["expected_answers"] == ("B",)
+    assert generated["expected_answers"] == ("B", "5")
 
 
 def test_task27_label_count_accepts_natural_gemini_synonyms():

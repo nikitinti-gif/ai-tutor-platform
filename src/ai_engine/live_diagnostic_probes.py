@@ -163,5 +163,9 @@ def build_live_probe(case: dict, base_probe: dict, raw_result: str, previous_pro
     if strict: _validate_atomic_skill(prompt, task, operation); _validate_pedagogical_style(prompt, task, operation)
     _validate_no_answer_leak(prompt, answer); _validate_variety(prompt, previous_prompts or [])
     expected_answers = (str(answer),)
-    if (task, operation) == (5, 1): expected_answers = (str(answer), f"ветка {answer}")
+    if (task, operation) == (5, 1):
+        expected_answers = (str(answer), f"ветка {answer}")
+    elif (task, operation) == (27, 1):
+        sums = [int(value) for value in re.findall(r"\d+", str(fields["sums"]))]
+        expected_answers = (str(answer), str(min(sums)))
     return {"probe_id": f"{base_probe['id']}:{uuid4().hex[:10]}", "base_probe_id": base_probe["id"], "operation_index": operation, "variant": scenario_data["variant"], "prompt": prompt, "expected_answers": expected_answers, "source": "ai_wording_parameters_python_solver", "quality_gate": "passed"}

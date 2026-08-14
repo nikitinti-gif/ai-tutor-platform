@@ -199,3 +199,32 @@ def test_pilot_full_telegram_loop_updates_verified_learning_dna(monkeypatch):
     assert any("Переходим к следующему доказанному пробелу — №27" in text for text in transcript)
     assert any("КОРОТКОЕ ОБУЧЕНИЕ · №27" in text for text in transcript)
     assert any("🏆 Навык подтверждён" in text for text in transcript)
+
+
+def test_task27_medoid_numeric_minimum_is_not_misdiagnosed_as_concept_gap(monkeypatch):
+    sessions = {}
+    dna_store = {}
+    _patch_storage(monkeypatch, sessions, dna_store)
+    from src.services.ege_exam_service import ExamAttempt, bind_current_diagnostic_probe, mark_current_diagnostic_probe_displayed, submit_diagnostic_answer
+    from src.ai_engine.diagnostics import open_diagnostic_case
+    from src.skills.skill_graph import load_skill_map
+    attempt = ExamAttempt()
+    attempt.diagnostics = {27: open_diagnostic_case(27, "wrong", "expected", load_skill_map())}
+    bind_current_diagnostic_probe(attempt); mark_current_diagnostic_probe_displayed(attempt)
+    submit_diagnostic_answer(attempt, "2")
+    bind_current_diagnostic_probe(attempt); mark_current_diagnostic_probe_displayed(attempt)
+    result = submit_diagnostic_answer(attempt, "5")
+    assert result["is_correct"] is True
+    assert attempt.diagnostics[27]["status"] != "confirmed"
+
+
+def test_task27_remediation_accepts_numeric_minimum_as_concept_evidence():
+    from src.services.ege_exam_service import ExamAttempt, submit_task27_remediation_answer
+    attempt = ExamAttempt()
+    attempt.remediation = {
+        "task_number": 27, "skill_id": "programming.medoid_minimum", "status": "remediating", "stage": "control",
+        "control_attempts": 0, "retest_attempts": 0, "verification_attempts": 0, "learning_round": 1, "stage_history": []
+    }
+    result = submit_task27_remediation_answer(attempt, "11")
+    assert result["is_correct"] is True
+    assert attempt.remediation["stage"] == "retest"

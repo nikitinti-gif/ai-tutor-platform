@@ -356,7 +356,7 @@ async def _complete_ege_diagnostics(
     )
 
     plan = dna.get("trajectory", {}).get("individual_plan", [])
-    next_focus = dna.get("trajectory", {}).get("next_focus")
+    next_focus = (plan[0].get("skill_name") if plan else None) or dna.get("trajectory", {}).get("next_focus")
     lines = [
         diagnostic_summary(attempt),
         "",
@@ -471,7 +471,7 @@ async def receive_ege_remediation_answer(message: Message, state: FSMContext) ->
     elif result["is_correct"]:
         await message.answer(
             "✅ Верно. Теперь проверим, сможешь ли ты применить это правило "
-            "в новой задаче типа №14."
+            f"на новых данных по заданию №{remediation_task}."
         )
     elif result["stage"] == "control" and attempt.remediation.get("learning_round", 1) > 1:
         await message.answer(
