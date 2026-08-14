@@ -46,8 +46,8 @@ def diagnostic_skill_for_operation(case: dict, operation_index: int) -> str:
 TASK14_GAPS = {
     0: {
         "gap_id": "BASE_REMAINDER_EXTRACTION",
-        "description": "Не понимает, как остатки при делении образуют цифры записи числа.",
-        "required_rule": "Каждый остаток от деления на основание является очередной цифрой, записываемой справа налево.",
+        "description": "Ошибается при вычислении остатка от деления числа на основание системы счисления.",
+        "required_rule": "На первом шаге перевода остаток вычисляется как N % base; ответ здесь — обычное десятичное число.",
     },
     1: {
         "gap_id": "BASE_DIGIT_VALUE_PROPERTY",

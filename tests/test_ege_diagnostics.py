@@ -820,3 +820,11 @@ def test_verified_task14_remediation_marks_skill_mastered_once():
     assert skill["mastery_level"] == 100
     assert skill["evidence_count"] == evidence_count
     assert updated["trajectory"]["individual_plan"][0]["learning_status"] == "mastered"
+
+
+def test_task14_remainder_hypothesis_is_atomic():
+    from src.ai_engine.diagnostics import TASK14_GAPS
+    gap = TASK14_GAPS[0]
+    assert "остатка" in gap["description"].lower()
+    assert "N % base" in gap["required_rule"]
+    assert "образуют цифры" not in gap["description"].lower()
