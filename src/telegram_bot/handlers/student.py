@@ -523,7 +523,9 @@ async def receive_ege_diagnostic_answer(
         return
 
     attempt = ExamAttempt.from_dict(attempt_data)
-    result = submit_diagnostic_answer(attempt, message.text or "")
+    result = submit_diagnostic_answer(
+        attempt, message.text or "", student_id=message.from_user.id
+    )
     save_ege_session(
         message.from_user.id,
         attempt.to_dict(),

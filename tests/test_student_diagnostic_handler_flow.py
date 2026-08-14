@@ -117,6 +117,12 @@ def test_admin_can_run_5_14_27_pilot_through_telegram_handlers(monkeypatch):
         assert all(item.get("evidence_valid") is True for item in control_evidence[-2:])
         assert all(item.get("question") for item in control_evidence[-2:])
         assert all(item.get("student_answer") is not None for item in control_evidence[-2:])
+        assert all(item.get("student_id") == "42" for item in control_evidence[-2:])
+        assert all(item.get("attempt_id") for item in control_evidence[-2:])
+        assert all(item.get("task_number") == task_number for item in control_evidence[-2:])
+        assert all(item.get("skill_id") for item in control_evidence[-2:])
+        assert all(item.get("hypothesis_id") for item in control_evidence[-2:])
+        assert all(item.get("timestamp") for item in control_evidence[-2:])
 
 
 def test_failed_probe_delivery_is_not_persisted_as_displayed(monkeypatch):

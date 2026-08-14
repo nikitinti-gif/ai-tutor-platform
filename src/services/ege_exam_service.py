@@ -637,7 +637,12 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
     return next_attempt_diagnostic_probe(attempt)
 
 
-def submit_diagnostic_answer(attempt: ExamAttempt, answer: str) -> dict:
+def submit_diagnostic_answer(
+    attempt: ExamAttempt,
+    answer: str,
+    *,
+    student_id: int | str | None = None,
+) -> dict:
     """Check one active local probe and persist its evidence in the attempt."""
     probe = next_attempt_diagnostic_probe(attempt)
     if probe is None:
@@ -651,6 +656,8 @@ def submit_diagnostic_answer(attempt: ExamAttempt, answer: str) -> dict:
         current_case,
         probe["probe_id"],
         answer,
+        student_id=student_id,
+        attempt_id=attempt.attempt_id,
     )
     attempt.diagnostics[task_number] = case
     evidence = case["evidence"][-1]

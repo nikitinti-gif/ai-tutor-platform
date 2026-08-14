@@ -7,6 +7,7 @@ while the diagnostic engine is migrated to fail-closed evidence handling.
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timezone
 
 from src.ai_engine.diagnostics import (
     CONTROL_PROBES,
@@ -16,7 +17,14 @@ from src.ai_engine.diagnostics import (
 )
 
 
-def answer_bound_control_probe(case: dict, probe_id: str, answer: str) -> dict:
+def answer_bound_control_probe(
+    case: dict,
+    probe_id: str,
+    answer: str,
+    *,
+    student_id: int | str | None = None,
+    attempt_id: str | None = None,
+) -> dict:
     """Validate an answer only against the exact currently displayed probe."""
     pending = case.get("pending_probe") or {}
     pending_probe_id = str(pending.get("probe_id", "")).strip()
@@ -68,8 +76,15 @@ def answer_bound_control_probe(case: dict, probe_id: str, answer: str) -> dict:
     updated.pop("pending_probe", None)
 
     evidence = updated["evidence"][-1]
+    gap = _gap_for_operation(int(case.get("task_number", 0)), operation_index)
+    hypothesis_id = (gap or {}).get("gap_id") or f"task{case.get('task_number')}_operation{operation_index}"
     evidence.update(
         {
+            "student_id": str(student_id) if student_id is not None else "unbound",
+            "attempt_id": attempt_id or "unbound",
+            "task_number": int(case.get("task_number", 0)),
+            "skill_id": case.get("active_skill_id") or "unknown_skill",
+            "hypothesis_id": hypothesis_id,
             "base_probe_id": base_probe_id,
             "question": pending.get("prompt") or probe["prompt"],
             "canonical_question": pending.get("canonical_prompt") or probe["prompt"],
@@ -77,6 +92,7 @@ def answer_bound_control_probe(case: dict, probe_id: str, answer: str) -> dict:
             "accepted_answers": [str(value) for value in expected_answers],
             "student_answer": answer,
             "validator_result": is_correct,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "evidence_valid": True,
             "probe_source": pending.get("source", "local_fallback"),
         }
@@ -88,11 +104,17 @@ def answer_bound_control_probe(case: dict, probe_id: str, answer: str) -> dict:
 def valid_diagnostic_evidence(case: dict) -> list[dict]:
     """Return only complete, auditable evidence allowed to affect Learning DNA."""
     required = (
+        "student_id",
+        "attempt_id",
+        "task_number",
+        "skill_id",
+        "hypothesis_id",
         "probe_id",
         "question",
         "canonical_answer",
         "student_answer",
         "validator_result",
+        "timestamp",
     )
     return [
         deepcopy(item)
