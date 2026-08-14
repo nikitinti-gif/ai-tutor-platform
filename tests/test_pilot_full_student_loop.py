@@ -18,34 +18,32 @@ from src.services.ege_exam_service import (
 )
 
 
-def _show_and_answer(attempt, answer: str, student_id: int = 4242):
-    probe = bind_current_diagnostic_probe(attempt)
-    assert probe is not None
-    mark_current_diagnostic_probe_displayed(attempt)
-    return probe, submit_diagnostic_answer(attempt, answer, student_id=student_id)
-
-
-def _finish_diagnostics(attempt):
+def _finish_diagnostics(attempt, student_id: int = 4242):
     """Task 5 is disproved; first atomic skills of 14 and 27 are confirmed."""
     while True:
         probe = next_attempt_diagnostic_probe(attempt)
         if probe is None:
             return
+
+        probe = bind_current_diagnostic_probe(attempt)
+        assert probe is not None
         task = probe["task_number"]
-        case = attempt.diagnostics[task]
+        pending = attempt.diagnostics[task]["pending_probe"]
+        expected = str(pending["expected_answers"][0])
 
         if task == 5:
             # Every isolated step is answered correctly, so the original error
             # must not become a fabricated weakness in Learning DNA.
-            answer = str(probe["expected_answers"][0])
+            answer = expected
         elif task in {14, 27} and int(probe["operation_index"]) == 0:
             # Two independent negative evidence items confirm one atomic skill.
             answer = "definitely-wrong"
         else:
             # These branches should never be reached after operation 0 is confirmed.
-            answer = str(probe["expected_answers"][0])
+            answer = expected
 
-        _show_and_answer(attempt, answer)
+        mark_current_diagnostic_probe_displayed(attempt)
+        submit_diagnostic_answer(attempt, answer, student_id=student_id)
 
 
 def _complete_task14_learning(attempt, dna):
@@ -98,7 +96,7 @@ def test_pilot_5_14_27_full_student_loop_reaches_verified_learning_dna():
     student_id = 4242
     attempt = create_pilot_diagnostic_attempt()
 
-    _finish_diagnostics(attempt)
+    _finish_diagnostics(attempt, student_id=student_id)
 
     assert attempt.diagnostics[5]["status"] != "confirmed"
     assert attempt.diagnostics[14]["status"] == "confirmed"
