@@ -828,3 +828,40 @@ def test_task14_remainder_hypothesis_is_atomic():
     assert "остатка" in gap["description"].lower()
     assert "N % base" in gap["required_rule"]
     assert "образуют цифры" not in gap["description"].lower()
+
+
+def test_all_pilot_operations_have_atomic_pedagogical_hypotheses():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    expected_counts = {5: 4, 14: 3, 27: 4}
+    for task_number, expected_count in expected_counts.items():
+        case = open_diagnostic_case(task_number, "wrong", "expected", full_map)
+        hypotheses = case["gap_hypotheses"]
+        assert len(hypotheses) == expected_count
+        assert all(item.get("skill_id") for item in hypotheses)
+        assert all(item.get("description") for item in hypotheses)
+        assert all(item.get("required_rule") for item in hypotheses)
+        assert len({item["skill_id"] for item in hypotheses}) == expected_count
+
+
+def test_task27_two_failed_bound_probes_confirm_exact_pedagogical_gap():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(27, "wrong", "expected", full_map)
+    gap = case["gap_hypotheses"][1]
+    case = record_control_probe(
+        case, probe_id="medoid-a", tested_step=case["operations"][1], is_correct=False,
+        observed_answer="C", gap=gap, probe_role="discrimination"
+    )
+    case = record_control_probe(
+        case, probe_id="medoid-b", tested_step=case["operations"][1], is_correct=False,
+        observed_answer="A", gap=gap, probe_role="transfer"
+    )
+    assert case["status"] == DIAGNOSIS_CONFIRMED
+    confirmed = [item for item in case["gap_hypotheses"] if item["status"] == "confirmed"]
+    assert len(confirmed) == 1
+    assert confirmed[0]["skill_id"] == "programming.medoid_minimum"
+    assert "минимальной сумме расстояний" in confirmed[0]["description"]
+    assert "Медоид" in case["learning_action"]

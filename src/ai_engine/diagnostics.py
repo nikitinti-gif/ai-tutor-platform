@@ -43,29 +43,71 @@ def diagnostic_skill_for_operation(case: dict, operation_index: int) -> str:
     )
 
 
-TASK14_GAPS = {
-    0: {
+PILOT_GAPS = {
+    (5, 0): {
+        "gap_id": "BINARY_BASE_CONVERSION",
+        "description": "Ошибается при переводе числа между десятичной и двоичной системами.",
+        "required_rule": "При переводе нужно сохранить числовое значение и получить корректную запись в целевой системе.",
+    },
+    (5, 1): {
+        "gap_id": "LAST_BIT_BRANCH_SELECTION",
+        "description": "Ошибается при выборе ветки алгоритма по младшему биту двоичной записи.",
+        "required_rule": "Младший бит — крайняя правая цифра двоичной записи; именно она определяет ветку алгоритма.",
+    },
+    (5, 2): {
+        "gap_id": "BINARY_SUFFIX_APPEND",
+        "description": "Ошибается при приписывании заданных битов справа к двоичной записи.",
+        "required_rule": "Приписать суффикс справа — значит сохранить исходную запись и добавить указанные биты в её конец.",
+    },
+    (5, 3): {
+        "gap_id": "STRICT_INEQUALITY_INTEGER_BOUNDARY",
+        "description": "Ошибается при выборе наибольшего целого, удовлетворяющего строгому неравенству.",
+        "required_rule": "После решения строгого неравенства нужно выбрать крайнее целое значение, которое всё ещё удовлетворяет условию.",
+    },
+    (14, 0): {
         "gap_id": "BASE_REMAINDER_EXTRACTION",
         "description": "Ошибается при вычислении остатка от деления числа на основание системы счисления.",
         "required_rule": "На первом шаге перевода остаток вычисляется как N % base; ответ здесь — обычное десятичное число.",
     },
-    1: {
+    (14, 1): {
         "gap_id": "BASE_DIGIT_VALUE_PROPERTY",
-        "description": "Смешивает символ цифры и её числовое значение.",
-        "required_rule": "Свойство цифры проверяют по её числовому значению, включая буквенные цифры.",
+        "description": "Ошибается при определении свойства цифры по её числовому значению.",
+        "required_rule": "Свойство цифры проверяют по её числовому значению, а не по виду символа; буквенные цифры тоже имеют числовое значение.",
     },
-    2: {
+    (14, 2): {
         "gap_id": "BASE_MOST_SIGNIFICANT_DIGIT",
-        "description": "Теряет последний ненулевой разряд после завершения деления.",
-        "required_rule": "Последнее ненулевое частное тоже является цифрой записи и должно быть учтено.",
+        "description": "Теряет последнее ненулевое частное при восстановлении записи числа в новой системе счисления.",
+        "required_rule": "Последнее ненулевое частное становится старшей цифрой, а остатки записываются в обратном порядке.",
+    },
+    (27, 0): {
+        "gap_id": "CLUSTER_COUNT_FROM_DISTANCE_SEPARATION",
+        "description": "Не выделяет явно разделённые группы точек по сравнению расстояний между ними.",
+        "required_rule": "Если расстояния внутри групп малы, а между группами существенно больше, такие группы рассматриваются как отдельные кластеры.",
+    },
+    (27, 1): {
+        "gap_id": "MEDOID_BY_MINIMUM_DISTANCE_SUM",
+        "description": "Ошибается при выборе медоида по минимальной сумме расстояний.",
+        "required_rule": "Медоид — объект кластера с минимальной суммой расстояний до остальных объектов этого кластера.",
+    },
+    (27, 2): {
+        "gap_id": "CLUSTER_LABEL_COUNT",
+        "description": "Ошибается при подсчёте объектов с заданной меткой кластера.",
+        "required_rule": "Нужно учитывать только объекты, чья метка точно совпадает с заданной.",
+    },
+    (27, 3): {
+        "gap_id": "MAX_CLUSTER_DISTANCE",
+        "description": "Ошибается при выборе максимального расстояния из вычисленных значений.",
+        "required_rule": "После вычисления требуемых расстояний нужно выбрать наибольшее из них, не меняя критерий сравнения.",
     },
 }
 
+# Temporary public alias retained for existing tests/callers while the generic
+# pilot gap registry becomes the single source of truth.
+TASK14_GAPS = {operation: gap for (task, operation), gap in PILOT_GAPS.items() if task == 14}
+
 
 def _gap_for_operation(task_number: int, operation_index: int) -> dict | None:
-    if task_number == 14:
-        return TASK14_GAPS.get(operation_index)
-    return None
+    return PILOT_GAPS.get((task_number, operation_index))
 
 
 # The first production-quality probe set.  Each probe checks exactly one
@@ -380,22 +422,22 @@ def open_diagnostic_case(
     """Create an unresolved case without inventing a failed step."""
     task = _task_definition(task_number, skill_map)
     diagnostic_path = task_diagnostic_path(task_number, skill_map)
-    hypotheses = []
-    if task_number == 14:
-        hypotheses = [
-            {
-                **gap,
-                "operation_index": operation_index,
-                "status": "suspected",
-                "supporting_evidence": [],
-                "alternative_explanations": [
-                    "случайная вычислительная ошибка",
-                    "невнимательность",
-                    "непонятое обозначение в условии",
-                ],
-            }
-            for operation_index, gap in TASK14_GAPS.items()
-        ]
+    hypotheses = [
+        {
+            **gap,
+            "operation_index": operation_index,
+            "skill_id": diagnostic_skill_for_operation({"task_number": task_number, "skill_ids": task.get("skills", [])}, operation_index),
+            "status": "suspected",
+            "supporting_evidence": [],
+            "alternative_explanations": [
+                "случайная ошибка",
+                "невнимательность",
+                "непонятая формулировка задания",
+            ],
+        }
+        for (gap_task, operation_index), gap in PILOT_GAPS.items()
+        if gap_task == task_number
+    ]
     return {
         "task_number": task_number,
         "task_title": task.get("title", f"Задание {task_number}"),
@@ -499,7 +541,10 @@ def record_control_probe(
         updated["confidence"] = 0.95
         updated["failed_step"] = tested_step
         updated["error_type"] = f"failed_step:{probe_id}"
-        updated["learning_action"] = f"Отработать шаг: {tested_step}."
+        updated["learning_action"] = (
+            f"Повторить правило: {gap['required_rule']}" if gap
+            else f"Отработать шаг: {tested_step}."
+        )
     if gap:
         for hypothesis in updated.get("gap_hypotheses", []):
             if hypothesis.get("gap_id") != gap["gap_id"]:
