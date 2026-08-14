@@ -19,6 +19,30 @@ DIAGNOSIS_PROBABLE = "probable"
 DIAGNOSIS_CONFIRMED = "confirmed"
 
 
+PILOT_OPERATION_SKILLS = {
+    (5, 0): "number_systems.decimal_binary_conversion",
+    (5, 1): "algorithms.branch_from_last_bit",
+    (5, 2): "algorithms.binary_suffix_append",
+    (5, 3): "algorithms.integer_boundary_inequality",
+    (14, 0): "number_systems.calculate_remainder",
+    (14, 1): "number_systems.digit_property_from_value",
+    (14, 2): "number_systems.preserve_digit_count",
+    (27, 0): "programming.cluster_count_from_separation",
+    (27, 1): "programming.medoid_minimum",
+    (27, 2): "programming.cluster_label_count",
+    (27, 3): "programming.max_cluster_distance",
+}
+
+
+def diagnostic_skill_for_operation(case: dict, operation_index: int) -> str:
+    """Return the atomic skill actually isolated by a diagnostic probe."""
+    task_number = int(case.get("task_number", 0))
+    return PILOT_OPERATION_SKILLS.get(
+        (task_number, operation_index),
+        case.get("active_skill_id") or ((case.get("skill_ids") or ["unknown_skill"])[0]),
+    )
+
+
 TASK14_GAPS = {
     0: {
         "gap_id": "BASE_REMAINDER_EXTRACTION",

@@ -51,6 +51,11 @@ def test_confirmed_pilot_diagnostics_build_learning_dna_plan_and_focus():
 
     plan = dna["trajectory"]["individual_plan"]
     assert [item["task_number"] for item in plan] == [5, 14, 27]
+    assert [item["skill_id"] for item in plan] == [
+        "number_systems.decimal_binary_conversion",
+        "number_systems.calculate_remainder",
+        "programming.cluster_count_from_separation",
+    ]
     assert all(item["evidence_status"] == "confirmed" for item in plan)
     assert all(item["confidence"] == 0.95 for item in plan)
     assert all(item["failed_step"] for item in plan)

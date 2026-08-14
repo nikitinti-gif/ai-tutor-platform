@@ -75,6 +75,7 @@ def test_valid_evidence_contains_complete_question_answer_verdict_chain():
     assert evidence["task_number"] == 14
     assert evidence["skill_id"]
     assert evidence["hypothesis_id"] == "BASE_REMAINDER_EXTRACTION"
+    assert evidence["skill_id"] == "number_systems.calculate_remainder"
     assert evidence["timestamp"].endswith("+00:00")
 
 

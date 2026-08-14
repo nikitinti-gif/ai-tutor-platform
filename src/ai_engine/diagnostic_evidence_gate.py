@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from src.ai_engine.diagnostics import (
     CONTROL_PROBES,
     _gap_for_operation,
+    diagnostic_skill_for_operation,
     _normalize_probe_answer,
     record_control_probe,
 )
@@ -83,7 +84,7 @@ def answer_bound_control_probe(
             "student_id": str(student_id) if student_id is not None else "unbound",
             "attempt_id": attempt_id or "unbound",
             "task_number": int(case.get("task_number", 0)),
-            "skill_id": case.get("active_skill_id") or "unknown_skill",
+            "skill_id": diagnostic_skill_for_operation(case, operation_index),
             "hypothesis_id": hypothesis_id,
             "base_probe_id": base_probe_id,
             "question": pending.get("prompt") or probe["prompt"],
