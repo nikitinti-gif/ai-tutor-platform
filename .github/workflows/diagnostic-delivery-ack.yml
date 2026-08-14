@@ -1,0 +1,118 @@
+name: One-shot diagnostic delivery acknowledgement
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add one-shot diagnostic delivery acknowledgement'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require Telegram delivery acknowledgement
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          gate = Path('src/ai_engine/diagnostic_evidence_gate.py')
+          text = gate.read_text(encoding='utf-8')
+          needle = '''    pending_probe_id = str(pending.get("probe_id", "")).strip()\n    if not pending_probe_id:\n        raise ValueError("Нет активной показанной диагностической пробы.")\n'''
+          replacement = '''    pending_probe_id = str(pending.get("probe_id", "")).strip()\n    if not pending_probe_id:\n        raise ValueError("Нет активной показанной диагностической пробы.")\n    if pending.get("displayed") is not True:\n        raise ValueError("Диагностическая проба подготовлена, но её показ ученику не подтверждён.")\n'''
+          if needle not in text:
+              raise SystemExit('evidence gate insertion point not found')
+          text = text.replace(needle, replacement, 1)
+          gate.write_text(text, encoding='utf-8')
+
+          service = Path('src/services/ege_exam_service.py')
+          text = service.read_text(encoding='utf-8')
+          anchor = '''def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:\n'''
+          helper = '''def mark_current_diagnostic_probe_displayed(attempt: ExamAttempt) -> dict:\n    \"\"\"Acknowledge only a successfully delivered probe as visible to the student.\"\"\"\n    probe = next_attempt_diagnostic_probe(attempt)\n    if probe is None:\n        raise ValueError(\"Нет диагностической пробы для подтверждения показа.\")\n    task_number = probe[\"task_number\"]\n    case = attempt.diagnostics[task_number]\n    pending = case.get(\"pending_probe\") or {}\n    if str(pending.get(\"probe_id\", \"\")) != str(probe[\"probe_id\"]):\n        raise ValueError(\"Нельзя подтвердить показ непривязанной диагностической пробы.\")\n    pending = dict(pending)\n    pending[\"displayed\"] = True\n    case = dict(case)\n    case[\"pending_probe\"] = pending\n    attempt.diagnostics[task_number] = case\n    return probe\n\n\n'''
+          if 'def mark_current_diagnostic_probe_displayed' not in text:
+              text = text.replace(anchor, helper + anchor, 1)
+          service.write_text(text, encoding='utf-8')
+
+          student = Path('src/telegram_bot/handlers/student.py')
+          text = student.read_text(encoding='utf-8')
+          # Initial diagnostics: send first, then acknowledge and persist.
+          old = '''    save_ege_session(\n        message.from_user.id,\n        attempt.to_dict(),\n        status="diagnostics_in_progress",\n    )\n    await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)\n    await state.update_data(ege_attempt=attempt.to_dict())\n    mode_text = (\n'''
+          new = '''    mode_text = (\n'''
+          if old not in text:
+              raise SystemExit('initial pre-send persistence block not found')
+          text = text.replace(old, new, 1)
+          old = '''    await message.answer(\n        "Теперь разберём только ошибочные задания. " + mode_text\n    )\n    await message.answer(render_diagnostic_probe(attempt))\n'''
+          new = '''    await message.answer(\n        "Теперь разберём только ошибочные задания. " + mode_text\n    )\n    probe_text = render_diagnostic_probe(attempt)\n    await message.answer(probe_text)\n    from src.services.ege_exam_service import mark_current_diagnostic_probe_displayed\n    mark_current_diagnostic_probe_displayed(attempt)\n    save_ege_session(\n        message.from_user.id,\n        attempt.to_dict(),\n        status="diagnostics_in_progress",\n    )\n    await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)\n    await state.update_data(ege_attempt=attempt.to_dict())\n'''
+          if old not in text:
+              raise SystemExit('initial send block not found')
+          text = text.replace(old, new, 1)
+
+          # Next probe after an answer: send then acknowledge then persist next state.
+          old = '''    await _prepare_ai_probe_for_admin(message, attempt)\n    bind_current_diagnostic_probe(attempt)\n    await state.update_data(ege_attempt=attempt.to_dict())\n    save_ege_session(\n        message.from_user.id,\n        attempt.to_dict(),\n        status="diagnostics_in_progress",\n    )\n    await message.answer(render_diagnostic_probe(attempt))\n'''
+          new = '''    await _prepare_ai_probe_for_admin(message, attempt)\n    bind_current_diagnostic_probe(attempt)\n    probe_text = render_diagnostic_probe(attempt)\n    await message.answer(probe_text)\n    from src.services.ege_exam_service import mark_current_diagnostic_probe_displayed\n    mark_current_diagnostic_probe_displayed(attempt)\n    await state.update_data(ege_attempt=attempt.to_dict())\n    save_ege_session(\n        message.from_user.id,\n        attempt.to_dict(),\n        status="diagnostics_in_progress",\n    )\n'''
+          if old not in text:
+              raise SystemExit('next probe send block not found')
+          text = text.replace(old, new, 1)
+
+          # Restart: do not persist a prepared probe until Telegram confirms delivery.
+          old = '''        bind_current_diagnostic_probe(attempt)\n        await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)\n        await state.update_data(ege_attempt=attempt.to_dict())\n        save_ege_session(\n            message.from_user.id,\n            attempt.to_dict(),\n            status="diagnostics_in_progress",\n        )\n        await message.answer("▶️ Продолжаем диагностику ошибок.")\n        await message.answer(render_diagnostic_probe(attempt))\n'''
+          new = '''        bind_current_diagnostic_probe(attempt)\n        await message.answer("▶️ Продолжаем диагностику ошибок.")\n        probe_text = render_diagnostic_probe(attempt)\n        await message.answer(probe_text)\n        from src.services.ege_exam_service import mark_current_diagnostic_probe_displayed\n        mark_current_diagnostic_probe_displayed(attempt)\n        await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)\n        await state.update_data(ege_attempt=attempt.to_dict())\n        save_ege_session(\n            message.from_user.id,\n            attempt.to_dict(),\n            status="diagnostics_in_progress",\n        )\n'''
+          if old not in text:
+              raise SystemExit('restart block not found')
+          text = text.replace(old, new, 1)
+          student.write_text(text, encoding='utf-8')
+
+          # Service-level regression: prepared is not equal to displayed.
+          pilot = Path('tests/test_pilot_diagnostic_flow.py')
+          text = pilot.read_text(encoding='utf-8')
+          text = text.replace('    bind_current_diagnostic_probe,\n', '    bind_current_diagnostic_probe,\n    mark_current_diagnostic_probe_displayed,\n', 1)
+          text = text.replace('    bind_current_diagnostic_probe(attempt)\n    result = submit_diagnostic_answer(attempt, "10011")\n', '    bind_current_diagnostic_probe(attempt)\n    mark_current_diagnostic_probe_displayed(attempt)\n    result = submit_diagnostic_answer(attempt, "10011")\n', 1)
+          text = text.replace('        bind_current_diagnostic_probe(attempt)\n        first_result = submit_diagnostic_answer(attempt, "definitely-wrong")\n', '        bind_current_diagnostic_probe(attempt)\n        mark_current_diagnostic_probe_displayed(attempt)\n        first_result = submit_diagnostic_answer(attempt, "definitely-wrong")\n', 1)
+          text = text.replace('        bind_current_diagnostic_probe(attempt)\n        second_result = submit_diagnostic_answer(attempt, "still-wrong")\n', '        bind_current_diagnostic_probe(attempt)\n        mark_current_diagnostic_probe_displayed(attempt)\n        second_result = submit_diagnostic_answer(attempt, "still-wrong")\n', 1)
+          text += '''\n\ndef test_prepared_probe_cannot_be_answered_until_display_is_acknowledged():\n    import pytest\n    attempt = create_pilot_diagnostic_attempt()\n    bind_current_diagnostic_probe(attempt)\n    with pytest.raises(ValueError, match="показ|подтвержд"):\n        submit_diagnostic_answer(attempt, "10011")\n    mark_current_diagnostic_probe_displayed(attempt)\n    result = submit_diagnostic_answer(attempt, "10011")\n    assert result["is_correct"] is True\n'''
+          pilot.write_text(text, encoding='utf-8')
+
+          # Existing test helpers that intentionally emulate a shown probe must mark it displayed.
+          diag = Path('tests/test_ege_diagnostics.py')
+          text = diag.read_text(encoding='utf-8')
+          text = text.replace('    bind_current_diagnostic_probe,\n', '    bind_current_diagnostic_probe,\n    mark_current_diagnostic_probe_displayed,\n', 1)
+          text = text.replace('    bind_current_diagnostic_probe(attempt)\n    passed = submit_diagnostic_answer(', '    bind_current_diagnostic_probe(attempt)\n    mark_current_diagnostic_probe_displayed(attempt)\n    passed = submit_diagnostic_answer(', 1)
+          text = text.replace('    bind_current_diagnostic_probe(attempt)\n    failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n', '    bind_current_diagnostic_probe(attempt)\n    mark_current_diagnostic_probe_displayed(attempt)\n    failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n', 1)
+          text = text.replace('    bind_current_diagnostic_probe(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2\n', '    bind_current_diagnostic_probe(attempt)\n    mark_current_diagnostic_probe_displayed(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2\n', 1)
+          text = text.replace('    bind_current_diagnostic_probe(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    bind_current_diagnostic_probe(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n', '    bind_current_diagnostic_probe(attempt)\n    mark_current_diagnostic_probe_displayed(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n    bind_current_diagnostic_probe(attempt)\n    mark_current_diagnostic_probe_displayed(attempt)\n    submit_diagnostic_answer(attempt, "заведомо неверный ответ")\n', 1)
+          # Low-level helper uses apply_live_probe directly, so mark its pending dict as displayed.
+          text = text.replace('    case = apply_live_probe(case, probe)\n    return answer_bound_control_probe(case, probe_id, answer)\n', '    case = apply_live_probe(case, probe)\n    case["pending_probe"]["displayed"] = True\n    return answer_bound_control_probe(case, probe_id, answer)\n', 1)
+          diag.write_text(text, encoding='utf-8')
+
+          learning = Path('tests/test_pilot_learning_dna_flow.py')
+          text = learning.read_text(encoding='utf-8')
+          text = text.replace('    attempt.diagnostics[task_number] = apply_live_probe(attempt.diagnostics[task_number], probe)\n', '    attempt.diagnostics[task_number] = apply_live_probe(attempt.diagnostics[task_number], probe)\n    attempt.diagnostics[task_number]["pending_probe"]["displayed"] = True\n')
+          text = text.replace('    attempt.diagnostics[probe["task_number"]] = apply_live_probe(\n        attempt.diagnostics[probe["task_number"]], probe\n    )\n', '    attempt.diagnostics[probe["task_number"]] = apply_live_probe(\n        attempt.diagnostics[probe["task_number"]], probe\n    )\n    attempt.diagnostics[probe["task_number"]]["pending_probe"]["displayed"] = True\n', 1)
+          learning.write_text(text, encoding='utf-8')
+
+          integrity = Path('tests/test_diagnostic_evidence_integrity.py')
+          text = integrity.read_text(encoding='utf-8')
+          text = text.replace('    case = apply_live_probe(case, pending)\n    updated = answer_bound_control_probe(case, probe["probe_id"], "6")\n', '    case = apply_live_probe(case, pending)\n    case["pending_probe"]["displayed"] = True\n    updated = answer_bound_control_probe(case, probe["probe_id"], "6")\n', 1)
+          text += '''\n\ndef test_prepared_but_not_delivered_probe_cannot_create_evidence():\n    case = _case(14)\n    probe = next_control_probe(case)\n    case = apply_live_probe(case, probe)\n    with pytest.raises(ValueError, match="показ|подтвержд"):\n        answer_bound_control_probe(case, probe["probe_id"], "2")\n    assert len(case["evidence"]) == 1\n'''
+          integrity.write_text(text, encoding='utf-8')
+
+          Path('.github/workflows/diagnostic-delivery-ack.yml').unlink()
+          PY
+      - name: Run diagnostic regression suite
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py
+      - name: Commit delivery acknowledgement
+        run: |
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Require successful delivery before diagnostic evidence'
+          git push origin HEAD:release/0.1-diagnostics
