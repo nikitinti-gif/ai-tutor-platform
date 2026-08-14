@@ -1,0 +1,52 @@
+name: Guard task14 live probe semantics
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Guard task14 live probe semantics'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch semantic quality gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/ai_engine/live_diagnostic_probes.py')
+          text = p.read_text()
+          text = text.replace('if task == 14 and op == 2:\n        (count,) = _ints(data, 1, 2, 8); return {"count": count}, count + 1', 'if task == 14 and op == 2:\n        (count,) = _ints(data, 1, 2, 8); return {"remainder_count": count}, count + 1')
+          needle = '    if (task, operation) == (27, 0):\n'
+          guard = '    if (task, operation) == (14, 2):\n        if "остат" not in text or "частн" not in text: raise ValueError("Проба №14.2 должна явно назвать остатки и последнее ненулевое частное.")\n        if any(marker in text for marker in ("общее количество", "всех этих значимых", "всего элементов")): raise ValueError("Проба №14.2 не должна выдавать число остатков за общее число цифр.")\n'
+          if guard not in text:
+              text = text.replace(needle, guard + needle, 1)
+          p.write_text(text)
+
+          t = Path('tests/test_probe_quality_gate.py')
+          text = t.read_text()
+          addition = '\n\ndef test_task14_most_significant_digit_rejects_semantically_wrong_total_count():\n    from src.ai_engine.diagnostics import CONTROL_PROBES, open_diagnostic_case\n    from src.ai_engine.live_diagnostic_probes import build_live_probe\n    from src.skills.skill_graph import load_skill_map\n    case = open_diagnostic_case(14, "wrong", "expected", load_skill_map())\n    raw = json.dumps({"prompt_template": "Если общее количество всех этих значимых элементов равно {remainder_count}, сколько всего разрядов будет в записи?"}, ensure_ascii=False)\n    with pytest.raises(ValueError):\n        build_live_probe(case, CONTROL_PROBES[14][2], raw, values=[4])\n\n\ndef test_task14_most_significant_digit_accepts_explicit_remainder_count():\n    from src.ai_engine.diagnostics import CONTROL_PROBES, open_diagnostic_case\n    from src.ai_engine.live_diagnostic_probes import build_live_probe\n    from src.skills.skill_graph import load_skill_map\n    case = open_diagnostic_case(14, "wrong", "expected", load_skill_map())\n    raw = json.dumps({"prompt_template": "После делений получено {remainder_count} остатков и осталось последнее ненулевое частное. Сколько цифр будет в итоговой записи?"}, ensure_ascii=False)\n    probe = build_live_probe(case, CONTROL_PROBES[14][2], raw, values=[4])\n    assert probe["expected_answers"] == ("5",)\n'
+          if 'test_task14_most_significant_digit_rejects_semantically_wrong_total_count' not in text:
+              text += addition
+          t.write_text(text)
+          Path('.github/workflows/task14-live-probe-semantics.yml').unlink()
+          PY
+      - name: Test
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          pytest -q tests/test_probe_quality_gate.py tests/test_ege_diagnostics.py tests/test_pilot_full_telegram_loop.py tests/test_task5_remediation.py
+      - name: Commit
+        run: |
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Reject semantically ambiguous task14 live probes'
+          git push origin HEAD:release/0.1-diagnostics
