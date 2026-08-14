@@ -1,0 +1,31 @@
+name: Run independent fallback probe migration
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  migrate:
+    if: ${{ github.event.head_commit.message == 'Run independent fallback probe migration' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/_tmp_independent_fallbacks.py
+      - run: pip install -r requirements.txt pytest
+      - run: pytest -q tests/test_ege_diagnostics.py tests/test_diagnostic_evidence_integrity.py tests/test_pilot_full_student_loop.py tests/test_pilot_full_telegram_loop.py tests/test_pilot_learning_dna_flow.py
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+      - run: |
+          rm scripts/_tmp_independent_fallbacks.py
+          rm .github/workflows/run-independent-fallbacks.yml
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Require distinct fallback evidence probes'
+          git push origin HEAD:release/0.1-diagnostics
