@@ -1,0 +1,57 @@
+from src.services.ege_exam_service import (
+    create_pilot_diagnostic_attempt,
+    next_attempt_diagnostic_probe,
+    submit_diagnostic_answer,
+)
+
+
+def test_pilot_correct_probe_rejects_first_task5_hypothesis_and_moves_on():
+    attempt = create_pilot_diagnostic_attempt()
+
+    first = next_attempt_diagnostic_probe(attempt)
+    assert first is not None
+    assert first["task_number"] == 5
+    assert first["operation_index"] == 0
+
+    result = submit_diagnostic_answer(attempt, "10011")
+    assert result["task_number"] == 5
+    assert result["is_correct"] is True
+    assert result["status"] == "needs_evidence"
+
+    next_probe = next_attempt_diagnostic_probe(attempt)
+    assert next_probe is not None
+    assert next_probe["task_number"] == 5
+    assert next_probe["operation_index"] == 1
+
+
+def test_pilot_can_confirm_one_real_gap_per_task_and_finish_5_14_27_flow():
+    attempt = create_pilot_diagnostic_attempt()
+
+    for expected_task in (5, 14, 27):
+        discrimination = next_attempt_diagnostic_probe(attempt)
+        assert discrimination is not None
+        assert discrimination["task_number"] == expected_task
+        assert discrimination["probe_role"] == "discrimination"
+
+        first_result = submit_diagnostic_answer(attempt, "definitely-wrong")
+        assert first_result["task_number"] == expected_task
+        assert first_result["is_correct"] is False
+        assert first_result["status"] == "probable"
+
+        transfer = next_attempt_diagnostic_probe(attempt)
+        assert transfer is not None
+        assert transfer["task_number"] == expected_task
+        assert transfer["probe_role"] == "transfer"
+        assert transfer["base_probe_id"] == discrimination["base_probe_id"]
+
+        second_result = submit_diagnostic_answer(attempt, "still-wrong")
+        assert second_result["task_number"] == expected_task
+        assert second_result["is_correct"] is False
+        assert second_result["status"] == "confirmed"
+        assert attempt.diagnostics[expected_task]["confidence"] == 0.95
+
+    assert next_attempt_diagnostic_probe(attempt) is None
+    assert all(
+        attempt.diagnostics[task_number]["status"] == "confirmed"
+        for task_number in (5, 14, 27)
+    )
