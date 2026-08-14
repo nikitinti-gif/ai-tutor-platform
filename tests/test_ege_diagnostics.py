@@ -14,6 +14,7 @@ from src.services.ege_exam_service import (
     submit_diagnostic_answer,
 )
 from src.learning_dna.engine import apply_confirmed_ege_diagnostics
+from src.ai_engine.diagnostic_evidence_gate import answer_bound_control_probe
 from src.learning_dna.engine import (
     confirm_ege_remediation_mastery,
     set_ege_remediation_status,
@@ -21,6 +22,7 @@ from src.learning_dna.engine import (
 from src.ai_engine.diagnostics import (
     CONTROL_PROBES,
     apply_ai_probe_wording,
+    apply_live_probe,
     DIAGNOSIS_CONFIRMED,
     DIAGNOSIS_NEEDS_EVIDENCE,
     DIAGNOSIS_PROBABLE,
@@ -51,6 +53,15 @@ SKILL_MAP = {
         }
     ]
 }
+
+
+def _answer_displayed_probe(case: dict, probe_id: str, answer: str) -> dict:
+    """Test helper: explicitly model that the exact probe was displayed."""
+    probe = next_control_probe(case)
+    assert probe is not None
+    assert probe["probe_id"] == probe_id
+    case = apply_live_probe(case, probe)
+    return answer_bound_control_probe(case, probe_id, answer)
 
 
 def test_wrong_final_answer_does_not_invent_failed_step():
@@ -664,10 +675,10 @@ def test_confirmed_ege_evidence_is_applied_to_learning_dna_exactly_once():
     attempt = ExamAttempt(attempt_id="attempt-fixed", current_task=28)
     case = open_diagnostic_case(14, "wrong", "expected", skill_map)
     probe = next_control_probe(case)
-    case = answer_control_probe(case, probe["probe_id"], "заведомо неверно")
+    case = _answer_displayed_probe(case, probe["probe_id"], "заведомо неверно")
     second_probe = next_control_probe(case)
     attempt.diagnostics = {
-        14: answer_control_probe(
+        14: _answer_displayed_probe(
             case, second_probe["probe_id"], "заведомо неверно"
         )
     }
@@ -710,8 +721,8 @@ def test_remediation_status_updates_existing_task14_plan():
     case = open_diagnostic_case(14, "wrong", "expected", json.loads(
         (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
     ))
-    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
-    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    case = _answer_displayed_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    case = _answer_displayed_probe(case, next_control_probe(case)["probe_id"], "wrong")
     attempt.diagnostics[14] = case
     dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
 
@@ -726,8 +737,8 @@ def test_verified_task14_remediation_marks_skill_mastered_once():
     case = open_diagnostic_case(14, "wrong", "expected", json.loads(
         (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
     ))
-    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
-    case = answer_control_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    case = _answer_displayed_probe(case, next_control_probe(case)["probe_id"], "wrong")
+    case = _answer_displayed_probe(case, next_control_probe(case)["probe_id"], "wrong")
     attempt.diagnostics[14] = case
     dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)
 

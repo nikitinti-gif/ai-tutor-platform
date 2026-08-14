@@ -1,4 +1,4 @@
-from src.ai_engine.diagnostics import CONTROL_PROBES
+from src.ai_engine.diagnostics import CONTROL_PROBES, apply_live_probe
 from src.learning_dna.engine import apply_confirmed_ege_diagnostics
 from src.services.ege_exam_service import (
     create_pilot_diagnostic_attempt,
@@ -12,6 +12,7 @@ def _confirm_first_gap_for_current_task(attempt):
     assert probe is not None
     task_number = probe["task_number"]
 
+    attempt.diagnostics[task_number] = apply_live_probe(attempt.diagnostics[task_number], probe)
     first = submit_diagnostic_answer(attempt, "definitely-wrong")
     assert first["task_number"] == task_number
     assert first["status"] == "probable"
@@ -21,6 +22,7 @@ def _confirm_first_gap_for_current_task(attempt):
     assert transfer["task_number"] == task_number
     assert transfer["probe_role"] == "transfer"
 
+    attempt.diagnostics[task_number] = apply_live_probe(attempt.diagnostics[task_number], transfer)
     second = submit_diagnostic_answer(attempt, "still-wrong")
     assert second["task_number"] == task_number
     assert second["status"] == "confirmed"
@@ -87,6 +89,9 @@ def test_unconfirmed_probe_does_not_enter_learning_dna():
         if item["id"] == probe["base_probe_id"]
     )
     correct_answer = canonical_probe["expected_answers"][0]
+    attempt.diagnostics[probe["task_number"]] = apply_live_probe(
+        attempt.diagnostics[probe["task_number"]], probe
+    )
     result = submit_diagnostic_answer(attempt, correct_answer)
     assert result["is_correct"] is True
     assert result["status"] == "needs_evidence"

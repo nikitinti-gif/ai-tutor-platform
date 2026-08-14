@@ -23,6 +23,7 @@ from src.ai_engine.diagnostics import (
     apply_live_probe,
     diagnostic_probe_context,
 )
+from src.ai_engine.diagnostic_evidence_gate import answer_bound_control_probe
 from src.ai_engine.verification_engine import VerificationResult, verify_answer
 from src.skills.skill_graph import load_skill_map
 
@@ -609,11 +610,22 @@ def submit_diagnostic_answer(attempt: ExamAttempt, answer: str) -> dict:
         raise ValueError("Диагностические мини-пробы завершены.")
 
     task_number = probe["task_number"]
-    case = answer_control_probe(
-        attempt.diagnostics[task_number],
-        probe["probe_id"],
-        answer,
-    )
+    current_case = attempt.diagnostics[task_number]
+    if current_case.get("pending_probe"):
+        case = answer_bound_control_probe(
+            current_case,
+            probe["probe_id"],
+            answer,
+        )
+    else:
+        # Transitional compatibility for internal callers that have not yet
+        # modelled the display step. This evidence is intentionally legacy
+        # and cannot pass the Learning DNA evidence gate.
+        case = answer_control_probe(
+            current_case,
+            probe["probe_id"],
+            answer,
+        )
     attempt.diagnostics[task_number] = case
     evidence = case["evidence"][-1]
     return {
