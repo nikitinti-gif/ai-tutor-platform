@@ -81,3 +81,25 @@ def test_pilot_operation_skill_ids_are_atomic_and_distinct():
     assert all(get_skill(skill_id) is not None for skill_id in PILOT_OPERATION_SKILLS.values())
     assert PILOT_OPERATION_SKILLS[(14, 0)] == "number_systems.calculate_remainder"
     assert PILOT_OPERATION_SKILLS[(27, 0)] == "programming.cluster_count_from_separation"
+
+
+def test_task14_most_significant_digit_rejects_semantically_wrong_total_count():
+    from src.ai_engine.diagnostics import CONTROL_PROBES, open_diagnostic_case
+    from src.ai_engine.live_diagnostic_probes import build_live_probe
+    from src.skills.skill_graph import load_skill_map
+
+    case = open_diagnostic_case(14, "wrong", "expected", load_skill_map())
+    raw = json.dumps({"prompt_template": "Если общее количество всех этих значимых элементов равно {remainder_count}, сколько всего разрядов будет в записи?"}, ensure_ascii=False)
+    with pytest.raises(ValueError):
+        build_live_probe(case, CONTROL_PROBES[14][2], raw, values=[4])
+
+
+def test_task14_most_significant_digit_accepts_explicit_remainder_count():
+    from src.ai_engine.diagnostics import CONTROL_PROBES, open_diagnostic_case
+    from src.ai_engine.live_diagnostic_probes import build_live_probe
+    from src.skills.skill_graph import load_skill_map
+
+    case = open_diagnostic_case(14, "wrong", "expected", load_skill_map())
+    raw = json.dumps({"prompt_template": "После делений получено {remainder_count} остатков и осталось последнее ненулевое частное. Сколько цифр будет в итоговой записи?"}, ensure_ascii=False)
+    probe = build_live_probe(case, CONTROL_PROBES[14][2], raw, values=[4])
+    assert probe["expected_answers"] == ("5",)

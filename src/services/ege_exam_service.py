@@ -871,6 +871,11 @@ def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
                 "id": probe["base_probe_id"],
                 "operation_index": probe["operation_index"],
             }, raw, previous_prompts=context["previous_prompts"] + rejected_prompts, values=values, variant=str(probe_data["variant"]))
+            # Keep the Python-selected evidence role. The strict evidence gate
+            # deliberately defaults a missing role to discrimination; losing
+            # this field made every AI-worded retry look like a first probe.
+            generated["probe_role"] = probe["probe_role"]
+            generated["tested_step"] = probe["tested_step"]
             break
         except Exception as error:
             errors.append(f"attempt {attempt_number}: {type(error).__name__}: {error}")
