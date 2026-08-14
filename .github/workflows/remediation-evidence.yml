@@ -1,0 +1,94 @@
+name: One-shot remediation evidence contract
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add one-shot remediation evidence migration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require audited remediation evidence for mastery
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path('src/services/ege_exam_service.py')
+          text = service.read_text(encoding='utf-8')
+          old = '''    remediation.setdefault("stage_history", []).append({\n        "stage": stage,\n        "student_answer": answer,\n        "is_correct": is_correct,\n        "learning_round": remediation.get("learning_round", 1),\n    })\n'''
+          new = '''    remediation.setdefault("stage_history", []).append({\n        "stage": stage,\n        "question": lesson[f"{stage}_prompt"],\n        "canonical_answer": str(lesson[f"{stage}_answers"][0]),\n        "student_answer": answer,\n        "validator_result": is_correct,\n        "is_correct": is_correct,\n        "learning_round": remediation.get("learning_round", 1),\n        "timestamp": time.time(),\n    })\n'''
+          if old not in text:
+              raise SystemExit('stage history block not found')
+          text = text.replace(old, new, 1)
+          service.write_text(text, encoding='utf-8')
+
+          engine = Path('src/learning_dna/engine.py')
+          text = engine.read_text(encoding='utf-8')
+          old = 'def confirm_ege_remediation_mastery(dna: dict, task_number: int, attempt_id: str) -> dict:\n'
+          new = 'def confirm_ege_remediation_mastery(dna: dict, task_number: int, attempt_id: str, remediation: dict | None = None) -> dict:\n'
+          if old not in text:
+              raise SystemExit('mastery signature not found')
+          text = text.replace(old, new, 1)
+          marker = '''    evidence_id = f"ege:{attempt_id}:task:{task_number}:remediation:verified"\n    processed = dna.setdefault("processed_evidence_ids", [])\n    dna = set_ege_remediation_status(dna, task_number, "mastered")\n'''
+          replacement = '''    evidence_id = f"ege:{attempt_id}:task:{task_number}:remediation:verified"\n    history = list((remediation or {}).get("stage_history", []))\n    round_id = (remediation or {}).get("learning_round")\n    successful = [\n        item for item in history\n        if item.get("learning_round") == round_id\n        and item.get("validator_result") is True\n        and item.get("question")\n        and item.get("canonical_answer") is not None\n        and item.get("student_answer") is not None\n        and item.get("timestamp") is not None\n    ]\n    stages = [item.get("stage") for item in successful[-3:]]\n    if stages != ["control", "retest", "verification"]:\n        raise ValueError("Нельзя подтвердить навык без полного RULE → CONTROL → TRANSFER → VERIFY evidence.")\n    processed = dna.setdefault("processed_evidence_ids", [])\n    dna = set_ege_remediation_status(dna, task_number, "mastered")\n'''
+          if marker not in text:
+              raise SystemExit('mastery body marker not found')
+          text = text.replace(marker, replacement, 1)
+          text = text.replace(
+              '                      "difficulty_max": "exam_level", "last_evidence_id": evidence_id})\n',
+              '                      "difficulty_max": "exam_level", "last_evidence_id": evidence_id,\n                      "remediation_evidence": successful[-3:]})\n',
+              1,
+          )
+          engine.write_text(text, encoding='utf-8')
+
+          handler = Path('src/telegram_bot/handlers/student.py')
+          text = handler.read_text(encoding='utf-8')
+          old = '''            dna = confirm_ege_remediation_mastery(\n                dna, 14, attempt.attempt_id\n            )\n'''
+          new = '''            dna = confirm_ege_remediation_mastery(\n                dna, 14, attempt.attempt_id, attempt.remediation\n            )\n'''
+          if old not in text:
+              raise SystemExit('handler mastery call not found')
+          text = text.replace(old, new, 1)
+          handler.write_text(text, encoding='utf-8')
+
+          tests = Path('tests/test_ege_diagnostics.py')
+          text = tests.read_text(encoding='utf-8')
+          # Existing mastery test now builds the same three validated stages as production.
+          old = '''    updated = confirm_ege_remediation_mastery(dna, 14, attempt.attempt_id)\n'''
+          prep = '''    ege_exam_service.start_task14_remediation(attempt)\n    ege_exam_service.submit_task14_remediation_answer(attempt, "2")\n    ege_exam_service.submit_task14_remediation_answer(attempt, "4")\n    ege_exam_service.submit_task14_remediation_answer(attempt, "8")\n    updated = confirm_ege_remediation_mastery(dna, 14, attempt.attempt_id, attempt.remediation)\n'''
+          if old not in text:
+              raise SystemExit('existing mastery test call not found')
+          text = text.replace(old, prep, 1)
+          text = text.replace(
+              '    updated = confirm_ege_remediation_mastery(updated, 14, attempt.attempt_id)\n',
+              '    updated = confirm_ege_remediation_mastery(updated, 14, attempt.attempt_id, attempt.remediation)\n',
+              1,
+          )
+          anchor = '\n\ndef test_verified_task14_remediation_marks_skill_mastered_once():'
+          addition = '''\n\ndef test_remediation_mastery_rejects_missing_transfer_evidence():\n    attempt = ExamAttempt(attempt_id="attempt-incomplete", current_task=28)\n    case = open_diagnostic_case(14, "wrong", "expected", json.loads(\n        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")\n    ))\n    case = _answer_displayed_probe(case, next_control_probe(case)["probe_id"], "wrong")\n    case = _answer_displayed_probe(case, next_control_probe(case)["probe_id"], "wrong")\n    attempt.diagnostics[14] = case\n    dna, _ = apply_confirmed_ege_diagnostics(None, 123, attempt)\n    ege_exam_service.start_task14_remediation(attempt)\n    ege_exam_service.submit_task14_remediation_answer(attempt, "2")\n\n    try:\n        confirm_ege_remediation_mastery(dna, 14, attempt.attempt_id, attempt.remediation)\n    except ValueError as exc:\n        assert "полного" in str(exc)\n    else:\n        raise AssertionError("Incomplete remediation evidence must not master the skill")\n'''
+          if addition.strip() not in text:
+              text = text.replace(anchor, addition + anchor, 1)
+          tests.write_text(text, encoding='utf-8')
+
+          Path('.github/workflows/remediation-evidence.yml').unlink()
+          PY
+      - name: Run diagnostic regression suite
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          pytest -q tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py
+      - name: Commit audited remediation evidence
+        run: |
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Require audited remediation evidence for mastery'
+          git push origin HEAD:release/0.1-diagnostics
