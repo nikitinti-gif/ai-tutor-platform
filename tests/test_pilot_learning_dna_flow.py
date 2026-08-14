@@ -1,3 +1,4 @@
+from src.ai_engine.diagnostics import CONTROL_PROBES
 from src.learning_dna.engine import apply_confirmed_ege_diagnostics
 from src.services.ege_exam_service import (
     create_pilot_diagnostic_attempt,
@@ -80,7 +81,12 @@ def test_unconfirmed_probe_does_not_enter_learning_dna():
 
     probe = next_attempt_diagnostic_probe(attempt)
     assert probe is not None
-    correct_answer = probe["expected_answers"][0]
+    canonical_probe = next(
+        item
+        for item in CONTROL_PROBES[probe["task_number"]]
+        if item["id"] == probe["base_probe_id"]
+    )
+    correct_answer = canonical_probe["expected_answers"][0]
     result = submit_diagnostic_answer(attempt, correct_answer)
     assert result["is_correct"] is True
     assert result["status"] == "needs_evidence"
