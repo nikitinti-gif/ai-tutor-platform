@@ -83,23 +83,44 @@ def test_pilot_operation_skill_ids_are_atomic_and_distinct():
     assert PILOT_OPERATION_SKILLS[(27, 0)] == "programming.cluster_count_from_separation"
 
 
-def test_task14_most_significant_digit_rejects_semantically_wrong_total_count():
-    from src.ai_engine.diagnostics import CONTROL_PROBES, open_diagnostic_case
-    from src.ai_engine.live_diagnostic_probes import build_live_probe
-    from src.skills.skill_graph import load_skill_map
-
-    case = open_diagnostic_case(14, "wrong", "expected", load_skill_map())
-    raw = json.dumps({"prompt_template": "Если общее количество всех этих значимых элементов равно {remainder_count}, сколько всего разрядов будет в записи?"}, ensure_ascii=False)
+def test_task14_rejects_meta_count_question_from_live_pilot():
+    case = _case(14)
+    base = {"id": "task14_msd_v2", "operation_index": 2}
+    raw = json.dumps({
+        "prompt_template": (
+            "После выполнения последовательного деления у нас остались {remainders} "
+            "и последнее ненулевое частное {last_quotient}. Если рассматривать их как "
+            "значимые элементы, сколько всего разрядов будет в итоговой записи?"
+        )
+    }, ensure_ascii=False)
     with pytest.raises(ValueError):
-        build_live_probe(case, CONTROL_PROBES[14][2], raw, values=[4])
+        build_live_probe(case, base, raw, values=[4])
 
 
-def test_task14_most_significant_digit_accepts_explicit_remainder_count():
-    from src.ai_engine.diagnostics import CONTROL_PROBES, open_diagnostic_case
-    from src.ai_engine.live_diagnostic_probes import build_live_probe
-    from src.skills.skill_graph import load_skill_map
+def test_task14_msd_probe_reconstructs_real_number_record():
+    case = _case(14)
+    base = {"id": "task14_msd_v2", "operation_index": 2}
+    raw = json.dumps({
+        "prompt_template": (
+            "При переводе числа остатки получались в таком порядке: {remainders}. "
+            "Последнее ненулевое частное равно {last_quotient}. "
+            "Запиши итоговую запись числа?"
+        )
+    }, ensure_ascii=False)
+    probe = build_live_probe(case, base, raw, values=[4])
+    # seed=4 -> remainders 4,1,3; last quotient 1 -> final record 1314
+    assert probe["expected_answers"] == ("1314",)
 
-    case = open_diagnostic_case(14, "wrong", "expected", load_skill_map())
-    raw = json.dumps({"prompt_template": "После делений получено {remainder_count} остатков и осталось последнее ненулевое частное. Сколько цифр будет в итоговой записи?"}, ensure_ascii=False)
-    probe = build_live_probe(case, CONTROL_PROBES[14][2], raw, values=[4])
-    assert probe["expected_answers"] == ("5",)
+
+def test_pedagogical_gate_rejects_internal_meta_language():
+    case = _case(14)
+    base = {"id": "task14_msd_v2", "operation_index": 2}
+    raw = json.dumps({
+        "prompt_template": (
+            "В процессе перевода большого числа получены остатки {remainders}, "
+            "а последнее ненулевое частное равно {last_quotient}. "
+            "Запиши итоговую запись числа?"
+        )
+    }, ensure_ascii=False)
+    with pytest.raises(ValueError, match="педагогически неестественна"):
+        build_live_probe(case, base, raw, values=[5])
