@@ -1,0 +1,108 @@
+name: One-shot pilot atomic diagnostic skills
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add one-shot pilot atomic skills migration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Add atomic skill ids for pilot operations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          skill_path = Path('src/skills/ege_informatics_2026.json')
+          skill_map = json.loads(skill_path.read_text(encoding='utf-8'))
+          additions = [
+              {"id":"number_systems.decimal_binary_conversion","name":"Перевод числа между десятичной и двоичной системами","domain":"number_systems","prerequisites":[],"exam_tasks":[5],"priority":20},
+              {"id":"algorithms.branch_from_last_bit","name":"Выбор ветки алгоритма по младшему биту","domain":"algorithms","prerequisites":[],"exam_tasks":[5],"priority":20},
+              {"id":"algorithms.binary_suffix_append","name":"Приписывание заданного суффикса к двоичной записи","domain":"algorithms","prerequisites":[],"exam_tasks":[5],"priority":20},
+              {"id":"algorithms.integer_boundary_inequality","name":"Поиск граничного целого значения по строгому неравенству","domain":"algorithms","prerequisites":[],"exam_tasks":[5],"priority":20},
+              {"id":"number_systems.calculate_remainder","name":"Вычисление остатка при делении на основание системы","domain":"number_systems","prerequisites":[],"exam_tasks":[14],"priority":20},
+              {"id":"number_systems.digit_property_from_value","name":"Проверка свойства цифры по её числовому значению","domain":"number_systems","prerequisites":[],"exam_tasks":[14],"priority":20},
+              {"id":"number_systems.preserve_digit_count","name":"Учёт всех разрядов записи без потери цифр","domain":"number_systems","prerequisites":[],"exam_tasks":[14],"priority":20},
+              {"id":"programming.cluster_count_from_separation","name":"Определение числа групп по сравнению внутригрупповых и межгрупповых расстояний","domain":"programming","prerequisites":[],"exam_tasks":[27],"priority":20},
+              {"id":"programming.medoid_minimum","name":"Выбор медоида по минимальной сумме расстояний","domain":"programming","prerequisites":[],"exam_tasks":[27],"priority":20},
+              {"id":"programming.cluster_label_count","name":"Подсчёт объектов заданной группы по меткам","domain":"programming","prerequisites":[],"exam_tasks":[27],"priority":20},
+              {"id":"programming.max_cluster_distance","name":"Определение максимального расстояния внутри набора","domain":"programming","prerequisites":[],"exam_tasks":[27],"priority":20},
+          ]
+          existing = {item['id'] for item in skill_map['skills']}
+          skill_map['skills'].extend(item for item in additions if item['id'] not in existing)
+          skill_path.write_text(json.dumps(skill_map, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          diag = Path('src/ai_engine/diagnostics.py')
+          text = diag.read_text(encoding='utf-8')
+          anchor = 'DIAGNOSIS_CONFIRMED = "confirmed"\n'
+          block = '''\n\nPILOT_OPERATION_SKILLS = {\n    (5, 0): "number_systems.decimal_binary_conversion",\n    (5, 1): "algorithms.branch_from_last_bit",\n    (5, 2): "algorithms.binary_suffix_append",\n    (5, 3): "algorithms.integer_boundary_inequality",\n    (14, 0): "number_systems.calculate_remainder",\n    (14, 1): "number_systems.digit_property_from_value",\n    (14, 2): "number_systems.preserve_digit_count",\n    (27, 0): "programming.cluster_count_from_separation",\n    (27, 1): "programming.medoid_minimum",\n    (27, 2): "programming.cluster_label_count",\n    (27, 3): "programming.max_cluster_distance",\n}\n\n\ndef diagnostic_skill_for_operation(case: dict, operation_index: int) -> str:\n    """Return the atomic skill actually isolated by a diagnostic probe."""\n    task_number = int(case.get("task_number", 0))\n    return PILOT_OPERATION_SKILLS.get(\n        (task_number, operation_index),\n        case.get("active_skill_id") or ((case.get("skill_ids") or ["unknown_skill"])[0]),\n    )\n'''
+          if 'PILOT_OPERATION_SKILLS = {' not in text:
+              if anchor not in text:
+                  raise SystemExit('diagnostics constants anchor not found')
+              text = text.replace(anchor, anchor + block, 1)
+          diag.write_text(text, encoding='utf-8')
+
+          gate = Path('src/ai_engine/diagnostic_evidence_gate.py')
+          text = gate.read_text(encoding='utf-8')
+          text = text.replace(
+              '    _gap_for_operation,\n',
+              '    _gap_for_operation,\n    diagnostic_skill_for_operation,\n',
+              1,
+          )
+          text = text.replace(
+              '            "skill_id": case.get("active_skill_id") or "unknown_skill",\n',
+              '            "skill_id": diagnostic_skill_for_operation(case, operation_index),\n',
+              1,
+          )
+          gate.write_text(text, encoding='utf-8')
+
+          tests = Path('tests/test_diagnostic_evidence_integrity.py')
+          text = tests.read_text(encoding='utf-8')
+          marker = '    assert evidence["hypothesis_id"] == "BASE_REMAINDER_EXTRACTION"\n'
+          addition = '    assert evidence["skill_id"] == "number_systems.calculate_remainder"\n'
+          if addition not in text:
+              if marker not in text:
+                  raise SystemExit('integrity marker not found')
+              text = text.replace(marker, marker + addition, 1)
+          tests.write_text(text, encoding='utf-8')
+
+          pilot = Path('tests/test_pilot_learning_dna_flow.py')
+          text = pilot.read_text(encoding='utf-8')
+          marker = '    assert [item["task_number"] for item in plan] == [5, 14, 27]\n'
+          addition = '''    assert [item["skill_id"] for item in plan] == [\n        "number_systems.decimal_binary_conversion",\n        "number_systems.calculate_remainder",\n        "programming.cluster_count_from_separation",\n    ]\n'''
+          if addition not in text:
+              if marker not in text:
+                  raise SystemExit('pilot plan marker not found')
+              text = text.replace(marker, marker + addition, 1)
+          pilot.write_text(text, encoding='utf-8')
+
+          quality = Path('tests/test_probe_quality_gate.py')
+          qtext = quality.read_text(encoding='utf-8')
+          if 'test_pilot_operation_skill_ids_are_atomic_and_distinct' not in qtext:
+              qtext += '''\n\ndef test_pilot_operation_skill_ids_are_atomic_and_distinct():\n    from src.ai_engine.diagnostics import PILOT_OPERATION_SKILLS\n    from src.skills.skill_graph import get_skill\n\n    assert len(PILOT_OPERATION_SKILLS) == 11\n    assert len(set(PILOT_OPERATION_SKILLS.values())) == 11\n    assert all(get_skill(skill_id) is not None for skill_id in PILOT_OPERATION_SKILLS.values())\n    assert PILOT_OPERATION_SKILLS[(14, 0)] == "number_systems.calculate_remainder"\n    assert PILOT_OPERATION_SKILLS[(27, 0)] == "programming.cluster_count_from_separation"\n'''
+          quality.write_text(qtext, encoding='utf-8')
+
+          Path('.github/workflows/atomic-pilot-skills.yml').unlink()
+          PY
+      - name: Run pilot diagnostic regression suite
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py
+      - name: Commit atomic pilot skills
+        run: |
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Model pilot diagnostics with atomic skills'
+          git push origin HEAD:release/0.1-diagnostics
