@@ -887,3 +887,48 @@ def test_diagnostic_summary_uses_pedagogical_gap_instead_of_engineering_step():
     assert "Ошибается при выборе медоида по минимальной сумме расстояний." in summary
     assert "Что повторить: Медоид — объект кластера" in summary
     assert f"№27: {case['failed_step']}" not in summary
+
+
+def test_hard_gemini_quota_exhaustion_is_not_retried():
+    class QuotaClient:
+        def __init__(self):
+            self.calls = 0
+        def generate_live_diagnostic_probe(self, **_kwargs):
+            self.calls += 1
+            raise RuntimeError(
+                "429 quota exceeded for metric generate_content_free_tier_requests; "
+                "please check your current quota, plan and billing details; retry in 55s"
+            )
+
+    client = QuotaClient()
+    try:
+        ege_exam_service._generate_wording_with_rate_limit_retry(client)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("Hard quota exhaustion must propagate to local fallback")
+    assert client.calls == 1
+    assert ege_exam_service._rate_limit_retry_delay(
+        RuntimeError("429 quota exceeded free_tier_requests current quota; retry in 55s")
+    ) is None
+
+
+def test_fallback_probe_hides_provider_error_from_student():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    attempt = ExamAttempt()
+    case = open_diagnostic_case(5, "wrong", "expected", full_map)
+    case["probe_generation"] = {
+        "status": "fallback",
+        "errors": ["attempt 3: RateLimitError: 429 quota exceeded SECRET_PROVIDER_DETAIL"],
+    }
+    attempt.diagnostics[5] = case
+    ege_exam_service.bind_current_diagnostic_probe(attempt)
+    rendered = ege_exam_service.render_diagnostic_probe(attempt)
+    assert "Проба проверена локально" in rendered
+    assert "AI-формулировка сейчас недоступна" in rendered
+    assert "429" not in rendered
+    assert "RateLimitError" not in rendered
+    assert "SECRET_PROVIDER_DETAIL" not in rendered
+    assert "Причина:" not in rendered

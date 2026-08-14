@@ -32,8 +32,23 @@ PROGRESS_WIDTH = 12
 logger = logging.getLogger(__name__)
 
 
+def _is_hard_quota_exhaustion(error: Exception) -> bool:
+    """Return True when retrying the same request cannot restore free-tier quota."""
+    text = str(error).lower()
+    return (
+        "quota exceeded" in text
+        and (
+            "free_tier_requests" in text
+            or "current quota" in text
+            or "plan and billing" in text
+        )
+    )
+
+
 def _rate_limit_retry_delay(error: Exception) -> float | None:
-    """Return Gemini's requested delay for a 429, otherwise ``None``."""
+    """Return a short retry delay only for a temporary rate-limit window."""
+    if _is_hard_quota_exhaustion(error):
+        return None
     text = str(error)
     if "429" not in text and "rate limit" not in text.lower() and "quota" not in text.lower():
         return None
@@ -42,11 +57,14 @@ def _rate_limit_retry_delay(error: Exception) -> float | None:
 
 
 def _generate_wording_with_rate_limit_retry(client, **kwargs) -> str:
-    """Retry the same Gemini request after the server-declared quota delay."""
+    """Retry temporary throttling, but fail fast when the quota itself is exhausted."""
     for rate_attempt in range(1, 4):
         try:
             return client.generate_live_diagnostic_probe(**kwargs)
         except Exception as error:
+            if _is_hard_quota_exhaustion(error):
+                logger.warning("Gemini quota exhausted; switching to verified local fallback")
+                raise
             delay = _rate_limit_retry_delay(error)
             if delay is None or rate_attempt == 3:
                 raise
@@ -941,9 +959,11 @@ def render_diagnostic_probe(attempt: ExamAttempt) -> str:
     if probe.get("source") == "ai_wording_parameters_python_solver":
         source = "🧪 Источник: AI_PROBE\n"
     elif generation.get("status") == "fallback":
-        errors = generation.get("errors") or []
-        detail = f"Причина: {errors[-1]}\n" if errors else ""
-        source = f"⚠️ Источник: FALLBACK_PROBE\n{detail}"
+        source = (
+            "🛡 Проба проверена локально. "
+            "AI-формулировка сейчас недоступна, поэтому использован "
+            "заранее проверенный учебный вариант.\n"
+        )
     else:
         source = ""
     role_text = {
