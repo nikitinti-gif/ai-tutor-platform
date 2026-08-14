@@ -1,0 +1,38 @@
+name: Pilot diagnostics
+
+on:
+  push:
+    branches:
+      - release/0.1-diagnostics
+    paths:
+      - "src/ai_engine/**"
+      - "src/services/ege_exam_service.py"
+      - "src/skills/**"
+      - "tests/test_ege_diagnostics.py"
+      - "tests/test_pilot_diagnostic_flow.py"
+      - ".github/workflows/pilot-diagnostics.yml"
+  workflow_dispatch:
+
+jobs:
+  pilot-diagnostics:
+    runs-on: ubuntu-latest
+    env:
+      BOT_TOKEN: "123456:TESTTOKEN"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+
+      - name: Run pilot diagnostic regression tests
+        run: |
+          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py
