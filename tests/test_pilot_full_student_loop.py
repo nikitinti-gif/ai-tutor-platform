@@ -1,3 +1,4 @@
+from src.ai_engine.diagnostics import CONTROL_PROBES
 from src.learning_dna.engine import (
     apply_confirmed_ege_diagnostics,
     confirm_ege_remediation_mastery,
@@ -18,6 +19,11 @@ from src.services.ege_exam_service import (
 )
 
 
+def _canonical_probe_answer(task: int, base_probe_id: str) -> str:
+    probe = next(item for item in CONTROL_PROBES[task] if item["id"] == base_probe_id)
+    return str(probe["expected_answers"][0])
+
+
 def _finish_diagnostics(attempt, student_id: int = 4242):
     """Task 5 is disproved; first atomic skills of 14 and 27 are confirmed."""
     while True:
@@ -28,8 +34,7 @@ def _finish_diagnostics(attempt, student_id: int = 4242):
         probe = bind_current_diagnostic_probe(attempt)
         assert probe is not None
         task = probe["task_number"]
-        pending = attempt.diagnostics[task]["pending_probe"]
-        expected = str(pending["expected_answers"][0])
+        expected = _canonical_probe_answer(task, probe["base_probe_id"])
 
         if task == 5:
             # Every isolated step is answered correctly, so the original error
