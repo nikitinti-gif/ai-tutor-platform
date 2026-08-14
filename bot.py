@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import sys
 
 import aiohttp
@@ -131,6 +132,12 @@ async def schedule_telegram_webhook(bot: Bot) -> None:
 async def schedule_submission_worker(bot: Bot) -> None:
     if not SYNTHETIC_GEMINI_WORKER_ENABLED:
         logger.info("Synthetic Gemini worker is disabled.")
+        return
+
+    if not os.getenv("DATABASE_URL", "").strip():
+        logger.info(
+            "Synthetic Gemini worker skipped: DATABASE_URL is not configured."
+        )
         return
 
     task = asyncio.create_task(run_synthetic_submission_worker(bot))
