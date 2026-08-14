@@ -16,6 +16,7 @@ on:
       - "tests/test_student_diagnostic_handler_flow.py"
       - "tests/test_probe_quality_gate.py"
       - "tests/test_diagnostic_evidence_integrity.py"
+      - "tests/test_pilot_full_student_loop.py"
       - ".github/workflows/pilot-diagnostics.yml"
   workflow_dispatch:
 
@@ -42,4 +43,4 @@ jobs:
 
       - name: Run pilot diagnostic regression tests
         run: |
-          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py
+          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py tests/test_pilot_full_student_loop.py
