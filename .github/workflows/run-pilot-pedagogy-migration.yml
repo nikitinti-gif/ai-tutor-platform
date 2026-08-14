@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   migrate:
-    if: ${{ github.event.head_commit.message == 'Run pilot pedagogy migration' }}
+    if: ${{ github.event.head_commit.message == 'Retry pilot pedagogy migration' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +17,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python scripts/_tmp_unify_pilot_pedagogy.py
+      - run: python scripts/_tmp_pilot_pedagogy_compat.py
       - run: pip install -r requirements.txt pytest
       - run: pytest -q tests/test_ege_diagnostics.py tests/test_diagnostic_evidence_integrity.py tests/test_pilot_full_student_loop.py tests/test_pilot_full_telegram_loop.py tests/test_pilot_learning_dna_flow.py tests/test_task5_remediation.py tests/test_task27_remediation.py
         env:
@@ -24,6 +25,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
       - run: |
           rm scripts/_tmp_unify_pilot_pedagogy.py
+          rm scripts/_tmp_pilot_pedagogy_compat.py
           rm .github/workflows/run-pilot-pedagogy-migration.yml
           git config user.name 'nikitinti-gif'
           git config user.email 'nikitinti@gmail.com'
