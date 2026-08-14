@@ -1,5 +1,6 @@
 from src.services.ege_exam_service import (
     bind_current_diagnostic_probe,
+    mark_current_diagnostic_probe_displayed,
     create_pilot_diagnostic_attempt,
     next_attempt_diagnostic_probe,
     submit_diagnostic_answer,
@@ -15,6 +16,7 @@ def test_pilot_correct_probe_rejects_first_task5_hypothesis_and_moves_on():
     assert first["operation_index"] == 0
 
     bind_current_diagnostic_probe(attempt)
+    mark_current_diagnostic_probe_displayed(attempt)
     result = submit_diagnostic_answer(attempt, "10011")
     assert result["task_number"] == 5
     assert result["is_correct"] is True
@@ -36,6 +38,7 @@ def test_pilot_can_confirm_one_real_gap_per_task_and_finish_5_14_27_flow():
         assert discrimination["probe_role"] == "discrimination"
 
         bind_current_diagnostic_probe(attempt)
+        mark_current_diagnostic_probe_displayed(attempt)
         first_result = submit_diagnostic_answer(attempt, "definitely-wrong")
         assert first_result["task_number"] == expected_task
         assert first_result["is_correct"] is False
@@ -48,6 +51,7 @@ def test_pilot_can_confirm_one_real_gap_per_task_and_finish_5_14_27_flow():
         assert transfer["base_probe_id"] == discrimination["base_probe_id"]
 
         bind_current_diagnostic_probe(attempt)
+        mark_current_diagnostic_probe_displayed(attempt)
         second_result = submit_diagnostic_answer(attempt, "still-wrong")
         assert second_result["task_number"] == expected_task
         assert second_result["is_correct"] is False
@@ -66,3 +70,13 @@ def test_submit_rejects_answer_when_probe_was_not_shown():
     attempt = create_pilot_diagnostic_attempt()
     with pytest.raises(ValueError, match="показан|привязан"):
         submit_diagnostic_answer(attempt, "10011")
+
+
+def test_prepared_probe_cannot_be_answered_until_display_is_acknowledged():
+    import pytest
+    attempt = create_pilot_diagnostic_attempt()
+    bind_current_diagnostic_probe(attempt)
+    with pytest.raises(ValueError, match="показ|подтвержд"):
+        submit_diagnostic_answer(attempt, "10011")
+    mark_current_diagnostic_probe_displayed(attempt)
+    assert submit_diagnostic_answer(attempt, "10011")["is_correct"] is True

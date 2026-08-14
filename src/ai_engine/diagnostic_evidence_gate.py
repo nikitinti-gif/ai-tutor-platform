@@ -22,6 +22,8 @@ def answer_bound_control_probe(case: dict, probe_id: str, answer: str) -> dict:
     pending_probe_id = str(pending.get("probe_id", "")).strip()
     if not pending_probe_id:
         raise ValueError("Нет активной показанной диагностической пробы.")
+    if pending.get("displayed") is not True:
+        raise ValueError("Диагностическая проба подготовлена, но её показ ученику не подтверждён.")
     if pending_probe_id != probe_id:
         raise ValueError("Ответ не соответствует активной диагностической пробе.")
 

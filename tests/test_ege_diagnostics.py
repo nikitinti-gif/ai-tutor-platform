@@ -11,6 +11,7 @@ from src.services.ege_exam_service import (
     _generate_wording_with_rate_limit_retry,
     _rate_limit_retry_delay,
     bind_current_diagnostic_probe,
+    mark_current_diagnostic_probe_displayed,
     next_attempt_diagnostic_probe,
     submit_diagnostic_answer,
 )
@@ -62,6 +63,7 @@ def _answer_displayed_probe(case: dict, probe_id: str, answer: str) -> dict:
     assert probe is not None
     assert probe["probe_id"] == probe_id
     case = apply_live_probe(case, probe)
+    case["pending_probe"]["displayed"] = True
     return answer_bound_control_probe(case, probe_id, answer)
 
 
@@ -637,6 +639,7 @@ def test_attempt_diagnostics_advance_across_steps_and_tasks():
     assert first["probe_id"] == CONTROL_PROBES[1][0]["id"]
 
     bind_current_diagnostic_probe(attempt)
+    mark_current_diagnostic_probe_displayed(attempt)
     passed = submit_diagnostic_answer(
         attempt,
         CONTROL_PROBES[1][0]["expected_answers"][0],
@@ -645,6 +648,7 @@ def test_attempt_diagnostics_advance_across_steps_and_tasks():
     assert next_attempt_diagnostic_probe(attempt)["probe_id"] == CONTROL_PROBES[1][1]["id"]
 
     bind_current_diagnostic_probe(attempt)
+    mark_current_diagnostic_probe_displayed(attempt)
     failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert failed["is_correct"] is False
     assert failed["failed_step"] == attempt.diagnostics[1]["operations"][1]
@@ -652,6 +656,7 @@ def test_attempt_diagnostics_advance_across_steps_and_tasks():
     assert retry["task_number"] == 1
     assert retry["base_probe_id"] == CONTROL_PROBES[1][1]["id"]
     bind_current_diagnostic_probe(attempt)
+    mark_current_diagnostic_probe_displayed(attempt)
     submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2
 
@@ -666,8 +671,10 @@ def test_attempt_diagnostics_end_when_all_wrong_tasks_are_classified():
     }
 
     bind_current_diagnostic_probe(attempt)
+    mark_current_diagnostic_probe_displayed(attempt)
     submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     bind_current_diagnostic_probe(attempt)
+    mark_current_diagnostic_probe_displayed(attempt)
     submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert attempt.diagnostics[1]["status"] == DIAGNOSIS_CONFIRMED
     assert next_attempt_diagnostic_probe(attempt) is None

@@ -39,6 +39,7 @@ def test_answer_for_different_probe_id_cannot_be_attached_to_pending_question():
         "expected_answers": ("2",),
     }
     case = apply_live_probe(case, pending)
+    case["pending_probe"]["displayed"] = True
 
     with pytest.raises(ValueError, match="проб"):
         answer_bound_control_probe(case, "some-other-probe", "2")
@@ -56,6 +57,7 @@ def test_valid_evidence_contains_complete_question_answer_verdict_chain():
         "expected_answers": ("2",),
     }
     case = apply_live_probe(case, pending)
+    case["pending_probe"]["displayed"] = True
     updated = answer_bound_control_probe(case, probe["probe_id"], "6")
     evidence = updated["evidence"][-1]
 
@@ -66,3 +68,12 @@ def test_valid_evidence_contains_complete_question_answer_verdict_chain():
     assert evidence["student_answer"] == "6"
     assert evidence["validator_result"] is False
     assert evidence["evidence_valid"] is True
+
+
+def test_prepared_but_not_delivered_probe_cannot_create_evidence():
+    case = _case(14)
+    probe = next_control_probe(case)
+    case = apply_live_probe(case, probe)
+    with pytest.raises(ValueError, match="показ|подтвержд"):
+        answer_bound_control_probe(case, probe["probe_id"], "2")
+    assert len(case["evidence"]) == 1

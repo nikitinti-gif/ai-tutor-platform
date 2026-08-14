@@ -13,6 +13,7 @@ def _confirm_first_gap_for_current_task(attempt):
     task_number = probe["task_number"]
 
     attempt.diagnostics[task_number] = apply_live_probe(attempt.diagnostics[task_number], probe)
+    attempt.diagnostics[task_number]["pending_probe"]["displayed"] = True
     first = submit_diagnostic_answer(attempt, "definitely-wrong")
     assert first["task_number"] == task_number
     assert first["status"] == "probable"
@@ -23,6 +24,7 @@ def _confirm_first_gap_for_current_task(attempt):
     assert transfer["probe_role"] == "transfer"
 
     attempt.diagnostics[task_number] = apply_live_probe(attempt.diagnostics[task_number], transfer)
+    attempt.diagnostics[task_number]["pending_probe"]["displayed"] = True
     second = submit_diagnostic_answer(attempt, "still-wrong")
     assert second["task_number"] == task_number
     assert second["status"] == "confirmed"
@@ -92,6 +94,7 @@ def test_unconfirmed_probe_does_not_enter_learning_dna():
     attempt.diagnostics[probe["task_number"]] = apply_live_probe(
         attempt.diagnostics[probe["task_number"]], probe
     )
+    attempt.diagnostics[probe["task_number"]]["pending_probe"]["displayed"] = True
     result = submit_diagnostic_answer(attempt, correct_answer)
     assert result["is_correct"] is True
     assert result["status"] == "needs_evidence"

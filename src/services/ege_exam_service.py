@@ -560,6 +560,24 @@ def bind_current_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
     return next_attempt_diagnostic_probe(attempt)
 
 
+def mark_current_diagnostic_probe_displayed(attempt: ExamAttempt) -> dict:
+    """Acknowledge only a probe that Telegram successfully delivered."""
+    probe = next_attempt_diagnostic_probe(attempt)
+    if probe is None:
+        raise ValueError("Нет диагностической пробы для подтверждения показа.")
+    task_number = probe["task_number"]
+    case = attempt.diagnostics[task_number]
+    pending = case.get("pending_probe") or {}
+    if str(pending.get("probe_id", "")) != str(probe["probe_id"]):
+        raise ValueError("Нельзя подтвердить показ непривязанной диагностической пробы.")
+    pending = dict(pending)
+    pending["displayed"] = True
+    case = dict(case)
+    case["pending_probe"] = pending
+    attempt.diagnostics[task_number] = case
+    return probe
+
+
 def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
     """Generate fresh wording and inputs; Python validates and solves them."""
     probe = next_attempt_diagnostic_probe(attempt)

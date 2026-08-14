@@ -97,6 +97,9 @@ def test_admin_can_run_5_14_27_pilot_through_telegram_handlers(monkeypatch):
         case = finished_attempt["diagnostics"][task_number]
         assert case["status"] == "confirmed"
         assert case["confidence"] == 0.95
+        control = [e for e in case["evidence"] if e.get("kind") == "control_probe"]
+        assert all(e.get("evidence_valid") is True for e in control[-2:])
+        assert all(e.get("question") and e.get("student_answer") is not None for e in control[-2:])
         control_evidence = [item for item in case["evidence"] if item.get("kind") == "control_probe"]
         assert len(control_evidence) >= 2
         assert all(item.get("evidence_valid") is True for item in control_evidence[-2:])

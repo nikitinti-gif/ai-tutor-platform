@@ -462,13 +462,6 @@ async def _begin_ege_diagnostics(
         await _complete_ege_diagnostics(message, state, attempt)
         return
 
-    save_ege_session(
-        message.from_user.id,
-        attempt.to_dict(),
-        status="diagnostics_in_progress",
-    )
-    await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)
-    await state.update_data(ege_attempt=attempt.to_dict())
     mode_text = (
         "AI создаёт новую формулировку и данные, а Python независимо проверяет вопрос и ответ."
         if AI_DIAGNOSTIC_PROBES_ENABLED
@@ -479,7 +472,17 @@ async def _begin_ege_diagnostics(
     await message.answer(
         "Теперь разберём только ошибочные задания. " + mode_text
     )
-    await message.answer(render_diagnostic_probe(attempt))
+    probe_text = render_diagnostic_probe(attempt)
+    await message.answer(probe_text)
+    from src.services.ege_exam_service import mark_current_diagnostic_probe_displayed
+    mark_current_diagnostic_probe_displayed(attempt)
+    save_ege_session(
+        message.from_user.id,
+        attempt.to_dict(),
+        status="diagnostics_in_progress",
+    )
+    await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)
+    await state.update_data(ege_attempt=attempt.to_dict())
 
 
 async def _prepare_ai_probe_for_admin(message: Message, attempt) -> None:
@@ -550,13 +553,16 @@ async def receive_ege_diagnostic_answer(
 
     await _prepare_ai_probe_for_admin(message, attempt)
     bind_current_diagnostic_probe(attempt)
+    probe_text = render_diagnostic_probe(attempt)
+    await message.answer(probe_text)
+    from src.services.ege_exam_service import mark_current_diagnostic_probe_displayed
+    mark_current_diagnostic_probe_displayed(attempt)
     await state.update_data(ege_attempt=attempt.to_dict())
     save_ege_session(
         message.from_user.id,
         attempt.to_dict(),
         status="diagnostics_in_progress",
     )
-    await message.answer(render_diagnostic_probe(attempt))
 
 
 async def start_ege_exam(message: Message, state: FSMContext):
@@ -577,6 +583,11 @@ async def start_ege_exam(message: Message, state: FSMContext):
         await _prepare_ai_probe_for_admin(message, attempt)
         from src.services.ege_exam_service import bind_current_diagnostic_probe, render_diagnostic_probe
         bind_current_diagnostic_probe(attempt)
+        await message.answer("▶️ Продолжаем диагностику ошибок.")
+        probe_text = render_diagnostic_probe(attempt)
+        await message.answer(probe_text)
+        from src.services.ege_exam_service import mark_current_diagnostic_probe_displayed
+        mark_current_diagnostic_probe_displayed(attempt)
         await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)
         await state.update_data(ege_attempt=attempt.to_dict())
         save_ege_session(
@@ -584,8 +595,6 @@ async def start_ege_exam(message: Message, state: FSMContext):
             attempt.to_dict(),
             status="diagnostics_in_progress",
         )
-        await message.answer("▶️ Продолжаем диагностику ошибок.")
-        await message.answer(render_diagnostic_probe(attempt))
         return
     if saved and saved.get("status") == "in_progress":
         attempt = ExamAttempt.from_dict(saved.get("attempt"))
