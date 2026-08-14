@@ -1,0 +1,62 @@
+name: One-shot atomic Learning DNA evidence mapping
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Add one-shot atomic Learning DNA migration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Bind Learning DNA to the confirmed atomic skill
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/learning_dna/engine.py')
+          text = p.read_text(encoding='utf-8')
+          old = '''        check_result = confirmed_case_to_check_result(case)\n        check_result.update({"evidence_id": evidence_id, "attempt_id": attempt.attempt_id, "difficulty": "exam_level"})\n        dna = update_learning_dna_after_check(dna, student_id, check_result)\n'''
+          new = '''        evidence = _confirmed_evidence(case)\n        check_result = confirmed_case_to_check_result(case)\n        # Learning DNA must describe the atomic skill actually tested by the\n        # confirmed probe, not merely the first broad skill attached to the EGE task.\n        atomic_skill_id = evidence.get("skill_id") if evidence else None\n        if atomic_skill_id and get_skill(atomic_skill_id):\n            check_result["skill_id"] = atomic_skill_id\n        check_result.update({\n            "evidence_id": evidence_id,\n            "attempt_id": attempt.attempt_id,\n            "difficulty": "exam_level",\n            "hypothesis_id": evidence.get("hypothesis_id") if evidence else None,\n            "probe_id": evidence.get("probe_id") if evidence else None,\n        })\n        dna = update_learning_dna_after_check(dna, student_id, check_result)\n'''
+          if old not in text:
+              raise SystemExit('Learning DNA write block not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        skill_ids = case.get("skill_ids") or []\n        skill_id = skill_ids[0] if skill_ids else None\n        skill = get_skill(skill_id) if skill_id else None\n'''
+          new = '''        evidence = _confirmed_evidence(case)\n        skill_ids = case.get("skill_ids") or []\n        evidence_skill_id = evidence.get("skill_id") if evidence else None\n        skill_id = evidence_skill_id if evidence_skill_id and get_skill(evidence_skill_id) else (skill_ids[0] if skill_ids else None)\n        skill = get_skill(skill_id) if skill_id else None\n'''
+          if old not in text:
+              raise SystemExit('plan skill block not found')
+          text = text.replace(old, new, 1)
+          p.write_text(text, encoding='utf-8')
+
+          t = Path('tests/test_pilot_learning_dna_flow.py')
+          text = t.read_text(encoding='utf-8')
+          marker = '''    assert all(item["action"] for item in plan)\n\n    assert dna["trajectory"]["next_focus"] == plan[0]["failed_step"]\n'''
+          addition = '''    # The plan and stored weakness must point to the exact atomic skill\n    # that the displayed probes tested, never a neighbouring broad task skill.\n    for item in plan:\n        case = attempt.diagnostics[item["task_number"]]\n        failed = [\n            evidence for evidence in case["evidence"]\n            if evidence.get("kind") == "control_probe"\n            and evidence.get("evidence_valid") is True\n            and evidence.get("validator_result") is False\n        ]\n        assert failed\n        assert item["skill_id"] == failed[-1]["skill_id"]\n        assert item["skill_id"] in dna["skills"]\n        assert dna["skills"][item["skill_id"]]["mistakes"] >= 1\n\n    assert dna["trajectory"]["next_focus"] == plan[0]["failed_step"]\n'''
+          if marker not in text:
+              raise SystemExit('test marker not found')
+          text = text.replace(marker, '''    assert all(item["action"] for item in plan)\n\n''' + addition, 1)
+          t.write_text(text, encoding='utf-8')
+
+          Path('.github/workflows/atomic-learning-dna.yml').unlink()
+          PY
+      - name: Run diagnostic and Learning DNA regression suite
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py
+      - name: Commit atomic Learning DNA mapping
+        run: |
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Bind Learning DNA to confirmed atomic diagnostic skill'
+          git push origin HEAD:release/0.1-diagnostics
