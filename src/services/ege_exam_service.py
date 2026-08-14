@@ -982,9 +982,21 @@ def diagnostic_summary(attempt: ExamAttempt) -> str:
         f"Не подтверждено мини-пробами: {len(unresolved)}",
     ]
     for case in confirmed:
-        lines.append(
-            f"• Задание №{case['task_number']}: {case['failed_step']}"
+        confirmed_gap = next(
+            (item for item in case.get("gap_hypotheses", []) if item.get("status") == "confirmed"),
+            None,
         )
+        if confirmed_gap:
+            lines.append(
+                f"• Задание №{case['task_number']}: {confirmed_gap['description']}"
+            )
+            lines.append(
+                f"  Что повторить: {confirmed_gap['required_rule']}"
+            )
+        else:
+            lines.append(
+                f"• Задание №{case['task_number']}: {case.get('failed_step') or 'точка ошибки подтверждена'}"
+            )
     if unresolved:
         lines.append("")
         lines.append(
