@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BOT_TOKEN: "123456:TESTTOKEN"
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
