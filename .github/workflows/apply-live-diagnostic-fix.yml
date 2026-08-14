@@ -1,0 +1,37 @@
+name: Run live diagnostic production fix
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Run live diagnostic production fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply patch
+        run: python tools/apply_live_diagnostic_fix.py
+      - name: Test
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pip install -r requirements.txt pytest
+          python -m py_compile src/ai_engine/live_diagnostic_probes.py src/services/ege_exam_service.py
+          pytest -q tests/test_live_ai_probe_evidence_roles.py tests/test_probe_quality_gate.py tests/test_ege_diagnostics.py tests/test_diagnostic_evidence_integrity.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_full_telegram_loop.py tests/test_task5_remediation.py tests/test_task27_remediation.py
+      - name: Commit
+        run: |
+          rm tools/apply_live_diagnostic_fix.py
+          rm .github/workflows/apply-live-diagnostic-fix.yml
+          rm -f .github/workflows/fix-live-diagnostic-evidence.yml
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Preserve live probe evidence roles and task14 semantics'
+          git push origin HEAD:release/0.1-diagnostics
