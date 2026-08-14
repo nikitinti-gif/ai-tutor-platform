@@ -10,6 +10,7 @@ from src.services.ege_exam_service import (
     ExamAttempt,
     _generate_wording_with_rate_limit_retry,
     _rate_limit_retry_delay,
+    bind_current_diagnostic_probe,
     next_attempt_diagnostic_probe,
     submit_diagnostic_answer,
 )
@@ -635,6 +636,7 @@ def test_attempt_diagnostics_advance_across_steps_and_tasks():
     assert first["task_number"] == 1
     assert first["probe_id"] == CONTROL_PROBES[1][0]["id"]
 
+    bind_current_diagnostic_probe(attempt)
     passed = submit_diagnostic_answer(
         attempt,
         CONTROL_PROBES[1][0]["expected_answers"][0],
@@ -642,12 +644,14 @@ def test_attempt_diagnostics_advance_across_steps_and_tasks():
     assert passed["is_correct"] is True
     assert next_attempt_diagnostic_probe(attempt)["probe_id"] == CONTROL_PROBES[1][1]["id"]
 
+    bind_current_diagnostic_probe(attempt)
     failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert failed["is_correct"] is False
     assert failed["failed_step"] == attempt.diagnostics[1]["operations"][1]
     retry = next_attempt_diagnostic_probe(attempt)
     assert retry["task_number"] == 1
     assert retry["base_probe_id"] == CONTROL_PROBES[1][1]["id"]
+    bind_current_diagnostic_probe(attempt)
     submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2
 
@@ -661,7 +665,9 @@ def test_attempt_diagnostics_end_when_all_wrong_tasks_are_classified():
         1: open_diagnostic_case(1, "wrong", "expected", skill_map),
     }
 
+    bind_current_diagnostic_probe(attempt)
     submit_diagnostic_answer(attempt, "заведомо неверный ответ")
+    bind_current_diagnostic_probe(attempt)
     submit_diagnostic_answer(attempt, "заведомо неверный ответ")
     assert attempt.diagnostics[1]["status"] == DIAGNOSIS_CONFIRMED
     assert next_attempt_diagnostic_probe(attempt) is None

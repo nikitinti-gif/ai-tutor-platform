@@ -544,6 +544,22 @@ def next_attempt_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
     return None
 
 
+def bind_current_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
+    """Bind the exact probe that is about to be shown to the student's next answer."""
+    probe = next_attempt_diagnostic_probe(attempt)
+    if probe is None:
+        return None
+    task_number = probe["task_number"]
+    case = attempt.diagnostics[task_number]
+    pending = case.get("pending_probe") or {}
+    if pending:
+        if str(pending.get("probe_id", "")) != str(probe["probe_id"]):
+            raise ValueError("Активная диагностическая проба не соответствует показываемому вопросу.")
+        return probe
+    attempt.diagnostics[task_number] = apply_live_probe(case, probe)
+    return next_attempt_diagnostic_probe(attempt)
+
+
 def prepare_ai_diagnostic_probe(attempt: ExamAttempt) -> dict | None:
     """Generate fresh wording and inputs; Python validates and solves them."""
     probe = next_attempt_diagnostic_probe(attempt)
@@ -611,21 +627,13 @@ def submit_diagnostic_answer(attempt: ExamAttempt, answer: str) -> dict:
 
     task_number = probe["task_number"]
     current_case = attempt.diagnostics[task_number]
-    if current_case.get("pending_probe"):
-        case = answer_bound_control_probe(
-            current_case,
-            probe["probe_id"],
-            answer,
-        )
-    else:
-        # Transitional compatibility for internal callers that have not yet
-        # modelled the display step. This evidence is intentionally legacy
-        # and cannot pass the Learning DNA evidence gate.
-        case = answer_control_probe(
-            current_case,
-            probe["probe_id"],
-            answer,
-        )
+    if not current_case.get("pending_probe"):
+        raise ValueError("Нет привязанной показанной диагностической пробы.")
+    case = answer_bound_control_probe(
+        current_case,
+        probe["probe_id"],
+        answer,
+    )
     attempt.diagnostics[task_number] = case
     evidence = case["evidence"][-1]
     return {

@@ -450,13 +450,14 @@ async def _begin_ege_diagnostics(
     attempt,
 ) -> None:
     from src.services.ege_exam_service import (
+        bind_current_diagnostic_probe,
         diagnostic_summary,
         next_attempt_diagnostic_probe,
         render_diagnostic_probe,
     )
 
     await _prepare_ai_probe_for_admin(message, attempt)
-    probe = next_attempt_diagnostic_probe(attempt)
+    probe = bind_current_diagnostic_probe(attempt)
     if probe is None:
         await _complete_ege_diagnostics(message, state, attempt)
         return
@@ -501,6 +502,7 @@ async def receive_ege_diagnostic_answer(
 ) -> None:
     from src.services.ege_exam_service import (
         ExamAttempt,
+        bind_current_diagnostic_probe,
         diagnostic_summary,
         next_attempt_diagnostic_probe,
         render_diagnostic_probe,
@@ -547,6 +549,7 @@ async def receive_ege_diagnostic_answer(
         return
 
     await _prepare_ai_probe_for_admin(message, attempt)
+    bind_current_diagnostic_probe(attempt)
     await state.update_data(ege_attempt=attempt.to_dict())
     save_ege_session(
         message.from_user.id,
@@ -572,10 +575,16 @@ async def start_ege_exam(message: Message, state: FSMContext):
     if saved and saved.get("status") == "diagnostics_in_progress":
         attempt = ExamAttempt.from_dict(saved.get("attempt"))
         await _prepare_ai_probe_for_admin(message, attempt)
+        from src.services.ege_exam_service import bind_current_diagnostic_probe, render_diagnostic_probe
+        bind_current_diagnostic_probe(attempt)
         await state.set_state(StudentEgeExamStates.waiting_diagnostic_answer)
         await state.update_data(ege_attempt=attempt.to_dict())
+        save_ege_session(
+            message.from_user.id,
+            attempt.to_dict(),
+            status="diagnostics_in_progress",
+        )
         await message.answer("▶️ Продолжаем диагностику ошибок.")
-        from src.services.ege_exam_service import render_diagnostic_probe
         await message.answer(render_diagnostic_probe(attempt))
         return
     if saved and saved.get("status") == "in_progress":
