@@ -1,9 +1,8 @@
 """Strict evidence gate for diagnostic mini-probes.
 
 A student's answer may become diagnostic evidence only when it is bound to the
-exact probe that was shown.  This module intentionally sits beside the legacy
-diagnostics engine so the integrity contract can be tested independently before
-we remove the older permissive path.
+exact probe that was shown. This module keeps the integrity contract explicit
+while the diagnostic engine is migrated to fail-closed evidence handling.
 """
 from __future__ import annotations
 
@@ -18,12 +17,7 @@ from src.ai_engine.diagnostics import (
 
 
 def answer_bound_control_probe(case: dict, probe_id: str, answer: str) -> dict:
-    """Validate an answer only against the exact currently displayed probe.
-
-    The function is fail-closed: missing/mismatched pending state cannot create
-    evidence.  Canonical answer, displayed question, student answer and Python
-    verdict are persisted together for later Learning DNA auditing.
-    """
+    """Validate an answer only against the exact currently displayed probe."""
     pending = case.get("pending_probe") or {}
     pending_probe_id = str(pending.get("probe_id", "")).strip()
     if not pending_probe_id:
@@ -50,14 +44,15 @@ def answer_bound_control_probe(case: dict, probe_id: str, answer: str) -> dict:
         raise ValueError("Диагностическая проба ссылается на неизвестный шаг.")
     tested_step = operations[operation_index]
 
-    expected_answers = tuple(pending.get("expected_answers") or probe["expected_answers"])
+    expected_answers = tuple(
+        pending.get("expected_answers") or probe["expected_answers"]
+    )
     if not expected_answers:
         raise ValueError("У диагностической пробы отсутствует эталонный ответ.")
     normalized_answer = _normalize_probe_answer(answer)
-    normalized_expected = {
+    is_correct = normalized_answer in {
         _normalize_probe_answer(value) for value in expected_answers
     }
-    is_correct = normalized_answer in normalized_expected
 
     updated = record_control_probe(
         case,
@@ -79,13 +74,11 @@ def answer_bound_control_probe(case: dict, probe_id: str, answer: str) -> dict:
             "canonical_answer": str(expected_answers[0]),
             "accepted_answers": [str(value) for value in expected_answers],
             "student_answer": answer,
-            "validator_result": "correct" if is_correct else "incorrect",
+            "validator_result": is_correct,
             "evidence_valid": True,
             "probe_source": pending.get("source", "local_fallback"),
         }
     )
-    # Keep the old display field during the migration so existing reports remain
-    # readable while the stronger audit fields become the source of truth.
     evidence["display_prompt"] = evidence["question"]
     return updated
 
