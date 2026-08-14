@@ -1,8 +1,8 @@
 """AI-authored diagnostic probes with deterministic Python validation.
 
-Gemini owns the wording and fresh inputs. Python owns the admissible scenario,
-parameter validation, rendering and correct answer. Only validated probes reach
-the learner; the static probe bank remains a failure-only fallback.
+Gemini owns wording only. Python owns the admissible scenario, answer-bearing
+inputs, canonical answer and the pedagogical quality gate. A live probe reaches
+the learner only when it checks one atomic operation with an unambiguous answer.
 """
 from __future__ import annotations
 
@@ -82,12 +82,7 @@ def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | 
         start, width = _ints(data, 2, 5, 150)
         limit = start + 3 + width % 6
         boundary = 3 * limit + 1
-        return {
-            "start": start,
-            "limit": limit,
-            "expression": "3N+2",
-            "boundary": boundary,
-        }, limit - 1
+        return {"start": start, "limit": limit, "expression": "3N+2", "boundary": boundary}, limit - 1
     if task == 14 and op == 0:
         n, base_seed = _ints(data, 2, 50, 5000)
         base = 3 + base_seed % 33
@@ -105,7 +100,15 @@ def _scenario(task: int, op: int, data: dict) -> tuple[dict[str, object], str | 
         if gap <= spread * 2:
             raise ValueError("Группы точек недостаточно разделены.")
         points = f"(0,0), (0,{spread}), ({gap},{gap}), ({gap + spread},{gap})"
-        return {"points": points}, 2
+        # The question is intentionally formalised: Python supplies the within-
+        # pair distance and a conservative lower bound for cross-pair distance.
+        # The learner is not asked to guess a subjective 'natural' clustering.
+        between_min = gap
+        return {
+            "points": points,
+            "within_distance": spread,
+            "between_min": between_min,
+        }, 2
     if task == 27 and op == 1:
         a, b, c = _ints(data, 3, 3, 30)
         values = [a, b, c]
@@ -135,36 +138,17 @@ def _normalise_wording(prompt: str) -> str:
     return re.sub(r"\s+", " ", prompt).strip()
 
 
-def _validate_template(
-    template: str,
-    fields: dict[str, object],
-    task: int,
-    operation: int,
-) -> None:
+def _validate_template(template: str, fields: dict[str, object], task: int, operation: int) -> None:
     if not template or len(template) > MAX_PROMPT_LENGTH:
         raise ValueError("AI вернул пустую или слишком длинную формулировку.")
     names = _field_names(template)
     unknown = set(names) - set(fields)
     missing = set(fields) - set(names)
     if unknown:
-        raise ValueError(
-            "Формулировка использует неизвестные параметры: "
-            + ", ".join(sorted(unknown))
-        )
+        raise ValueError("Формулировка использует неизвестные параметры: " + ", ".join(sorted(unknown)))
     if missing:
-        raise ValueError(
-            "Формулировка не использует обязательные параметры: "
-            + ", ".join(sorted(missing))
-        )
-    # Repeating a Python-owned placeholder is safe: it only repeats the same
-    # already-validated value. Requiring exactly one occurrence made natural
-    # wording brittle (notably task 14, where the base is often mentioned twice).
-    # Some operations are defined by fixed constants. They are safe because
-    # Python owns their meaning and the solver, while every answer-bearing
-    # value still arrives through a placeholder.
-    allowed_constants = {
-        (5, 1): {"0", "1"},
-    }.get((task, operation), set())
+        raise ValueError("Формулировка не использует обязательные параметры: " + ", ".join(sorted(missing)))
+    allowed_constants = {(5, 1): {"0", "1"}}.get((task, operation), set())
     numeric_literals = set(re.findall(r"\d+", template))
     if numeric_literals - allowed_constants:
         raise ValueError("AI добавил непроверяемые числа вне плейсхолдеров.")
@@ -173,6 +157,25 @@ def _validate_template(
     lowered = template.lower()
     if any(marker in lowered for marker in ("правильный ответ", "ответ равен", "ответ:", "получится ответ")):
         raise ValueError("Формулировка раскрывает правильный ответ.")
+
+
+def _validate_atomic_skill(prompt: str, task: int, operation: int) -> None:
+    """Pedagogical quality gate: one probe must isolate one measurable skill."""
+    text = prompt.lower().replace("ё", "е")
+    if (task, operation) == (14, 0):
+        if "остат" not in text:
+            raise ValueError("Проба №14.0 должна напрямую проверять вычисление остатка.")
+        if not any(marker in text for marker in ("десятич", "обычным числом", "числом")):
+            raise ValueError("Проба №14.0 должна требовать однозначный числовой ответ.")
+        forbidden = ("цифра справа", "первой цифр", "букв", "символ")
+        if any(marker in text for marker in forbidden):
+            raise ValueError("Проба №14.0 смешивает остаток с представлением цифры.")
+    if (task, operation) == (27, 0):
+        required = ("расстоя", "групп")
+        if not all(marker in text for marker in required):
+            raise ValueError("Проба №27.0 должна обосновывать группы через расстояния.")
+        if "естествен" in text or "на глаз" in text or "логически" in text:
+            raise ValueError("Проба №27.0 не должна опираться на субъективное выделение кластеров.")
 
 
 def _validate_no_answer_leak(prompt: str, answer: str | int) -> None:
@@ -190,14 +193,7 @@ def _validate_variety(prompt: str, previous_prompts: list[str]) -> None:
             raise ValueError("AI повторил прежнюю формулировку мини-пробы.")
 
 
-def build_live_probe(
-    case: dict,
-    base_probe: dict,
-    raw_result: str,
-    previous_prompts: list[str] | None = None,
-    values: list[int] | None = None,
-    variant: str | None = None,
-) -> dict:
+def build_live_probe(case: dict, base_probe: dict, raw_result: str, previous_prompts: list[str] | None = None, values: list[int] | None = None, variant: str | None = None) -> dict:
     """Validate AI wording and parameters, then solve the probe in Python."""
     try:
         data = json.loads(raw_result)
@@ -225,6 +221,7 @@ def build_live_probe(
         raise ValueError("AI вернул нерабочий шаблон вопроса.") from error
     if len(prompt) > MAX_PROMPT_LENGTH:
         raise ValueError("Итоговая формулировка слишком длинная.")
+    _validate_atomic_skill(prompt, task, operation)
     _validate_no_answer_leak(prompt, answer)
     _validate_variety(prompt, previous_prompts or [])
 
@@ -240,4 +237,5 @@ def build_live_probe(
         "prompt": prompt,
         "expected_answers": expected_answers,
         "source": "ai_wording_parameters_python_solver",
+        "quality_gate": "passed",
     }
