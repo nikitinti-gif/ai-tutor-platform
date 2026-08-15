@@ -314,8 +314,19 @@ def validate_control_probes(skill_map: dict) -> None:
 
 
 def next_control_probe(case: dict) -> dict | None:
-    """Return the next unchecked local probe for a diagnostic case."""
+    """Return the next probe without searching for a weakness at random.
+
+    With only a wrong final answer we do not know which later micro-step failed.
+    One correct diagnostic probe is therefore enough to reject the current
+    hypothesis and stop probing this task. A confirmed weakness still requires
+    two independent failed probes of the same atomic skill.
+    """
     probes = CONTROL_PROBES.get(int(case.get("task_number", 0)), ())
+    if any(
+        item.get("kind") == "control_probe" and item.get("is_correct") is True
+        for item in case.get("evidence", [])
+    ):
+        return None
     completed = {
         item.get("base_probe_id", item.get("probe_id"))
         for item in case.get("evidence", [])

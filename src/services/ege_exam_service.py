@@ -950,41 +950,21 @@ def submit_diagnostic_answer(
 
 
 def render_diagnostic_probe(attempt: ExamAttempt) -> str:
+    """Render a concise teacher-facing probe; keep audit details internal."""
     probe = next_attempt_diagnostic_probe(attempt)
     if probe is None:
         return ""
 
-    case = attempt.diagnostics[probe["task_number"]]
-    generation = case.get("probe_generation", {})
-    if probe.get("source") == "ai_wording_parameters_python_solver":
-        source = "🧪 Источник: AI_PROBE\n"
-    elif generation.get("status") == "fallback":
-        source = (
-            "🛡 Проба проверена локально. "
-            "AI-формулировка сейчас недоступна, поэтому использован "
-            "заранее проверенный учебный вариант.\n"
-        )
-    else:
-        source = ""
     role_text = {
-        "discrimination": "Различающая проба: отделяем пробел от случайной ошибки.",
-        "transfer": "Проба на перенос: проверяем то же правило на новых данных.",
-    }.get(probe.get("probe_role"), "Проверяем один конкретный шаг решения.")
-    gap_text = ""
-    if probe.get("description") and probe.get("required_rule"):
-        gap_text = (
-            f"\nГипотеза: {probe['description']}\n"
-            f"Почему эта проба подходит: для ответа нужно применить правило — "
-            f"{probe['required_rule']}\n"
-        )
+        "discrimination": "Короткая проверка: хочу понять, случайной ли была ошибка.",
+        "transfer": "Проверка на новых данных: тот же навык, но другая задача.",
+    }.get(probe.get("probe_role"), "Проверим один конкретный шаг решения.")
     return (
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "🔎 ДИАГНОСТИКА ОШИБКИ\n"
+        "🔎 РАЗБЕРЁМ ОШИБКУ\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"Задание КЕГЭ №{probe['task_number']}\n"
-        f"{role_text}\n"
-        f"{gap_text}\n"
-        f"{source}"
+        f"{role_text}\n\n"
         f"{probe['prompt']}\n\n"
         "✍️ Отправь только ответ."
     )

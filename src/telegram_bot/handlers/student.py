@@ -502,15 +502,10 @@ async def _begin_ege_diagnostics(
         await _complete_ege_diagnostics(message, state, attempt)
         return
 
-    mode_text = (
-        "AI создаёт новую формулировку и данные, а Python независимо проверяет вопрос и ответ."
-        if AI_DIAGNOSTIC_PROBES_ENABLED
-        and ADMIN_TELEGRAM_ID
-        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
-        else "Каждая мини-проба проверяется локально."
-    )
     await message.answer(
-        "Теперь разберём только ошибочные задания. " + mode_text
+        "Теперь разберём только ошибочные задания. Сначала проверю один "
+        "конкретный навык. Если он выполнен верно, не буду искать пробел "
+        "наугад — перейдём к следующему заданию. Ответ всегда проверяет Python."
     )
     probe_text = render_diagnostic_probe(attempt)
     await message.answer(probe_text)
@@ -575,8 +570,8 @@ async def receive_ege_diagnostic_answer(
 
     if result["is_correct"]:
         await message.answer(
-            "✅ Этот шаг выполнен верно — гипотеза об ошибке не подтверждена. "
-            "Проверяем следующий шаг этого же задания."
+            "✅ Этот навык выполнен верно. Пробел не подтверждён, поэтому "
+            "не будем искать другую слабость наугад и перейдём дальше."
         )
     elif result["status"] == "confirmed":
         diagnosis = result.get("diagnosis") or result.get("failed_step") or "Точка ошибки подтверждена."
@@ -675,8 +670,10 @@ async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
     await state.clear()
     attempt = create_pilot_diagnostic_attempt()
     await message.answer(
-        "🧪 Пилот мини-проб №5, №14 и №27.\n\n"
-        "Полный вариант проходить не нужно. Ответы проверяются локально."
+        "🧪 Пилот разбора ошибок №5, №14 и №27.\n\n"
+        "Полный вариант проходить не нужно. Это проверка логики репетитора: "
+        "не приписываем пробел без доказательств и не гоняем ученика по всем "
+        "микрошагам задания."
     )
     await _begin_ege_diagnostics(message, state, attempt)
 

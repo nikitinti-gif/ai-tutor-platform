@@ -549,18 +549,14 @@ def test_passed_probe_rejects_previous_hypothesis():
     assert confirmed_cases([case]) == []
 
 
-def test_task14_probes_cover_every_operation():
+def test_task14_correct_first_probe_stops_without_testing_unrelated_operations():
     full_map = json.loads(
         (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
     )
     validate_control_probes(full_map)
     case = open_diagnostic_case(14, "1012", "1013", SKILL_MAP)
-    probe_ids = []
-    for correct_answer in ("2", "да", "1205"):
-        probe = next_control_probe(case)
-        probe_ids.append(probe["probe_id"])
-        case = answer_control_probe(case, probe["probe_id"], correct_answer)
-    assert len(set(probe_ids)) == len(SKILL_MAP["tasks"][0]["operations"])
+    probe = next_control_probe(case)
+    case = answer_control_probe(case, probe["probe_id"], "2")
     assert next_control_probe(case) is None
     assert confirmed_cases([case]) == []
 
@@ -645,19 +641,7 @@ def test_attempt_diagnostics_advance_across_steps_and_tasks():
         CONTROL_PROBES[1][0]["expected_answers"][0],
     )
     assert passed["is_correct"] is True
-    assert next_attempt_diagnostic_probe(attempt)["probe_id"] == CONTROL_PROBES[1][1]["id"]
-
-    bind_current_diagnostic_probe(attempt)
-    mark_current_diagnostic_probe_displayed(attempt)
-    failed = submit_diagnostic_answer(attempt, "заведомо неверный ответ")
-    assert failed["is_correct"] is False
-    assert failed["failed_step"] == attempt.diagnostics[1]["operations"][1]
-    retry = next_attempt_diagnostic_probe(attempt)
-    assert retry["task_number"] == 1
-    assert retry["base_probe_id"] == CONTROL_PROBES[1][1]["id"]
-    bind_current_diagnostic_probe(attempt)
-    mark_current_diagnostic_probe_displayed(attempt)
-    submit_diagnostic_answer(attempt, "заведомо неверный ответ")
+    # A correct probe rejects the current hypothesis; do not search task 1 for another weakness.
     assert next_attempt_diagnostic_probe(attempt)["task_number"] == 2
 
 
@@ -926,8 +910,8 @@ def test_fallback_probe_hides_provider_error_from_student():
     attempt.diagnostics[5] = case
     ege_exam_service.bind_current_diagnostic_probe(attempt)
     rendered = ege_exam_service.render_diagnostic_probe(attempt)
-    assert "Проба проверена локально" in rendered
-    assert "AI-формулировка сейчас недоступна" in rendered
+    assert "Проба проверена локально" not in rendered
+    assert "AI-формулировка сейчас недоступна" not in rendered
     assert "429" not in rendered
     assert "RateLimitError" not in rendered
     assert "SECRET_PROVIDER_DETAIL" not in rendered
@@ -965,3 +949,32 @@ def test_task14_remainder_fallback_requires_two_distinct_questions_before_confir
     assert case["status"] == DIAGNOSIS_CONFIRMED
     failed = [e for e in case["evidence"] if e.get("kind") == "control_probe" and not e.get("is_correct")]
     assert len({e.get("display_prompt") for e in failed[-2:]}) == 2
+
+
+def test_correct_probe_stops_task_instead_of_gap_fishing():
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    case = open_diagnostic_case(5, "wrong", "expected", full_map)
+    first = next_control_probe(case)
+    case = record_control_probe(
+        case, probe_id=first["probe_id"], tested_step=first["tested_step"],
+        is_correct=True, observed_answer="10011",
+        gap=case["gap_hypotheses"][0], probe_role="discrimination"
+    )
+    assert next_control_probe(case) is None
+    assert case["status"] != DIAGNOSIS_CONFIRMED
+
+
+def test_rendered_probe_hides_internal_audit_language():
+    from src.services.ege_exam_service import ExamAttempt, render_diagnostic_probe
+    full_map = json.loads(
+        (Path(__file__).parents[1] / "src" / "skills" / "ege_informatics_2026.json").read_text(encoding="utf-8")
+    )
+    attempt = ExamAttempt()
+    attempt.diagnostics = {14: open_diagnostic_case(14, "wrong", "expected", full_map)}
+    rendered = render_diagnostic_probe(attempt)
+    assert "Гипотеза:" not in rendered
+    assert "Почему эта проба подходит" not in rendered
+    assert "Источник:" not in rendered
+    assert "1298" in rendered
