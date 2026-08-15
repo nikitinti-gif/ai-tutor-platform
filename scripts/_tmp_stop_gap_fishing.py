@@ -42,16 +42,22 @@ p.write_text(text, encoding='utf-8')
 # 4) Regression tests for the live pedagogical finding.
 t = Path('tests/test_ege_diagnostics.py')
 txt = t.read_text(encoding='utf-8')
+old_test = '''def test_task14_probes_cover_every_operation():\n    full_map = json.loads(\n        (Path(__file__).parents[1] / \"src\" / \"skills\" / \"ege_informatics_2026.json\").read_text(encoding=\"utf-8\")\n    )\n    validate_control_probes(full_map)\n    case = open_diagnostic_case(14, \"1012\", \"1013\", SKILL_MAP)\n    probe_ids = []\n    for correct_answer in (\"2\", \"да\", \"1205\"):\n        probe = next_control_probe(case)\n        probe_ids.append(probe[\"probe_id\"])\n        case = answer_control_probe(case, probe[\"probe_id\"], correct_answer)\n    assert len(set(probe_ids)) == len(SKILL_MAP[\"tasks\"][0][\"operations\"])\n    assert next_control_probe(case) is None\n    assert confirmed_cases([case]) == []\n'''
+new_test = '''def test_task14_correct_first_probe_stops_without_testing_unrelated_operations():\n    full_map = json.loads(\n        (Path(__file__).parents[1] / \"src\" / \"skills\" / \"ege_informatics_2026.json\").read_text(encoding=\"utf-8\")\n    )\n    validate_control_probes(full_map)\n    case = open_diagnostic_case(14, \"1012\", \"1013\", SKILL_MAP)\n    probe = next_control_probe(case)\n    case = answer_control_probe(case, probe[\"probe_id\"], \"2\")\n    assert next_control_probe(case) is None\n    assert confirmed_cases([case]) == []\n'''
+if old_test not in txt:
+    raise SystemExit('old task14 coverage test not found')
+txt = txt.replace(old_test, new_test, 1)
+old_block = '''    assert passed[\"is_correct\"] is True\n    assert next_attempt_diagnostic_probe(attempt)[\"probe_id\"] == CONTROL_PROBES[1][1][\"id\"]\n\n    bind_current_diagnostic_probe(attempt)\n    mark_current_diagnostic_probe_displayed(attempt)\n    failed = submit_diagnostic_answer(attempt, \"заведомо неверный ответ\")\n    assert failed[\"is_correct\"] is False\n    assert failed[\"failed_step\"] == attempt.diagnostics[1][\"operations\"][1]\n    retry = next_attempt_diagnostic_probe(attempt)\n    assert retry[\"task_number\"] == 1\n    assert retry[\"base_probe_id\"] == CONTROL_PROBES[1][1][\"id\"]\n    bind_current_diagnostic_probe(attempt)\n    mark_current_diagnostic_probe_displayed(attempt)\n    submit_diagnostic_answer(attempt, \"заведомо неверный ответ\")\n    assert next_attempt_diagnostic_probe(attempt)[\"task_number\"] == 2\n'''
+new_block = '''    assert passed[\"is_correct\"] is True\n    # A correct probe rejects the current hypothesis; do not search task 1 for another weakness.\n    assert next_attempt_diagnostic_probe(attempt)[\"task_number\"] == 2\n'''
+if old_block not in txt:
+    raise SystemExit('old advance-across-steps block not found')
+txt = txt.replace(old_block, new_block, 1)
+old_fallback = '''    assert \"Проба проверена локально\" in rendered\n    assert \"AI-формулировка сейчас недоступна\" in rendered\n    assert \"429\" not in rendered\n'''
+new_fallback = '''    assert \"Проба проверена локально\" not in rendered\n    assert \"AI-формулировка сейчас недоступна\" not in rendered\n    assert \"429\" not in rendered\n'''
+if old_fallback not in txt:
+    raise SystemExit('fallback UX assertions not found')
+txt = txt.replace(old_fallback, new_fallback, 1)
 addition = '''\n\ndef test_correct_probe_stops_task_instead_of_gap_fishing():\n    full_map = json.loads(\n        (Path(__file__).parents[1] / \"src\" / \"skills\" / \"ege_informatics_2026.json\").read_text(encoding=\"utf-8\")\n    )\n    case = open_diagnostic_case(5, \"wrong\", \"expected\", full_map)\n    first = next_control_probe(case)\n    case = record_control_probe(\n        case, probe_id=first[\"probe_id\"], tested_step=first[\"tested_step\"],\n        is_correct=True, observed_answer=\"10011\",\n        gap=case[\"gap_hypotheses\"][0], probe_role=\"discrimination\"\n    )\n    assert next_control_probe(case) is None\n    assert case[\"status\"] != DIAGNOSIS_CONFIRMED\n\n\ndef test_rendered_probe_hides_internal_audit_language():\n    from src.services.ege_exam_service import ExamAttempt, render_diagnostic_probe\n    full_map = json.loads(\n        (Path(__file__).parents[1] / \"src\" / \"skills\" / \"ege_informatics_2026.json\").read_text(encoding=\"utf-8\")\n    )\n    attempt = ExamAttempt()\n    attempt.diagnostics = {14: open_diagnostic_case(14, \"wrong\", \"expected\", full_map)}\n    rendered = render_diagnostic_probe(attempt)\n    assert \"Гипотеза:\" not in rendered\n    assert \"Почему эта проба подходит\" not in rendered\n    assert \"Источник:\" not in rendered\n    assert \"1298\" in rendered\n'''
 if 'test_correct_probe_stops_task_instead_of_gap_fishing' not in txt:
     txt += addition
 t.write_text(txt, encoding='utf-8')
-
-# Existing tests that explicitly expected the old gap-fishing behavior are no longer valid.
-for test_path in ['tests/test_pilot_full_student_loop.py', 'tests/test_pilot_full_telegram_loop.py']:
-    p = Path(test_path)
-    if not p.exists():
-        continue
-    s = p.read_text(encoding='utf-8')
-    s = s.replace('assert 5 in attempt.diagnostics', 'assert 5 in attempt.diagnostics')
-    p.write_text(s, encoding='utf-8')
