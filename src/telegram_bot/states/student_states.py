@@ -31,5 +31,6 @@ class ParentFamilyLinkStates(StatesGroup):
 
 class StudentEgeExamStates(StatesGroup):
     waiting_answer = State()
+    waiting_tutor_pilot_answer = State()
     waiting_diagnostic_answer = State()
     waiting_remediation_answer = State()

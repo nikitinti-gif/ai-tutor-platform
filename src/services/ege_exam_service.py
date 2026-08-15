@@ -668,6 +668,81 @@ def get_task(number: int) -> EgeTask:
     return OPEN_VARIANT_2026[number]
 
 
+TUTOR_PILOT_TASKS = {
+    5: {
+        "title": "Алгоритм над двоичной записью",
+        "statement": (
+            "Для натурального числа N строится двоичная запись. Если она оканчивается на 1, "
+            "справа дописывают 0, иначе справа дописывают 11. Полученная запись задаёт число R. "
+            "Найдите наибольшее N от 10 до 20 включительно, для которого R < 40."
+        ),
+        "answer": "19",
+    },
+    14: {
+        "title": "Системы счисления",
+        "statement": (
+            "Число 431 записано в десятичной системе. Переведите его в шестнадцатеричную "
+            "систему и определите, сколько цифр этой записи имеют чётное числовое значение. "
+            "В ответе укажите только количество таких цифр."
+        ),
+        "answer": "2",  # 431 = 1AF_16; 10(A) is even, 1 and 15(F) are odd -> one.
+    },
+    27: {
+        "title": "Кластеризация",
+        "statement": (
+            "Даны два явно разделённых кластера точек: A={(0,0),(0,2),(0,4)} и "
+            "B={(10,10),(12,10),(14,10)}. Центром каждого кластера считается его медоид — "
+            "точка с минимальной суммой расстояний до остальных точек своего кластера. "
+            "Найдите сумму всех координат двух медоидов."
+        ),
+        "answer": "24",
+    },
+}
+
+# Correct the canonical answer explicitly: 431 = 1AF_16, only A=10 is even.
+TUTOR_PILOT_TASKS[14]["answer"] = "1"
+
+
+def render_tutor_pilot_task(task_number: int) -> str:
+    task = TUTOR_PILOT_TASKS[task_number]
+    return (
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎓 ТРЕНИРОВОЧНОЕ ЗАДАНИЕ · №{task_number}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📚 {task['title']}\n\n"
+        f"{task['statement']}\n\n"
+        "✍️ Отправь только итоговый ответ."
+    )
+
+
+def verify_tutor_pilot_answer(task_number: int, answer: str) -> bool:
+    expected = str(TUTOR_PILOT_TASKS[task_number]["answer"]).strip().lower()
+    return answer.strip().lower() == expected
+
+
+def create_task_first_tutor_attempt() -> ExamAttempt:
+    """Create an empty pilot attempt; cases are opened only after real mistakes."""
+    return ExamAttempt(current_task=TOTAL_TASKS + 1)
+
+
+def record_tutor_pilot_answer(attempt: ExamAttempt, task_number: int, answer: str) -> bool:
+    """Record a compact EGE-like task and open diagnostics only on an actual error."""
+    is_correct = verify_tutor_pilot_answer(task_number, answer)
+    expected = str(TUTOR_PILOT_TASKS[task_number]["answer"])
+    attempt.answers[task_number] = answer
+    attempt.results[task_number] = is_correct
+    if is_correct:
+        attempt.diagnostics.pop(task_number, None)
+    else:
+        attempt.diagnostics[task_number] = open_diagnostic_case(
+            task_number=task_number,
+            student_answer=answer,
+            expected_answer=expected,
+            skill_map=load_skill_map(),
+        )
+    return is_correct
+
+
 def create_pilot_diagnostic_attempt() -> ExamAttempt:
     """Build an isolated attempt for reviewing pilot probes without an exam run."""
     skill_map = load_skill_map()

@@ -654,6 +654,74 @@ async def start_ege_exam(message: Message, state: FSMContext):
     await _send_ege_task(message, attempt.current_task)
 
 
+async def start_ege_tutor_pilot(message: Message, state: FSMContext):
+    """Task-first pilot: normal EGE-like tasks before any diagnostic question."""
+    is_admin = bool(
+        ADMIN_TELEGRAM_ID
+        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+    if not is_admin:
+        await message.answer("⛔ Эта тестовая команда доступна только администратору.")
+        return
+    from src.services.ege_exam_service import create_task_first_tutor_attempt, render_tutor_pilot_task
+
+    delete_ege_session(message.from_user.id)
+    await state.clear()
+    attempt = create_task_first_tutor_attempt()
+    await state.set_state(StudentEgeExamStates.waiting_tutor_pilot_answer)
+    await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_index=0)
+    save_ege_session(message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress")
+    await message.answer(
+        "🧑‍🏫 Пилот AI-репетитора · №5, №14 и №27\n\n"
+        "Сначала реши обычные короткие задания в стиле КЕГЭ. "
+        "Диагностика появится только там, где ответ действительно неверный. "
+        "Если диагностическая проверка выполнена верно, искать другие слабости наугад не буду."
+    )
+    await message.answer(render_tutor_pilot_task(5))
+
+
+async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) -> None:
+    from src.services.ege_exam_service import (
+        ExamAttempt,
+        record_tutor_pilot_answer,
+        render_tutor_pilot_task,
+    )
+    data = await state.get_data()
+    attempt_data = data.get("ege_attempt")
+    if not attempt_data:
+        await state.clear()
+        await message.answer("Пилотная сессия не найдена. Запусти /test_ege_tutor.")
+        return
+    attempt = ExamAttempt.from_dict(attempt_data)
+    tasks = (5, 14, 27)
+    index = int(data.get("tutor_pilot_index", 0))
+    if not 0 <= index < len(tasks):
+        await state.clear()
+        await message.answer("Пилотная сессия завершена. Запусти /test_ege_tutor заново.")
+        return
+    task_number = tasks[index]
+    is_correct = record_tutor_pilot_answer(attempt, task_number, message.text or "")
+    await message.answer(
+        "✅ Верно." if is_correct else "❌ Ответ неверный. Сначала закончим три задания, затем разберём только реальные ошибки."
+    )
+    index += 1
+    await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_index=index)
+    save_ege_session(message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress")
+    if index < len(tasks):
+        await message.answer(render_tutor_pilot_task(tasks[index]))
+        return
+    if not attempt.diagnostics:
+        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
+        await state.clear()
+        await message.answer("🏆 Все три задания выполнены верно. Диагностика не нужна.")
+        return
+    await message.answer(
+        "Теперь разберём только те задания, где была ошибка. "
+        "Каждая диагностическая проверка будет короткой и привязанной к конкретному навыку."
+    )
+    await _begin_ege_diagnostics(message, state, attempt)
+
+
 async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
     """Start the 5/14/27 probe review without completing the full exam."""
     is_admin = bool(
@@ -750,7 +818,9 @@ async def cancel_ege_exam(message: Message, state: FSMContext):
 
 def register_student_handlers(dp: Dispatcher):
     dp.message.register(cancel_ege_exam, F.text == "/cancel_ege")
+    dp.message.register(start_ege_tutor_pilot, F.text == "/test_ege_tutor")
     dp.message.register(start_ege_diagnostic_pilot, F.text == "/test_ege_diagnostics")
+    dp.message.register(receive_ege_tutor_pilot_answer, StudentEgeExamStates.waiting_tutor_pilot_answer)
     dp.message.register(skip_ege_task, StudentEgeExamStates.waiting_answer, F.text == "/skip_ege")
     dp.message.register(finish_ege_exam, StudentEgeExamStates.waiting_answer, F.text == "/finish_ege")
     dp.message.register(start_ege_exam, F.text.in_({"/ege2026", "🎓 Пройти КЕГЭ"}))
