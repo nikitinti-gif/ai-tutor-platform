@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import dist
 from pathlib import Path
+import re
 from typing import Sequence
 
 
@@ -43,8 +44,6 @@ class RectangleRule:
         return self.x_min < point.x < self.x_max and self.y_min < point.y < self.y_max
 
 
-# Reference partition visible from the official datasets. The task guarantees
-# that the cluster partition is unique for H=6.0 and W=5.5.
 A_REFERENCE_RULES: tuple[RectangleRule, ...] = (
     RectangleRule(3.0, 8.0, 5.0, 10.0),
 )
@@ -88,13 +87,7 @@ def partition_by_reference_rules(
     final_else_cluster: bool = False,
     allow_unassigned: bool = False,
 ) -> list[list[StarPoint]]:
-    """Partition points using reference rectangles for the official variant.
-
-    File A uses one explicit rectangle and an ``else`` cluster. The published
-    reference partition for file B leaves one boundary/noise point outside the
-    three working rectangles; it must not silently change any cluster result,
-    so callers opt into that behaviour explicitly with ``allow_unassigned``.
-    """
+    """Partition points using reference rectangles for the official variant."""
     clusters: list[list[StarPoint]] = [[] for _ in rules]
     remainder: list[StarPoint] = []
     for point in points:
@@ -140,16 +133,29 @@ def maximum_pair_distance(points: Sequence[StarPoint]) -> float:
     return maximum
 
 
+def _star_type(point: StarPoint) -> tuple[str, str] | None:
+    """Return spectral letter and exact luminosity class.
+
+    Codes look like ``G7V`` or ``M4III``. Exact parsing matters: a naive
+    ``endswith('V')`` would incorrectly classify luminosity ``IV`` and ``VI``
+    as class V and changes the official B2 answer.
+    """
+    match = re.fullmatch(r"([OBAFGKM])\d(III|II|IV|VI|V|I)", point.code)
+    if not match:
+        return None
+    return match.group(1), match.group(2)
+
+
 def is_red_giant(point: StarPoint) -> bool:
-    return point.code.startswith("M") and point.code.endswith("III")
+    return _star_type(point) == ("M", "III")
 
 
 def is_orange_giant(point: StarPoint) -> bool:
-    return point.code.startswith("K") and point.code.endswith("III")
+    return _star_type(point) == ("K", "III")
 
 
 def is_yellow_dwarf(point: StarPoint) -> bool:
-    return point.code.startswith("G") and point.code.endswith("V")
+    return _star_type(point) == ("G", "V")
 
 
 def _scaled_abs(value: float) -> int:
