@@ -669,7 +669,7 @@ async def start_ege_tutor_pilot(message: Message, state: FSMContext):
     await state.clear()
     attempt = create_task_first_tutor_attempt()
     await state.set_state(StudentEgeExamStates.waiting_tutor_pilot_answer)
-    await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_index=0)
+    await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_index=0, tutor_pilot_stage="supported")
     save_ege_session(message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress")
     await message.answer(
         "🧑‍🏫 Пилот AI-репетитора · №5, №14 и №27\n\n"
@@ -685,7 +685,9 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
     from src.services.ege_exam_service import (
         ExamAttempt,
         record_tutor_pilot_answer,
+        record_tutor_pilot_transfer_answer,
         render_tutor_pilot_task,
+        render_tutor_pilot_transfer_task,
     )
     data = await state.get_data()
     attempt_data = data.get("ege_attempt")
@@ -696,17 +698,31 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
     attempt = ExamAttempt.from_dict(attempt_data)
     tasks = (5, 14, 27)
     index = int(data.get("tutor_pilot_index", 0))
+    stage = str(data.get("tutor_pilot_stage", "supported"))
     if not 0 <= index < len(tasks):
         await state.clear()
         await message.answer("Пилотная сессия завершена. Запусти /test_ege_tutor заново.")
         return
     task_number = tasks[index]
-    is_correct = record_tutor_pilot_answer(attempt, task_number, message.text or "")
-    await message.answer(
-        "✅ Верно." if is_correct else "❌ Ответ неверный. Сначала закончим три задания, затем разберём только реальные ошибки."
-    )
+
+    if stage == "supported":
+        is_correct = record_tutor_pilot_answer(attempt, task_number, message.text or "")
+        if is_correct:
+            await message.answer("✅ Верно. Теперь проверим тот же навык на новой задаче без примера и подсказок.")
+            await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_stage="transfer")
+            save_ege_session(message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress")
+            await message.answer(render_tutor_pilot_transfer_task(task_number))
+            return
+        await message.answer("❌ Ответ неверный. Зафиксирую ошибку и после трёх заданий разберём именно её.")
+    else:
+        is_correct = record_tutor_pilot_transfer_answer(attempt, task_number, message.text or "")
+        if is_correct:
+            await message.answer("✅ Получилось и без подсказки. Этот навык пока не требует диагностики.")
+        else:
+            await message.answer("❌ На новой задаче без подсказки возникла ошибка. После пилота разберём, на каком шаге она появилась.")
+
     index += 1
-    await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_index=index)
+    await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_index=index, tutor_pilot_stage="supported")
     save_ege_session(message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress")
     if index < len(tasks):
         await message.answer(render_tutor_pilot_task(tasks[index]))
@@ -714,11 +730,14 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
     if not attempt.diagnostics:
         save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
         await state.clear()
-        await message.answer("🏆 Все три задания выполнены верно. Диагностика не нужна.")
+        await message.answer(
+            "🏆 Все три навыка подтверждены на новых задачах без подсказок. "
+            "Диагностика не нужна. Следующий уровень — экзаменационные формулировки без учебного разбора."
+        )
         return
     await message.answer(
-        "Теперь разберём только те задания, где была ошибка. "
-        "Каждая диагностическая проверка будет короткой и привязанной к конкретному навыку."
+        "Теперь разберём только те задания, где ошибка сохранилась или появилась после снятия подсказок. "
+        "Каждая проверка будет привязана к конкретному навыку."
     )
     await _begin_ege_diagnostics(message, state, attempt)
 

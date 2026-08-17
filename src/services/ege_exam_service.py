@@ -748,6 +748,65 @@ def verify_tutor_pilot_answer(task_number: int, answer: str) -> bool:
     return answer.strip().lower() == expected
 
 
+TUTOR_PILOT_TRANSFER_TASKS = {
+    5: {
+        "statement": (
+            "Для натурального числа N строят его двоичную запись. Если запись оканчивается на 1, "
+            "справа дописывают 0, иначе справа дописывают 11. Полученную двоичную запись рассматривают "
+            "как число R. Найдите наибольшее N от 12 до 24 включительно, для которого R < 50."
+        ),
+        "answer": "23",
+    },
+    14: {
+        "statement": (
+            "Число 686 перевели из десятичной системы в шестнадцатеричную. "
+            "Сколько цифр полученной записи имеют чётное числовое значение?"
+        ),
+        "answer": "3",
+    },
+    27: {
+        "statement": (
+            "Даны два кластера точек: A={(1,1),(1,3),(1,5)} и "
+            "B={(20,20),(22,20),(24,20)}. Медоидом кластера считается точка с минимальной "
+            "суммой расстояний до остальных точек своего кластера. Найдите сумму всех координат двух медоидов."
+        ),
+        "answer": "46",
+    },
+}
+
+
+def render_tutor_pilot_transfer_task(task_number: int) -> str:
+    task = TUTOR_PILOT_TRANSFER_TASKS[task_number]
+    return (
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 БЕЗ ПОДСКАЗКИ · КЕГЭ №{task_number}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Теперь похожая задача без разбора и примера.\n\n"
+        f"{task['statement']}\n\n"
+        "Отправь только итоговый ответ."
+    )
+
+
+def verify_tutor_pilot_transfer_answer(task_number: int, answer: str) -> bool:
+    expected = str(TUTOR_PILOT_TRANSFER_TASKS[task_number]["answer"]).strip().lower()
+    return answer.strip().lower() == expected
+
+
+def record_tutor_pilot_transfer_answer(attempt: ExamAttempt, task_number: int, answer: str) -> bool:
+    """Verify independent transfer; open diagnostics only when support did not transfer."""
+    is_correct = verify_tutor_pilot_transfer_answer(task_number, answer)
+    if not is_correct:
+        attempt.answers[task_number] = answer
+        attempt.results[task_number] = False
+        attempt.diagnostics[task_number] = open_diagnostic_case(
+            task_number=task_number,
+            student_answer=answer,
+            expected_answer=str(TUTOR_PILOT_TRANSFER_TASKS[task_number]["answer"]),
+            skill_map=load_skill_map(),
+        )
+    return is_correct
+
+
 def create_task_first_tutor_attempt() -> ExamAttempt:
     """Create an empty pilot attempt; cases are opened only after real mistakes."""
     return ExamAttempt(current_task=TOTAL_TASKS + 1)
