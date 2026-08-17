@@ -8,9 +8,15 @@ on:
       - "src/ai_engine/**"
       - "src/learning_dna/**"
       - "src/services/ege_exam_service.py"
+      - "src/services/ege_task27_service.py"
       - "src/telegram_bot/handlers/student.py"
       - "src/skills/**"
+      - "Доп. файлы/1_27_A.txt"
+      - "Доп. файлы/1_27_B.txt"
       - "tests/test_ege_diagnostics.py"
+      - "tests/test_ege_tutor_pilot.py"
+      - "tests/test_ege_task27_service.py"
+      - "tests/test_task27_remediation.py"
       - "tests/test_pilot_diagnostic_flow.py"
       - "tests/test_pilot_learning_dna_flow.py"
       - "tests/test_student_diagnostic_handler_flow.py"
@@ -44,4 +50,4 @@ jobs:
 
       - name: Run pilot diagnostic regression tests
         run: |
-          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_pilot_full_student_loop.py tests/test_pilot_full_telegram_loop.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py
+          pytest -q tests/test_pilot_diagnostic_flow.py tests/test_ege_diagnostics.py tests/test_student_diagnostic_handler_flow.py tests/test_pilot_learning_dna_flow.py tests/test_pilot_full_student_loop.py tests/test_pilot_full_telegram_loop.py tests/test_probe_quality_gate.py tests/test_diagnostic_evidence_integrity.py tests/test_ege_tutor_pilot.py tests/test_task27_remediation.py tests/test_ege_task27_service.py
