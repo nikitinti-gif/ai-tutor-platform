@@ -38,3 +38,23 @@ def test_tutor_pilot_canonical_answers():
     assert record_tutor_pilot_answer(attempt, 14, "1") is True
     assert record_tutor_pilot_answer(attempt, 27, "24") is True
     assert attempt.diagnostics == {}
+
+
+def test_tutor_pilot_scaffolds_before_exam_style():
+    rendered = render_tutor_pilot_task(5)
+    assert "Что здесь нужно понять" in rendered
+    assert "Разобранный пример" in rendered
+    assert "Теперь попробуй сам" in rendered
+    assert "1) запиши N в двоичной системе" in rendered
+    assert "получившуюся двоичную запись переведи обратно" in rendered
+    assert "Полученная запись задаёт число R" not in rendered
+
+
+def test_each_tutor_task_has_teacher_scaffolding():
+    for task_number in (5, 14, 27):
+        task = TUTOR_PILOT_TASKS[task_number]
+        assert task["teacher_intro"]
+        assert task["worked_example"]
+        rendered = render_tutor_pilot_task(task_number)
+        assert task["worked_example"] in rendered
+        assert "Отправь только итоговый ответ" in rendered
