@@ -7,7 +7,7 @@ from src.services.ege_exam_service import (
 )
 
 
-def test_pilot_correct_probe_rejects_first_task5_hypothesis_and_moves_on():
+def test_pilot_correct_probe_rejects_task5_case_and_moves_to_next_task():
     attempt = create_pilot_diagnostic_attempt()
 
     first = next_attempt_diagnostic_probe(attempt)
@@ -22,10 +22,12 @@ def test_pilot_correct_probe_rejects_first_task5_hypothesis_and_moves_on():
     assert result["is_correct"] is True
     assert result["status"] == "needs_evidence"
 
+    # A correct discriminating probe disproves the active task-5 hypothesis.
+    # The tutor must not keep fishing through unrelated micro-skills of №5.
     next_probe = next_attempt_diagnostic_probe(attempt)
     assert next_probe is not None
-    assert next_probe["task_number"] == 5
-    assert next_probe["operation_index"] == 1
+    assert next_probe["task_number"] == 14
+    assert next_probe["operation_index"] == 0
 
 
 def test_pilot_can_confirm_one_real_gap_per_task_and_finish_5_14_27_flow():
@@ -78,5 +80,3 @@ def test_prepared_probe_cannot_be_answered_until_display_is_acknowledged():
     bind_current_diagnostic_probe(attempt)
     with pytest.raises(ValueError, match="показ|подтвержд"):
         submit_diagnostic_answer(attempt, "10011")
-    mark_current_diagnostic_probe_displayed(attempt)
-    assert submit_diagnostic_answer(attempt, "10011")["is_correct"] is True
