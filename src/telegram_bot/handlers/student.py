@@ -678,6 +678,8 @@ async def start_ege_tutor_pilot(message: Message, state: FSMContext):
     delete_ege_session(message.from_user.id)
     await state.clear()
     attempt = create_task_first_tutor_attempt()
+    attempt.tutor_pilot_index = 0
+    attempt.tutor_pilot_stage = "supported"
     await state.set_state(StudentEgeExamStates.waiting_tutor_pilot_answer)
     await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_index=0, tutor_pilot_stage="supported")
     save_ege_session(message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress")
@@ -708,8 +710,10 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
         return
     attempt = ExamAttempt.from_dict(attempt_data)
     tasks = (5, 14, 27)
-    index = int(data.get("tutor_pilot_index", 0))
-    stage = str(data.get("tutor_pilot_stage", "supported"))
+    index = int(data.get("tutor_pilot_index", attempt.tutor_pilot_index))
+    stage = str(data.get("tutor_pilot_stage", attempt.tutor_pilot_stage))
+    attempt.tutor_pilot_index = index
+    attempt.tutor_pilot_stage = stage
     if not 0 <= index < len(tasks):
         await state.clear()
         await message.answer("Пилотная сессия завершена. Запусти /test_ege_tutor заново.")
@@ -735,6 +739,7 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
             await message.answer(
                 "✅ Файл A решён верно. Теперь второй уровень: файл Б уже без учебного плана решения."
             )
+            attempt.tutor_pilot_stage = "task27_file_b"
             await state.update_data(
                 ege_attempt=attempt.to_dict(), tutor_pilot_stage="task27_file_b"
             )
@@ -755,6 +760,7 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
         is_correct = record_tutor_pilot_answer(attempt, task_number, message.text or "")
         if is_correct:
             await message.answer("✅ Верно. Теперь проверим тот же навык на новой задаче без примера и подсказок.")
+            attempt.tutor_pilot_stage = "transfer"
             await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_stage="transfer")
             save_ege_session(message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress")
             await message.answer(render_tutor_pilot_transfer_task(task_number))
@@ -767,6 +773,7 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
                 await message.answer(
                     "✅ Маленькая задача без подсказки решена. Теперь проверяем сам формат №27 — с настоящим файлом."
                 )
+                attempt.tutor_pilot_stage = "task27_file_a"
                 await state.update_data(
                     ege_attempt=attempt.to_dict(), tutor_pilot_stage="task27_file_a"
                 )
@@ -780,6 +787,8 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
             await message.answer("❌ На новой задаче без подсказки возникла ошибка. После пилота разберём, на каком шаге она появилась.")
 
     index += 1
+    attempt.tutor_pilot_index = index
+    attempt.tutor_pilot_stage = "supported"
     await state.update_data(ege_attempt=attempt.to_dict(), tutor_pilot_index=index, tutor_pilot_stage="supported")
     save_ege_session(message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress")
     if index < len(tasks):
@@ -798,6 +807,24 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
         "Каждая проверка будет привязана к конкретному навыку."
     )
     await _begin_ege_diagnostics(message, state, attempt)
+
+
+async def resume_ege_tutor_pilot_after_restart(message: Message, state: FSMContext) -> None:
+    """Recover a persisted tutor pilot when in-memory FSM was lost on restart/deploy."""
+    saved = get_ege_session(message.from_user.id)
+    if not saved or saved.get("status") != "tutor_pilot_in_progress":
+        from aiogram.dispatcher.event.bases import SkipHandler
+        raise SkipHandler
+
+    from src.services.ege_exam_service import ExamAttempt
+    attempt = ExamAttempt.from_dict(saved.get("attempt"))
+    await state.set_state(StudentEgeExamStates.waiting_tutor_pilot_answer)
+    await state.update_data(
+        ege_attempt=attempt.to_dict(),
+        tutor_pilot_index=attempt.tutor_pilot_index,
+        tutor_pilot_stage=attempt.tutor_pilot_stage,
+    )
+    await receive_ege_tutor_pilot_answer(message, state)
 
 
 async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
@@ -931,3 +958,4 @@ def register_student_handlers(dp: Dispatcher):
     )
     dp.message.register(student_progress, F.text == "📊 Мой прогресс")
     dp.message.register(student_question, F.text == "❓ Задать вопрос")
+    dp.message.register(resume_ege_tutor_pilot_after_restart, F.text)

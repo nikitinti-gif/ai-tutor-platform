@@ -213,6 +213,8 @@ class ExamAttempt:
     skipped: list[int] = field(default_factory=list)
     diagnostics: dict[int, dict] = field(default_factory=dict)
     remediation: dict = field(default_factory=dict)
+    tutor_pilot_index: int = 0
+    tutor_pilot_stage: str = "supported"
 
     @property
     def finished(self) -> bool:
@@ -236,6 +238,8 @@ class ExamAttempt:
             [int(x) for x in data.get("skipped", [])],
             {int(k): dict(v) for k, v in data.get("diagnostics", {}).items()},
             dict(data.get("remediation", {})),
+            int(data.get("tutor_pilot_index", 0)),
+            str(data.get("tutor_pilot_stage", "supported")),
         )
 
 
