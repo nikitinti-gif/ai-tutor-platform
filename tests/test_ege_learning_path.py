@@ -8,11 +8,11 @@ from src.services.ege_learning_path import (
 )
 
 
-def test_task14_path_runs_from_foundation_to_exam_level():
+def test_task14_path_runs_from_foundation_to_independent_exam_transfer():
     path = build_learning_path(14)
     assert path.solution_mode == "reasoning"
     assert current_step(path)["id"] == "digit_value"
-    assert TASK14_LEVELS[-1]["difficulty"] == "exam"
+    assert TASK14_LEVELS[-1]["difficulty"] == "exam_transfer"
     answers = [level["answers"][0] for level in TASK14_LEVELS]
     for answer in answers:
         result = submit_answer(path, str(answer))
@@ -20,7 +20,7 @@ def test_task14_path_runs_from_foundation_to_exam_level():
     assert path.status == "mastered"
     assert current_step(path) is None
     assert len(path.history) == len(TASK14_LEVELS)
-    assert path.history[-1]["difficulty"] == "exam"
+    assert path.history[-1]["difficulty"] == "exam_transfer"
 
 
 def test_wrong_answer_does_not_create_fake_weakness_or_advance():
@@ -50,16 +50,22 @@ def test_render_makes_progression_visible_to_student():
     path = build_learning_path(14)
     text = render_current_step(path)
     assert "ПУТЬ К №14" in text
-    assert "ШАГ 1/7" in text
+    assert "ШАГ 1/8" in text
     assert "Значение буквенной цифры" in text
     assert "Отправь только ответ" in text
 
 
-def test_task14_final_step_is_real_open_variant_not_microprobe():
+def test_task14_contains_real_open_variant_before_final_unseen_transfer():
+    official = TASK14_LEVELS[-2]
     final = TASK14_LEVELS[-1]
-    assert "5·1296^2021" in final["prompt"]
-    assert final["answers"] == ("1013",)
-    assert final["difficulty"] == "exam"
+    assert official["id"] == "exam_task"
+    assert "5·1296^2021" in official["prompt"]
+    assert official["answers"] == ("1013",)
+    assert official["difficulty"] == "exam"
+    assert final["id"] == "exam_transfer"
+    assert final["difficulty"] == "exam_transfer"
+    assert final["prompt"] != official["prompt"]
+    assert final["answers"] != official["answers"]
 
 
 def test_learning_path_rejects_programming_task_until_programming_tutor_exists():
@@ -69,7 +75,6 @@ def test_learning_path_rejects_programming_task_until_programming_tutor_exists()
         assert "only for task 14" in str(error)
     else:
         raise AssertionError("task 27 must not enter the reasoning Learning Path")
-
 
 
 def test_exam_attempt_persists_learning_path_state():
@@ -96,3 +101,10 @@ def test_repeated_foundation_error_escalates_to_worked_example():
     assert "45 = 2·16 + 13" in text
     assert "2D" in text
     assert "47" in text
+
+
+def test_repeated_errors_on_other_foundation_steps_also_have_teaching_examples():
+    path = build_learning_path(14)
+    submit_answer(path, "999")
+    submit_answer(path, "999")
+    assert "A=10" in render_current_step(path)
