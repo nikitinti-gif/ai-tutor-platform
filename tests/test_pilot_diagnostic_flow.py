@@ -80,3 +80,23 @@ def test_prepared_probe_cannot_be_answered_until_display_is_acknowledged():
     bind_current_diagnostic_probe(attempt)
     with pytest.raises(ValueError, match="показ|подтвержд"):
         submit_diagnostic_answer(attempt, "10011")
+
+
+def test_context_diagnostic_can_continue_after_correct_probe_without_gap_fishing():
+    from src.ai_engine.diagnostics import open_diagnostic_case
+    from src.skills.skill_graph import load_skill_map
+    attempt = create_pilot_diagnostic_attempt()
+    case = open_diagnostic_case(14, "2", "3", load_skill_map())
+    case["probe_operation_order"] = [1, 0]
+    case["continue_after_correct_probe"] = True
+    attempt.diagnostics = {14: case}
+    first = next_attempt_diagnostic_probe(attempt)
+    assert first["operation_index"] == 1
+    bind_current_diagnostic_probe(attempt)
+    mark_current_diagnostic_probe_displayed(attempt)
+    # C=12 is even, so this correctly rules out digit-property confusion.
+    result = submit_diagnostic_answer(attempt, "да")
+    assert result["is_correct"] is True
+    second = next_attempt_diagnostic_probe(attempt)
+    assert second is not None
+    assert second["operation_index"] == 0

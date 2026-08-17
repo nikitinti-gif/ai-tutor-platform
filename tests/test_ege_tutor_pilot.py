@@ -108,3 +108,35 @@ def test_task27_real_file_error_opens_diagnostic_case():
     assert record_tutor_pilot_task27_file_answer(attempt, "task27_file_a", "1 2") is False
     assert 27 in attempt.diagnostics
     assert attempt.diagnostics[27]["expected_answer"] == "44694 69754"
+
+
+def test_task14_transfer_error_routes_to_relevant_fixed_diagnostic_path():
+    from src.services.ege_exam_service import next_attempt_diagnostic_probe
+    attempt = create_task_first_tutor_attempt()
+    assert record_tutor_pilot_transfer_answer(attempt, 14, "2") is False
+    case = attempt.diagnostics[14]
+    assert case["probe_operation_order"] == [1, 0, 2]
+    assert case["continue_after_correct_probe"] is True
+    probe = next_attempt_diagnostic_probe(attempt)
+    assert probe["task_number"] == 14
+    assert probe["operation_index"] == 1
+
+
+def test_task27_small_transfer_error_diagnoses_center_not_cluster_count():
+    from src.services.ege_exam_service import next_attempt_diagnostic_probe
+    attempt = create_task_first_tutor_attempt()
+    assert record_tutor_pilot_transfer_answer(attempt, 27, "999") is False
+    case = attempt.diagnostics[27]
+    assert case["probe_operation_order"] == [1]
+    probe = next_attempt_diagnostic_probe(attempt)
+    assert probe["operation_index"] == 1
+
+
+def test_task27_file_error_uses_only_file_foundation_diagnostics():
+    from src.services.ege_exam_service import next_attempt_diagnostic_probe, record_tutor_pilot_task27_file_answer
+    attempt = create_task_first_tutor_attempt()
+    assert record_tutor_pilot_task27_file_answer(attempt, "task27_file_a", "4545 85787") is False
+    case = attempt.diagnostics[27]
+    assert case["probe_operation_order"] == [0, 1]
+    assert case["continue_after_correct_probe"] is True
+    assert next_attempt_diagnostic_probe(attempt)["operation_index"] == 0

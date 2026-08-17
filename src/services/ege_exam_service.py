@@ -821,12 +821,26 @@ def record_tutor_pilot_transfer_answer(attempt: ExamAttempt, task_number: int, a
     if not is_correct:
         attempt.answers[task_number] = answer
         attempt.results[task_number] = False
-        attempt.diagnostics[task_number] = open_diagnostic_case(
+        case = open_diagnostic_case(
             task_number=task_number,
             student_answer=answer,
             expected_answer=str(TUTOR_PILOT_TRANSFER_TASKS[task_number]["answer"]),
             skill_map=load_skill_map(),
         )
+        if task_number == 14:
+            # The transfer asks for hexadecimal conversion plus a property of
+            # the resulting digits. Check exactly those parts instead of an
+            # arbitrary first micro-skill, and allow the short fixed path to
+            # continue when one sub-skill is ruled out.
+            case["probe_operation_order"] = [1, 0, 2]
+            case["continue_after_correct_probe"] = True
+            case["diagnostic_context"] = "hex_conversion_even_digit_count"
+        elif task_number == 27:
+            # The small transfer already supplies the clusters; it tests only
+            # selection of the task-defined center, not cluster discovery.
+            case["probe_operation_order"] = [1]
+            case["diagnostic_context"] = "given_clusters_center_selection"
+        attempt.diagnostics[task_number] = case
     return is_correct
 
 
@@ -904,12 +918,20 @@ def record_tutor_pilot_task27_file_answer(
     attempt.answers[27] = answer
     attempt.results[27] = is_correct
     if not is_correct:
-        attempt.diagnostics[27] = open_diagnostic_case(
+        case = open_diagnostic_case(
             task_number=27,
             student_answer=answer,
             expected_answer=" ".join(map(str, expected)),
             skill_map=load_skill_map(),
         )
+        # The real-file stage first needs to distinguish cluster separation
+        # from center selection. Do not misdiagnose a file error from an
+        # unrelated label-count/max-distance quiz. File-specific filtering and
+        # output-format diagnostics will be layered after these foundations.
+        case["probe_operation_order"] = [0, 1]
+        case["continue_after_correct_probe"] = True
+        case["diagnostic_context"] = stage
+        attempt.diagnostics[27] = case
     else:
         attempt.diagnostics.pop(27, None)
     return is_correct

@@ -321,8 +321,19 @@ def next_control_probe(case: dict) -> dict | None:
     hypothesis and stop probing this task. A confirmed weakness still requires
     two independent failed probes of the same atomic skill.
     """
-    probes = CONTROL_PROBES.get(int(case.get("task_number", 0)), ())
-    if any(
+    all_probes = CONTROL_PROBES.get(int(case.get("task_number", 0)), ())
+    preferred_order = case.get("probe_operation_order")
+    if preferred_order:
+        by_operation = {item["operation_index"]: item for item in all_probes}
+        probes = tuple(by_operation[index] for index in preferred_order if index in by_operation)
+    else:
+        probes = all_probes
+
+    # Generic diagnostics still stop after a correct disambiguating probe.
+    # A task-context diagnostic may explicitly continue through a short list of
+    # operations that are all required by the student's failed task. This is
+    # not gap fishing: the list is fixed by the task family before any probe.
+    if not case.get("continue_after_correct_probe") and any(
         item.get("kind") == "control_probe" and item.get("is_correct") is True
         for item in case.get("evidence", [])
     ):
