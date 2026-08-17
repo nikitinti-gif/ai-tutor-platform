@@ -1,8 +1,8 @@
 """Progressive learning paths from prerequisite skills to exam-level EGE tasks.
 
-The first vertical slice covers reasoning task 14.  The service is deliberately
-provider-independent: Python owns task structure, canonical answers and state
-transitions.  An LLM may later explain a step, but cannot decide mastery.
+The first vertical slice covers reasoning task 14. Python owns task structure,
+canonical answers and mastery transitions. An LLM may explain a step, but cannot
+decide correctness or mastery.
 """
 from __future__ import annotations
 
@@ -39,6 +39,16 @@ _ANALOGUE_VALUE = (
     - 9
 )
 
+# A fresh exam-level transfer that is not the published open-variant task.
+# This prevents a memorised official answer from being counted as mastery.
+_EXAM_TRANSFER_VALUE = (
+    4 * (1296**2019)
+    - 3 * (216**2020)
+    + 2 * (36**2021)
+    - 6**2022
+    - 2027
+)
+
 
 TASK14_LEVELS: tuple[dict, ...] = (
     {
@@ -46,6 +56,7 @@ TASK14_LEVELS: tuple[dict, ...] = (
         "title": "Значение буквенной цифры",
         "skill_id": "number_systems.digit_property_from_value",
         "support": "В системах счисления после 9 используются буквенные цифры: A=10, B=11, ..., Z=35.",
+        "worked_example": "В 16-ричной системе A=10, B=11, C=12, D=13, поэтому следующая цифра E имеет значение 14.",
         "prompt": "В 16-ричной системе цифра E имеет какое десятичное значение?",
         "answers": ("14",),
         "difficulty": "foundation",
@@ -65,6 +76,7 @@ TASK14_LEVELS: tuple[dict, ...] = (
         "title": "Свойство цифр записи",
         "skill_id": "number_systems.digit_property_from_value",
         "support": "Чётность буквенной цифры проверяется по её числовому значению: A=10, E=14 и т.д.",
+        "worked_example": "В записи 4BD₁₆ значения цифр равны 4, 11 и 13. Чётное среди них только 4, значит ответ для этого примера — 1.",
         "prompt": "В записи 2AE₁₆ сколько цифр имеют чётное числовое значение?",
         "answers": ("3",),
         "difficulty": "basic",
@@ -74,6 +86,7 @@ TASK14_LEVELS: tuple[dict, ...] = (
         "title": "Разрядная структура основания 36",
         "skill_id": "number_systems.large_number_digits",
         "support": "36^k в 36-ричной системе — это 1 и ровно k нулей после неё.",
+        "worked_example": "36² в системе с основанием 36 записывается как 100₃₆: после единицы стоят два нуля.",
         "prompt": "Сколько нулей стоит после единицы в 36-ричной записи числа 36^3?",
         "answers": ("3",),
         "difficulty": "basic",
@@ -83,6 +96,7 @@ TASK14_LEVELS: tuple[dict, ...] = (
         "title": "Собираем число по степеням основания",
         "skill_id": "number_systems.large_number_digits",
         "support": "Коэффициенты при 36^3, 36^2, 36 и 1 становятся последовательными цифрами записи, если каждый коэффициент от 0 до 35.",
+        "worked_example": "Например, 3·36² + 5·36 + 7 имеет запись 357₃₆: коэффициенты становятся цифрами соответствующих разрядов.",
         "prompt": "Число равно 2·36^3 + 3·36^2 + 4·36 + 5. Сколько цифр с чётным значением в его 36-ричной записи?",
         "answers": ("2",),
         "difficulty": "intermediate",
@@ -91,19 +105,28 @@ TASK14_LEVELS: tuple[dict, ...] = (
         "id": "exam_analogue",
         "title": "Упрощённый аналог №14",
         "skill_id": "number_systems.large_number_digits",
-        "support": "Теперь структура похожа на экзаменационную: сначала найди значение выражения, затем рассматривай его 36-ричную запись и считай цифры по числовому значению.",
+        "support": "Теперь структура похожа на экзаменационную: найди значение выражения, рассмотри его 36-ричную запись и считай цифры по числовому значению.",
         "prompt": "Найдите количество цифр с чётным значением в 36-ричной записи числа 5·1296^2 − 4·216^2 + 3·36^3 − 2·6^4 − 9.",
         "answers": (str(_even_digit_count_base36(_ANALOGUE_VALUE)),),
         "difficulty": "transfer",
     },
     {
         "id": "exam_task",
-        "title": "Экзаменационный уровень №14",
+        "title": "Открытый вариант КЕГЭ №14",
         "skill_id": "number_systems.large_number_digits",
         "support": "Подсказок больше нет. Это формулировка открытого варианта КЕГЭ-2026.",
         "prompt": get_open_variant_task(14).statement,
         "answers": tuple(item for row in get_open_variant_task(14).answer_rows for item in row),
         "difficulty": "exam",
+    },
+    {
+        "id": "exam_transfer",
+        "title": "Независимый экзаменационный перенос",
+        "skill_id": "number_systems.large_number_digits",
+        "support": "Последняя проверка без подсказок: новая задача того же экзаменационного семейства, которой не было в открытом варианте.",
+        "prompt": "Найдите количество цифр с чётным значением в 36-ричной записи числа 4·1296^2019 − 3·216^2020 + 2·36^2021 − 6^2022 − 2027.",
+        "answers": (str(_even_digit_count_base36(_EXAM_TRANSFER_VALUE)),),
+        "difficulty": "exam_transfer",
     },
 )
 
@@ -135,11 +158,7 @@ class LearningPath:
 
 
 def build_learning_path(task_number: int, *, source: str = "diagnostic_exam") -> LearningPath:
-    """Build the first production learning-path slice.
-
-    Only task 14 is enabled until this vertical slice passes Telegram E2E.
-    Programming tasks intentionally use a different future engine.
-    """
+    """Build the first production reasoning learning-path slice."""
     if task_number != 14:
         raise ValueError("Progressive Learning Path is currently enabled only for task 14.")
     mode = get_task_solution_mode(task_number)
@@ -160,7 +179,6 @@ def render_current_step(path: LearningPath) -> str:
         return "🏆 Ветка №14 завершена: экзаменационный уровень подтверждён."
     number = path.current_index + 1
     total = len(TASK14_LEVELS)
-    support = ""
     if path.attempts_on_step == 0:
         support = f"\n\n💡 Перед задачей:\n{step['support']}"
     elif path.attempts_on_step >= 2 and step.get("worked_example"):
@@ -214,9 +232,6 @@ def submit_answer(path: LearningPath, answer: str) -> dict:
             "next_step": current_step(path),
         }
 
-    # Wrong answers do not create a weakness by themselves.  Stay on the same
-    # level and make the support explicit.  A later Tutor policy may insert an
-    # explanation or worked example after repeated failures.
     return {
         "is_correct": False,
         "status": path.status,
