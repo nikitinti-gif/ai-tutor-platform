@@ -4,7 +4,7 @@ p = Path('src/services/ege_exam_service.py')
 text = p.read_text(encoding='utf-8')
 start = text.index('TUTOR_PILOT_TASKS = {\n')
 end = text.index('\n\ndef verify_tutor_pilot_answer', start)
-replacement = '''TUTOR_PILOT_TASKS = {
+replacement = r'''TUTOR_PILOT_TASKS = {
     5: {
         "title": "Алгоритм с двоичной записью",
         "teacher_intro": (
