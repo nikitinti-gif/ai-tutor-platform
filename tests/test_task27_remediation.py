@@ -38,3 +38,10 @@ def test_task27_mastery_rejects_incomplete_evidence():
     attempt=_attempt(); dna,_=apply_confirmed_ege_diagnostics(None,123,attempt); remediation=start_task27_remediation(attempt); lesson=TASK27_REMEDIATION[remediation["skill_id"]]
     submit_task27_remediation_answer(attempt,lesson["control_answers"][0])
     with pytest.raises(ValueError): confirm_ege_remediation_mastery(dna,27,attempt.attempt_id,attempt.remediation)
+
+
+def test_task27_center_remediation_uses_ege_wording():
+    lesson = TASK27_REMEDIATION["programming.medoid_minimum"]
+    assert "центр" in lesson["explanation"].lower()
+    assert "среди исходных точек" in lesson["explanation"].lower()
+    assert "медоид" not in lesson["control_prompt"].lower()

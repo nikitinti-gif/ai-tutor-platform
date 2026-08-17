@@ -76,3 +76,12 @@ def test_transfer_task_removes_teacher_scaffolding():
     assert "Разобранный пример" not in rendered
     assert "Что здесь нужно понять" not in rendered
     assert "N = 13" not in rendered
+
+
+def test_task27_uses_current_ege_center_definition_not_centroid_average():
+    rendered = render_tutor_pilot_task(27)
+    assert "одна из исходных точек" in rendered
+    assert "сумма расстояний" in rendered
+    assert "среднее арифметическое координат" not in rendered
+    assert "Связь с реальным №27" in rendered
+    assert "читаются из файлов" in rendered

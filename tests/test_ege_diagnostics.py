@@ -848,7 +848,7 @@ def test_task27_two_failed_bound_probes_confirm_exact_pedagogical_gap():
     assert len(confirmed) == 1
     assert confirmed[0]["skill_id"] == "programming.medoid_minimum"
     assert "минимальной сумме расстояний" in confirmed[0]["description"]
-    assert "Медоид" in case["learning_action"]
+    assert "центр" in case["learning_action"].lower()
 
 
 def test_diagnostic_summary_uses_pedagogical_gap_instead_of_engineering_step():
@@ -868,8 +868,8 @@ def test_diagnostic_summary_uses_pedagogical_gap_instead_of_engineering_step():
     )
     attempt.diagnostics[27] = case
     summary = ege_exam_service.diagnostic_summary(attempt)
-    assert "Ошибается при выборе медоида по минимальной сумме расстояний." in summary
-    assert "Что повторить: Медоид — объект кластера" in summary
+    assert "Ошибается при выборе центра кластера по минимальной сумме расстояний." in summary
+    assert "Что повторить: В актуальном №27 центр выбирают среди точек кластера" in summary
     assert f"№27: {case['failed_step']}" not in summary
 
 
