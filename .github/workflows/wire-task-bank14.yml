@@ -1,0 +1,31 @@
+name: Wire curated task bank Telegram pilot
+on:
+  push:
+    branches: [release/0.1-diagnostics]
+permissions:
+  contents: write
+jobs:
+  migrate:
+    if: ${{ github.event.head_commit.message == 'Wire curated task bank Telegram pilot' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/0.1-diagnostics
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/_tmp_wire_task_bank14.py
+      - run: pip install -r requirements.txt pytest
+      - run: pytest -q tests/test_ege_task_bank.py tests/test_student_diagnostic_handler_flow.py tests/test_ege_learning_path.py tests/test_skill_graph.py
+        env:
+          BOT_TOKEN: 123456:TESTTOKEN
+          PYTHONPATH: ${{ github.workspace }}
+      - run: |
+          rm scripts/_tmp_wire_task_bank14.py
+          rm .github/workflows/wire-task-bank14.yml
+          git config user.name 'nikitinti-gif'
+          git config user.email 'nikitinti@gmail.com'
+          git add -A
+          git commit -m 'Expose curated task bank14 pilot in Telegram'
+          git push origin HEAD:release/0.1-diagnostics
