@@ -607,6 +607,17 @@ async def start_ege_exam(message: Message, state: FSMContext):
     from src.services.ege_exam_service import ExamAttempt
 
     saved = get_ege_session(message.from_user.id)
+    if saved and saved.get("status") == "learning_path_in_progress":
+        from src.services.ege_exam_service import ExamAttempt
+        from src.services.ege_learning_path import LearningPath, render_current_step
+
+        attempt = ExamAttempt.from_dict(saved.get("attempt"))
+        path = LearningPath.from_dict(attempt.learning_path)
+        await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
+        await state.update_data(ege_attempt=attempt.to_dict())
+        await message.answer("▶️ Продолжаем индивидуальную учебную ветку №14.")
+        await message.answer(render_current_step(path))
+        return
     if saved and saved.get("status") == "remediation_in_progress":
         from src.services.ege_exam_service import render_task5_remediation, render_task14_remediation, render_task27_remediation
 
@@ -851,6 +862,73 @@ async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
     await _begin_ege_diagnostics(message, state, attempt)
 
 
+async def _start_learning_path_after_exam_if_available(message: Message, state: FSMContext, attempt) -> bool:
+    """Start the first progressive post-exam branch for an actually failed task."""
+    if attempt.results.get(14) is not False:
+        return False
+    from src.services.ege_learning_path import build_learning_path, render_current_step
+
+    path = build_learning_path(14, source="diagnostic_exam")
+    attempt.learning_path = path.to_dict()
+    save_ege_session(message.from_user.id, attempt.to_dict(), status="learning_path_in_progress")
+    await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
+    await state.update_data(ege_attempt=attempt.to_dict())
+    await message.answer(
+        "🧭 В пробном КЕГЭ задание №14 не решено. Теперь не будем искать ошибку случайными вопросами.\n\n"
+        "Построил учебную ветку от самых базовых навыков до настоящей формулировки №14. "
+        "Каждый следующий шаг открывается только после правильного ответа на предыдущем."
+    )
+    await message.answer(render_current_step(path))
+    return True
+
+
+async def receive_ege_learning_path_answer(message: Message, state: FSMContext) -> None:
+    """Advance one deterministic reasoning Learning Path step."""
+    from src.services.ege_exam_service import ExamAttempt
+    from src.services.ege_learning_path import LearningPath, render_current_step, submit_answer
+
+    data = await state.get_data()
+    attempt_data = data.get("ege_attempt")
+    if not attempt_data:
+        saved = get_ege_session(message.from_user.id)
+        attempt_data = saved.get("attempt") if saved else None
+    if not attempt_data:
+        await state.clear()
+        await message.answer("Учебная ветка не найдена. Запусти /ege2026.")
+        return
+
+    attempt = ExamAttempt.from_dict(attempt_data)
+    if not attempt.learning_path:
+        await state.clear()
+        await message.answer("Учебная ветка №14 не найдена.")
+        return
+
+    path = LearningPath.from_dict(attempt.learning_path)
+    result = submit_answer(path, message.text or "")
+    attempt.learning_path = path.to_dict()
+    await state.update_data(ege_attempt=attempt.to_dict())
+
+    if result["status"] == "mastered":
+        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
+        await state.clear()
+        await message.answer(
+            "🏆 Ветка №14 пройдена полностью: база → промежуточные задачи → аналог → "
+            "настоящий экзаменационный уровень. Навык подтверждён новой задачей, а не одной подсказкой."
+        )
+        return
+
+    save_ege_session(message.from_user.id, attempt.to_dict(), status="learning_path_in_progress")
+    if result["is_correct"]:
+        await message.answer("✅ Верно. Поднимаемся на следующий уровень.")
+    elif result.get("needs_teaching"):
+        await message.answer(
+            "Пока этот шаг не закрепился. Не повышаю сложность: сначала разберём базовое правило ещё раз."
+        )
+    else:
+        await message.answer("Пока неверно. Остаёмся на этом уровне и разберём его без спешки.")
+    await message.answer(render_current_step(path))
+
+
 async def receive_ege_answer(message: Message, state: FSMContext):
     from src.services.ege_exam_service import (
         ExamAttempt, render_summary, submit_answer,
@@ -867,6 +945,8 @@ async def receive_ege_answer(message: Message, state: FSMContext):
 
     if attempt.finished:
         await message.answer(f"{result.message}\n\n{render_summary(attempt)}")
+        if await _start_learning_path_after_exam_if_available(message, state, attempt):
+            return
         await _begin_ege_diagnostics(message, state, attempt)
         return
 
@@ -912,6 +992,8 @@ async def finish_ege_exam(message: Message, state: FSMContext):
 
     attempt = ExamAttempt.from_dict(attempt_data)
     await message.answer(render_summary(attempt))
+    if await _start_learning_path_after_exam_if_available(message, state, attempt):
+        return
     await _begin_ege_diagnostics(message, state, attempt)
 
 
@@ -942,6 +1024,11 @@ def register_student_handlers(dp: Dispatcher):
     dp.message.register(
         receive_ege_remediation_answer,
         StudentEgeExamStates.waiting_remediation_answer,
+        F.text,
+    )
+    dp.message.register(
+        receive_ege_learning_path_answer,
+        StudentEgeExamStates.waiting_learning_path_answer,
         F.text,
     )
     dp.message.register(student_homework, F.text == "📚 Моё ДЗ")

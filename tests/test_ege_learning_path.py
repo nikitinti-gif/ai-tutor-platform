@@ -69,3 +69,18 @@ def test_learning_path_rejects_programming_task_until_programming_tutor_exists()
         assert "only for task 14" in str(error)
     else:
         raise AssertionError("task 27 must not enter the reasoning Learning Path")
+
+
+
+def test_exam_attempt_persists_learning_path_state():
+    from src.services.ege_exam_service import ExamAttempt
+    path = build_learning_path(14)
+    submit_answer(path, TASK14_LEVELS[0]["answers"][0])
+    attempt = ExamAttempt()
+    attempt.results[14] = False
+    attempt.learning_path = path.to_dict()
+    restored = ExamAttempt.from_dict(attempt.to_dict())
+    restored_path = LearningPath.from_dict(restored.learning_path)
+    assert restored.results[14] is False
+    assert restored_path.current_index == 1
+    assert current_step(restored_path)["id"] == "small_conversion"

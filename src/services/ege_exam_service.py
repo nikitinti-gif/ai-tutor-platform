@@ -215,6 +215,7 @@ class ExamAttempt:
     remediation: dict = field(default_factory=dict)
     tutor_pilot_index: int = 0
     tutor_pilot_stage: str = "supported"
+    learning_path: dict = field(default_factory=dict)
 
     @property
     def finished(self) -> bool:
@@ -240,6 +241,7 @@ class ExamAttempt:
             dict(data.get("remediation", {})),
             int(data.get("tutor_pilot_index", 0)),
             str(data.get("tutor_pilot_stage", "supported")),
+            dict(data.get("learning_path", {})),
         )
 
 
