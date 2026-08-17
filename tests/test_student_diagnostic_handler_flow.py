@@ -149,3 +149,30 @@ def test_non_admin_cannot_start_diagnostic_pilot(monkeypatch):
 
     assert message.answers == ["⛔ Эта тестовая команда доступна только администратору."]
     assert state.state is None
+
+
+def test_learning_path_answer_survives_restart(monkeypatch):
+    from src.services.ege_exam_service import ExamAttempt
+    from src.services.ege_learning_path import TASK14_LEVELS, build_learning_path, submit_answer
+
+    sessions = {}
+    _patch_sessions(monkeypatch, sessions)
+    attempt = ExamAttempt()
+    attempt.results[14] = False
+    path = build_learning_path(14)
+    for level in TASK14_LEVELS[:5]:
+        result = submit_answer(path, str(level["answers"][0]))
+        assert result["is_correct"] is True
+    assert path.current_index == 5
+    attempt.learning_path = path.to_dict()
+    sessions[42] = {"attempt": attempt.to_dict(), "status": "learning_path_in_progress"}
+
+    # Simulate a Render restart: aiogram FSM is empty, but persisted session survives.
+    state = FakeState()
+    message = FakeMessage(text=str(TASK14_LEVELS[5]["answers"][0]))
+    asyncio.run(student_handler.resume_ege_learning_path_after_restart(message, state))
+
+    restored = sessions[42]["attempt"]["learning_path"]
+    assert restored["current_index"] == 6
+    assert any("Поднимаемся на следующий уровень" in item for item in message.answers)
+    assert any("ШАГ 7/7" in item for item in message.answers)

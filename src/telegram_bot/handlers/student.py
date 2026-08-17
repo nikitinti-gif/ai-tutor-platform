@@ -838,6 +838,24 @@ async def resume_ege_tutor_pilot_after_restart(message: Message, state: FSMConte
     await receive_ege_tutor_pilot_answer(message, state)
 
 
+async def resume_ege_learning_path_after_restart(message: Message, state: FSMContext) -> None:
+    """Recover a persisted Learning Path when Render/redeploy cleared aiogram FSM."""
+    saved = get_ege_session(message.from_user.id)
+    if not saved or saved.get("status") != "learning_path_in_progress":
+        from aiogram.dispatcher.event.bases import SkipHandler
+        raise SkipHandler
+
+    from src.services.ege_exam_service import ExamAttempt
+
+    attempt = ExamAttempt.from_dict(saved.get("attempt"))
+    if not attempt.learning_path:
+        from aiogram.dispatcher.event.bases import SkipHandler
+        raise SkipHandler
+    await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
+    await state.update_data(ege_attempt=attempt.to_dict())
+    await receive_ege_learning_path_answer(message, state)
+
+
 async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
     """Start the 5/14/27 probe review without completing the full exam."""
     is_admin = bool(
@@ -1068,4 +1086,5 @@ def register_student_handlers(dp: Dispatcher):
     )
     dp.message.register(student_progress, F.text == "📊 Мой прогресс")
     dp.message.register(student_question, F.text == "❓ Задать вопрос")
+    dp.message.register(resume_ege_learning_path_after_restart, F.text)
     dp.message.register(resume_ege_tutor_pilot_after_restart, F.text)

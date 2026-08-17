@@ -84,3 +84,15 @@ def test_exam_attempt_persists_learning_path_state():
     assert restored.results[14] is False
     assert restored_path.current_index == 1
     assert current_step(restored_path)["id"] == "small_conversion"
+
+
+def test_repeated_foundation_error_escalates_to_worked_example():
+    path = build_learning_path(14)
+    submit_answer(path, TASK14_LEVELS[0]["answers"][0])
+    submit_answer(path, "D2")
+    submit_answer(path, "F2")
+    text = render_current_step(path)
+    assert "Разберём похожий пример" in text
+    assert "45 = 2·16 + 13" in text
+    assert "2D" in text
+    assert "47" in text

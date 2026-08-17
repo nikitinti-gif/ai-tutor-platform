@@ -55,6 +55,7 @@ TASK14_LEVELS: tuple[dict, ...] = (
         "title": "Небольшой перевод в другую систему",
         "skill_id": "number_systems.base_conversion",
         "support": "При переводе дели число на основание и читай остатки снизу вверх.",
+        "worked_example": "Похожий пример: 45 = 2·16 + 13. Остаток 13 — это D, поэтому 45₁₀ = 2D₁₆. Теперь тем же способом разложи 47.",
         "prompt": "Переведи 47 из десятичной системы в 16-ричную. Запиши только результат.",
         "answers": ("2F", "2f"),
         "difficulty": "foundation",
@@ -162,6 +163,11 @@ def render_current_step(path: LearningPath) -> str:
     support = ""
     if path.attempts_on_step == 0:
         support = f"\n\n💡 Перед задачей:\n{step['support']}"
+    elif path.attempts_on_step >= 2 and step.get("worked_example"):
+        support = (
+            f"\n\n🧑‍🏫 Разберём похожий пример:\n{step['worked_example']}"
+            f"\n\n💡 Теперь вернись к своей задаче:\n{step['support']}"
+        )
     else:
         support = f"\n\n💡 Подсказка:\n{step['support']}"
     return (
