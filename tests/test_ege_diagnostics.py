@@ -978,3 +978,24 @@ def test_rendered_probe_hides_internal_audit_language():
     assert "Почему эта проба подходит" not in rendered
     assert "Источник:" not in rendered
     assert "1298" in rendered
+
+
+def test_task14_retest_returns_to_teaching_after_two_wrong_answers():
+    from src.services.ege_exam_service import ExamAttempt, submit_task14_remediation_answer
+    attempt = ExamAttempt()
+    attempt.remediation = {
+        "task_number": 14,
+        "gap_id": "BASE_REMAINDER_EXTRACTION",
+        "status": "remediating",
+        "stage": "retest",
+        "control_attempts": 1,
+        "retest_attempts": 0,
+        "verification_attempts": 0,
+        "learning_round": 1,
+        "stage_history": [],
+    }
+    submit_task14_remediation_answer(attempt, "wrong")
+    result = submit_task14_remediation_answer(attempt, "still-wrong")
+    assert result["is_correct"] is False
+    assert attempt.remediation["stage"] == "control"
+    assert attempt.remediation["learning_round"] == 2

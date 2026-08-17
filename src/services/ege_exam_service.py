@@ -538,6 +538,14 @@ def submit_task14_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
         remediation["control_attempts"] = 0
         remediation["retest_attempts"] = 0
         remediation["learning_round"] += 1
+    elif stage == "retest" and remediation["retest_attempts"] >= 2:
+        # Repeating the same transfer question is not teaching. After two
+        # failed attempts return to a fresh explanation/control round.
+        remediation["status"] = "remediating"
+        remediation["stage"] = "control"
+        remediation["control_attempts"] = 0
+        remediation["retest_attempts"] = 0
+        remediation["learning_round"] += 1
     return {
         "is_correct": is_correct,
         "status": remediation["status"],
@@ -662,6 +670,12 @@ def submit_task27_remediation_answer(attempt: ExamAttempt, answer: str) -> dict:
     elif is_correct:
         remediation["status"] = "mastered"; remediation["stage"] = "completed"
     elif stage == "verification":
+        remediation["status"] = "remediating"; remediation["stage"] = "control"
+        remediation["control_attempts"] = 0; remediation["retest_attempts"] = 0; remediation["verification_attempts"] = 0
+        remediation["learning_round"] += 1
+    elif stage == "retest" and remediation["retest_attempts"] >= 2:
+        # Never drill the same transfer prompt indefinitely. Two failed
+        # attempts mean the explanation did not transfer; reteach instead.
         remediation["status"] = "remediating"; remediation["stage"] = "control"
         remediation["control_attempts"] = 0; remediation["retest_attempts"] = 0; remediation["verification_attempts"] = 0
         remediation["learning_round"] += 1

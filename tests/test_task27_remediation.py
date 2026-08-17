@@ -45,3 +45,27 @@ def test_task27_center_remediation_uses_ege_wording():
     assert "центр" in lesson["explanation"].lower()
     assert "среди исходных точек" in lesson["explanation"].lower()
     assert "медоид" not in lesson["control_prompt"].lower()
+
+
+def test_task27_retest_does_not_repeat_forever_after_two_wrong_answers():
+    from src.services.ege_exam_service import ExamAttempt, submit_task27_remediation_answer
+    attempt = ExamAttempt()
+    attempt.remediation = {
+        "task_number": 27,
+        "skill_id": "programming.cluster_count_from_separation",
+        "status": "remediating",
+        "stage": "retest",
+        "control_attempts": 1,
+        "retest_attempts": 0,
+        "verification_attempts": 0,
+        "learning_round": 1,
+        "stage_history": [],
+    }
+    first = submit_task27_remediation_answer(attempt, "1")
+    assert first["is_correct"] is False
+    assert attempt.remediation["stage"] == "retest"
+    second = submit_task27_remediation_answer(attempt, "2")
+    assert second["is_correct"] is False
+    assert attempt.remediation["stage"] == "control"
+    assert attempt.remediation["learning_round"] == 2
+    assert attempt.remediation["retest_attempts"] == 0
