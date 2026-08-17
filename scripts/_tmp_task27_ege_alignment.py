@@ -20,14 +20,12 @@ for old, new in repls.items():
         raise SystemExit(f'missing service block: {old[:80]}')
     text = text.replace(old, new, 1)
 
-# Add an explicit bridge from the small teaching example to the real exam task.
 needle = '"Найди центр каждого кластера по этому определению. Затем сложи все четыре координаты двух найденных центров."\n        ),\n        "answer": "24",'
 replacement = '"Найди центр каждого кластера по этому определению. Затем сложи все четыре координаты двух найденных центров."\n        ),\n        "exam_bridge": (\n            "Это учебная модель одного шага №27. В реальном КЕГЭ точки читаются из файлов, "\n            "их значительно больше, а разбиение и поиск центров выполняются программой."\n        ),\n        "answer": "24",'
 if needle not in text:
     raise SystemExit('task27 exam bridge insertion point not found')
 text = text.replace(needle, replacement, 1)
 
-# Render the bridge only for task 27, without adding new generic architecture.
 old = '''        f"✍️ Теперь попробуй сам:\\n{task['statement']}\\n\\n"\n        "Отправь только итоговый ответ."\n'''
 new = '''        f"✍️ Теперь попробуй сам:\\n{task['statement']}\\n\\n"\n        + (f"🧩 Связь с реальным №27:\\n{task['exam_bridge']}\\n\\n" if task.get("exam_bridge") else "")\n        + "Отправь только итоговый ответ."\n'''
 if old not in text:
@@ -38,22 +36,24 @@ p.write_text(text, encoding='utf-8')
 # Student-facing diagnosis terminology. Keep the internal skill id for backward compatibility.
 p = Path('src/ai_engine/diagnostics.py')
 text = p.read_text(encoding='utf-8')
-text = text.replace(
-    '"description": "Ошибается при выборе медоида по минимальной сумме расстояний.",\n        "required_rule": "Медоид — объект кластера с минимальной суммой расстояний до остальных объектов этого кластера."',
-    '"description": "Ошибается при выборе центра кластера по минимальной сумме расстояний.",\n        "required_rule": "В актуальном №27 центр выбирают среди точек кластера: сумма расстояний от него до остальных точек должна быть минимальной."',
-    1,
-)
+old = '"description": "Ошибается при выборе медоида по минимальной сумме расстояний.",\n        "required_rule": "Медоид — объект кластера с минимальной суммой расстояний до остальных объектов этого кластера."'
+new = '"description": "Ошибается при выборе центра кластера по минимальной сумме расстояний.",\n        "required_rule": "В актуальном №27 центр выбирают среди точек кластера: сумма расстояний от него до остальных точек должна быть минимальной."'
+if old not in text:
+    raise SystemExit('task27 diagnostic wording not found')
+text = text.replace(old, new, 1)
 p.write_text(text, encoding='utf-8')
 
 # Human-readable Learning DNA name. Internal id remains programming.medoid_minimum to avoid migration churn.
 p = Path('src/skills/ege_informatics_2026.json')
 text = p.read_text(encoding='utf-8')
-text = text.replace(
-    '"name": "Выбор медоида по минимальной сумме расстояний"',
-    '"name": "Выбор центра кластера по минимальной сумме расстояний"',
-    1,
-)
-text = text.replace('"найти медоид",', '"найти центр кластера по условию",', 1)
+old = '"name": "Выбор медоида по минимальной сумме расстояний"'
+if old not in text:
+    raise SystemExit('task27 skill name not found')
+text = text.replace(old, '"name": "Выбор центра кластера по минимальной сумме расстояний"', 1)
+old = '"найти медоид",'
+if old not in text:
+    raise SystemExit('task27 operation wording not found')
+text = text.replace(old, '"найти центр кластера по условию",', 1)
 p.write_text(text, encoding='utf-8')
 
 # Regression protection for the terminology and real-exam bridge.
@@ -69,4 +69,21 @@ tests = p.read_text(encoding='utf-8')
 addition = '''\n\ndef test_task27_center_remediation_uses_ege_wording():\n    lesson = TASK27_REMEDIATION["programming.medoid_minimum"]\n    assert "центр" in lesson["explanation"].lower()\n    assert "среди исходных точек" in lesson["explanation"].lower()\n    assert "медоид" not in lesson["control_prompt"].lower()\n'''
 if 'test_task27_center_remediation_uses_ege_wording' not in tests:
     tests += addition
+p.write_text(tests, encoding='utf-8')
+
+# Update older regression expectations: terminology changed intentionally, behavior did not.
+p = Path('tests/test_ege_diagnostics.py')
+tests = p.read_text(encoding='utf-8')
+tests = tests.replace(
+    'assert "Медоид" in case["learning_action"]',
+    'assert "центр" in case["learning_action"].lower()',
+)
+tests = tests.replace(
+    'assert "Ошибается при выборе медоида по минимальной сумме расстояний." in summary',
+    'assert "Ошибается при выборе центра кластера по минимальной сумме расстояний." in summary',
+)
+tests = tests.replace(
+    'assert "Что повторить: Медоид — объект кластера" in summary',
+    'assert "Что повторить: В актуальном №27 центр выбирают среди точек кластера" in summary',
+)
 p.write_text(tests, encoding='utf-8')
