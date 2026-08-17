@@ -856,6 +856,52 @@ async def resume_ege_learning_path_after_restart(message: Message, state: FSMCon
     await receive_ege_learning_path_answer(message, state)
 
 
+async def start_task14_bank_pilot(message: Message, state: FSMContext) -> None:
+    """Admin shortcut: issue one curated real-world task14 bank item."""
+    is_admin = bool(
+        ADMIN_TELEGRAM_ID
+        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+    if not is_admin:
+        await message.answer("⛔ Эта тестовая команда доступна только администратору.")
+        return
+    from src.services.ege_task_bank import get_task, render_task
+
+    await state.clear()
+    task = get_task("reshuege-92256")
+    await state.set_state(StudentEgeExamStates.waiting_task_bank_answer)
+    await state.update_data(task_bank_id=task.task_id)
+    await message.answer(
+        "🧪 Проверяем Task Bank: реальная задача №14 из курируемого внешнего банка, "
+        "но эталон вычисляет наш Python."
+    )
+    await message.answer(render_task(task))
+
+
+async def receive_task14_bank_answer(message: Message, state: FSMContext) -> None:
+    from src.services.ege_task_bank import get_task, validate_answer
+
+    data = await state.get_data()
+    task_id = data.get("task_bank_id")
+    if not task_id:
+        await state.clear()
+        await message.answer("Задача банка не найдена. Запусти /test_task_bank14.")
+        return
+    task = get_task(str(task_id))
+    is_correct = validate_answer(task.task_id, message.text or "")
+    await state.clear()
+    if is_correct:
+        await message.answer(
+            "✅ Верно. Это была задача из внешнего курируемого банка, "
+            "а правильность ответа определил локальный Python-валидатор."
+        )
+    else:
+        await message.answer(
+            "❌ Пока неверно. Ответ не сверялся с сайтом: его независимо вычислил Python Tutor. "
+            "Позже эта ошибка будет направлять ученика в подходящую Learning Path."
+        )
+
+
 async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
     """Start the 5/14/27 probe review without completing the full exam."""
     is_admin = bool(
@@ -1047,8 +1093,10 @@ def register_student_handlers(dp: Dispatcher):
     dp.message.register(cancel_ege_exam, F.text == "/cancel_ege")
     dp.message.register(start_ege_tutor_pilot, F.text == "/test_ege_tutor")
     dp.message.register(start_task14_learning_path_pilot, F.text == "/test_learning_path14")
+    dp.message.register(start_task14_bank_pilot, F.text == "/test_task_bank14")
     dp.message.register(start_ege_diagnostic_pilot, F.text == "/test_ege_diagnostics")
     dp.message.register(receive_ege_tutor_pilot_answer, StudentEgeExamStates.waiting_tutor_pilot_answer)
+    dp.message.register(receive_task14_bank_answer, StudentEgeExamStates.waiting_task_bank_answer, F.text)
     dp.message.register(skip_ege_task, StudentEgeExamStates.waiting_answer, F.text == "/skip_ege")
     dp.message.register(finish_ege_exam, StudentEgeExamStates.waiting_answer, F.text == "/finish_ege")
     dp.message.register(start_ege_exam, F.text.in_({"/ege2026", "🎓 Пройти КЕГЭ"}))

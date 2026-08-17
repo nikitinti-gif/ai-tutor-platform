@@ -35,3 +35,4 @@ class StudentEgeExamStates(StatesGroup):
     waiting_diagnostic_answer = State()
     waiting_remediation_answer = State()
     waiting_learning_path_answer = State()
+    waiting_task_bank_answer = State()

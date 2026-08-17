@@ -174,3 +174,18 @@ def test_learning_path_answer_survives_restart(monkeypatch):
     assert restored["current_index"] == 6
     assert any("Поднимаемся на следующий уровень" in item for item in message.answers)
     assert any("ШАГ 7/8" in item for item in message.answers)
+
+
+def test_admin_can_issue_curated_task_bank14_item(monkeypatch):
+    state = FakeState()
+    message = FakeMessage(user_id=42)
+    monkeypatch.setattr(student_handler, "ADMIN_TELEGRAM_ID", "42")
+    asyncio.run(student_handler.start_task14_bank_pilot(message, state))
+    assert state.data["task_bank_id"] == "reshuege-92256"
+    assert any("Task Bank" in item for item in message.answers)
+    assert any("№92256" in item for item in message.answers)
+
+    answer = FakeMessage(user_id=42, text="71")
+    asyncio.run(student_handler.receive_task14_bank_answer(answer, state))
+    assert any("Python-валидатор" in item for item in answer.answers)
+    assert state.cleared is True
