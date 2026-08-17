@@ -62,6 +62,15 @@ def validate_skill_map(skill_map: dict) -> None:
             raise SkillMapValidationError(
                 f"Task {task['number']} lacks operations or typical errors"
             )
+        solution_mode = task.get("solution_mode")
+        if solution_mode not in {"reasoning", "application", "programming"}:
+            raise SkillMapValidationError(
+                f"Task {task['number']} has invalid solution_mode: {solution_mode!r}"
+            )
+        if not str(task.get("solution_mode_label", "")).strip():
+            raise SkillMapValidationError(
+                f"Task {task['number']} lacks solution_mode_label"
+            )
         mastery = task.get("mastery", {})
         if mastery.get("min_independent_attempts", 0) < 2:
             raise SkillMapValidationError(
@@ -140,6 +149,35 @@ def prerequisite_path(skill_id: str, skill_map: dict | None = None) -> list[str]
 
     visit(skill_id)
     return ordered
+
+
+def get_task(task_number: int, skill_map: dict | None = None) -> dict:
+    """Return one validated EGE task definition."""
+    subject_map = skill_map or load_skill_map()
+    task = next(
+        (item for item in subject_map["tasks"] if item["number"] == task_number),
+        None,
+    )
+    if task is None:
+        raise ValueError(f"Unknown EGE task: {task_number}")
+    return task
+
+
+def get_task_solution_mode(task_number: int, skill_map: dict | None = None) -> str:
+    """Return reasoning/application/programming route for an EGE task."""
+    return str(get_task(task_number, skill_map)["solution_mode"])
+
+
+def tasks_by_solution_mode(mode: str, skill_map: dict | None = None) -> list[int]:
+    """Return task numbers belonging to one tutor route."""
+    if mode not in {"reasoning", "application", "programming"}:
+        raise ValueError(f"Unknown solution mode: {mode}")
+    subject_map = skill_map or load_skill_map()
+    return [
+        int(task["number"])
+        for task in subject_map["tasks"]
+        if task.get("solution_mode") == mode
+    ]
 
 
 def task_diagnostic_path(task_number: int, skill_map: dict | None = None) -> list[str]:

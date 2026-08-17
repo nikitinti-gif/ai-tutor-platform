@@ -140,3 +140,9 @@ def test_task27_file_error_uses_only_file_foundation_diagnostics():
     assert case["probe_operation_order"] == [0, 1]
     assert case["continue_after_correct_probe"] is True
     assert next_attempt_diagnostic_probe(attempt)["operation_index"] == 0
+
+
+def test_tutor_pilot_architecture_keeps_programming_separate_from_reasoning():
+    from src.skills.skill_graph import get_task_solution_mode
+    assert [get_task_solution_mode(n) for n in (5, 14)] == ["reasoning", "reasoning"]
+    assert get_task_solution_mode(27) == "programming"

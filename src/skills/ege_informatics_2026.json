@@ -506,7 +506,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 2,
@@ -528,7 +530,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 3,
@@ -551,7 +555,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "application",
+      "solution_mode_label": "Работа с приложением или файлом"
     },
     {
       "number": 4,
@@ -572,7 +578,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 5,
@@ -596,7 +604,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 6,
@@ -617,7 +627,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 7,
@@ -639,7 +651,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 8,
@@ -660,7 +674,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 9,
@@ -682,7 +698,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "application",
+      "solution_mode_label": "Работа с приложением или файлом"
     },
     {
       "number": 10,
@@ -703,7 +721,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "application",
+      "solution_mode_label": "Работа с приложением или файлом"
     },
     {
       "number": 11,
@@ -725,7 +745,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 12,
@@ -748,7 +770,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 13,
@@ -771,7 +795,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 14,
@@ -793,7 +819,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 15,
@@ -815,7 +843,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 16,
@@ -836,7 +866,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 17,
@@ -858,7 +890,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "programming",
+      "solution_mode_label": "Программирование · решение через код"
     },
     {
       "number": 18,
@@ -880,7 +914,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "application",
+      "solution_mode_label": "Работа с приложением или файлом"
     },
     {
       "number": 19,
@@ -901,7 +937,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 20,
@@ -922,7 +960,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 21,
@@ -943,7 +983,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 22,
@@ -965,7 +1007,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "application",
+      "solution_mode_label": "Работа с приложением или файлом"
     },
     {
       "number": 23,
@@ -987,7 +1031,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "reasoning",
+      "solution_mode_label": "Рассуждение · можно решать без написания программы"
     },
     {
       "number": 24,
@@ -1008,7 +1054,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "programming",
+      "solution_mode_label": "Программирование · решение через код"
     },
     {
       "number": 25,
@@ -1030,7 +1078,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "programming",
+      "solution_mode_label": "Программирование · решение через код"
     },
     {
       "number": 26,
@@ -1053,7 +1103,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "programming",
+      "solution_mode_label": "Программирование · решение через код"
     },
     {
       "number": 27,
@@ -1076,7 +1128,9 @@
       "mastery": {
         "min_independent_attempts": 2,
         "requires_exam_level": true
-      }
+      },
+      "solution_mode": "programming",
+      "solution_mode_label": "Программирование · решение через код"
     }
   ],
   "legacy_focus_migrations": {
