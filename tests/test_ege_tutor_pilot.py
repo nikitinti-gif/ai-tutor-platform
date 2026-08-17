@@ -5,6 +5,8 @@ from src.services.ege_exam_service import (
     render_tutor_pilot_task,
     render_tutor_pilot_transfer_task,
     record_tutor_pilot_transfer_answer,
+    record_tutor_pilot_task27_file_answer,
+    render_tutor_pilot_task27_file_stage,
 )
 
 
@@ -85,3 +87,24 @@ def test_task27_uses_current_ege_center_definition_not_centroid_average():
     assert "среднее арифметическое координат" not in rendered
     assert "Связь с реальным №27" in rendered
     assert "читаются из файлов" in rendered
+
+
+def test_task27_real_file_stage_uses_official_data_and_python_reference_solver():
+    attempt = create_task_first_tutor_attempt()
+    rendered_a = render_tutor_pilot_task27_file_stage("task27_file_a")
+    rendered_b = render_tutor_pilot_task27_file_stage("task27_file_b")
+    assert "настоящий файл" in rendered_a.lower()
+    assert "красных гигантов" in rendered_a
+    assert "оранжевых гигантов" in rendered_b
+    assert "жёлтыми карликами" in rendered_b
+    assert record_tutor_pilot_task27_file_answer(attempt, "task27_file_a", "44694 69754") is True
+    assert 27 not in attempt.diagnostics
+    assert record_tutor_pilot_task27_file_answer(attempt, "task27_file_b", "138716 34029") is True
+    assert 27 not in attempt.diagnostics
+
+
+def test_task27_real_file_error_opens_diagnostic_case():
+    attempt = create_task_first_tutor_attempt()
+    assert record_tutor_pilot_task27_file_answer(attempt, "task27_file_a", "1 2") is False
+    assert 27 in attempt.diagnostics
+    assert attempt.diagnostics[27]["expected_answer"] == "44694 69754"

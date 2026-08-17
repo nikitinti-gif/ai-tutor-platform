@@ -812,6 +812,91 @@ def record_tutor_pilot_transfer_answer(attempt: ExamAttempt, task_number: int, a
     return is_correct
 
 
+TASK27_FILE_STAGE_META = {
+    "task27_file_a": {
+        "path": "Доп. файлы/1_27_A.txt",
+        "filename": "1_27_A.txt",
+        "title": "Файл A · настоящий формат КЕГЭ №27",
+    },
+    "task27_file_b": {
+        "path": "Доп. файлы/1_27_B.txt",
+        "filename": "1_27_B.txt",
+        "title": "Файл Б · настоящий формат КЕГЭ №27",
+    },
+}
+
+
+def render_tutor_pilot_task27_file_stage(stage: str) -> str:
+    if stage == "task27_file_a":
+        return (
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "📁 ПРАКТИКА С ФАЙЛОМ · КЕГЭ №27\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Теперь не игрушечные три точки, а настоящий файл открытого варианта 2026.\n\n"
+            "В файле A находятся точки двух кластеров. Для каждого кластера H=6,0 и W=5,5. "
+            "Центр кластера — одна из его точек, у которой сумма расстояний до остальных точек минимальна.\n\n"
+            "Найди кластер с наименьшим числом точек. Среди красных гигантов этого кластера "
+            "(спектральный класс M, класс светимости III) найди звезду, ближайшую к центру.\n\n"
+            "Ответ: два целых числа — целые части |Ax·10000| и |Ay·10000| через пробел.\n\n"
+            "Подсказка по организации решения: сначала прочитай файл и визуализируй точки; "
+            "после разбиения вычисляй центр перебором точек самого кластера. Сам ответ Python Tutor не показывает."
+        )
+    if stage == "task27_file_b":
+        return (
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🎯 БЕЗ УЧЕБНОГО ПРИМЕРА · КЕГЭ №27\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Файл Б содержит три кластера (H=6,0; W=5,5). Центр определяется так же — "
+            "как точка кластера с минимальной суммой расстояний.\n\n"
+            "B1: найди расстояние между центрами кластеров с наименьшим и наибольшим "
+            "количеством оранжевых гигантов (K + III).\n"
+            "B2: найди наибольшее расстояние между жёлтыми карликами (G + V), "
+            "принадлежащими одному кластеру.\n\n"
+            "Ответ: целые части B1·10000 и B2·10000 через пробел."
+        )
+    raise ValueError("Неизвестный этап файловой практики №27.")
+
+
+def verify_tutor_pilot_task27_file_answer(stage: str, answer: str) -> bool:
+    from src.services.ege_task27_service import (
+        normalize_two_number_answer, solve_open_variant_a, solve_open_variant_b,
+    )
+    normalized = normalize_two_number_answer(answer)
+    if normalized is None:
+        return False
+    if stage == "task27_file_a":
+        expected = solve_open_variant_a()["answer"]
+    elif stage == "task27_file_b":
+        expected = solve_open_variant_b()["answer"]
+    else:
+        raise ValueError("Неизвестный этап файловой практики №27.")
+    return normalized == expected
+
+
+def record_tutor_pilot_task27_file_answer(
+    attempt: ExamAttempt, stage: str, answer: str
+) -> bool:
+    from src.services.ege_task27_service import solve_open_variant_a, solve_open_variant_b
+    is_correct = verify_tutor_pilot_task27_file_answer(stage, answer)
+    expected = (
+        solve_open_variant_a()["answer"]
+        if stage == "task27_file_a"
+        else solve_open_variant_b()["answer"]
+    )
+    attempt.answers[27] = answer
+    attempt.results[27] = is_correct
+    if not is_correct:
+        attempt.diagnostics[27] = open_diagnostic_case(
+            task_number=27,
+            student_answer=answer,
+            expected_answer=" ".join(map(str, expected)),
+            skill_map=load_skill_map(),
+        )
+    else:
+        attempt.diagnostics.pop(27, None)
+    return is_correct
+
+
 def create_task_first_tutor_attempt() -> ExamAttempt:
     """Create an empty pilot attempt; cases are opened only after real mistakes."""
     return ExamAttempt(current_task=TOTAL_TASKS + 1)

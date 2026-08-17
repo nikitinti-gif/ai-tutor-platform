@@ -654,6 +654,16 @@ async def start_ege_exam(message: Message, state: FSMContext):
     await _send_ege_task(message, attempt.current_task)
 
 
+async def _send_tutor_task27_file_stage(message: Message, stage: str) -> None:
+    from src.services.ege_exam_service import TASK27_FILE_STAGE_META, render_tutor_pilot_task27_file_stage
+    meta = TASK27_FILE_STAGE_META[stage]
+    await message.answer_document(
+        document=FSInputFile(meta["path"], filename=meta["filename"]),
+        caption=meta["title"],
+    )
+    await message.answer(render_tutor_pilot_task27_file_stage(stage))
+
+
 async def start_ege_tutor_pilot(message: Message, state: FSMContext):
     """Task-first pilot: normal EGE-like tasks before any diagnostic question."""
     is_admin = bool(
@@ -686,6 +696,7 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
         ExamAttempt,
         record_tutor_pilot_answer,
         record_tutor_pilot_transfer_answer,
+        record_tutor_pilot_task27_file_answer,
         render_tutor_pilot_task,
         render_tutor_pilot_transfer_task,
     )
@@ -705,6 +716,41 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
         return
     task_number = tasks[index]
 
+    if stage in {"task27_file_a", "task27_file_b"}:
+        is_correct = record_tutor_pilot_task27_file_answer(
+            attempt, stage, message.text or ""
+        )
+        if not is_correct:
+            await message.answer(
+                "❌ На настоящем файле возникла ошибка. Не буду давать следующий большой файл: "
+                "сначала локализуем конкретный шаг, который требует помощи."
+            )
+            await state.update_data(ege_attempt=attempt.to_dict())
+            save_ege_session(
+                message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress"
+            )
+            await _begin_ege_diagnostics(message, state, attempt)
+            return
+        if stage == "task27_file_a":
+            await message.answer(
+                "✅ Файл A решён верно. Теперь второй уровень: файл Б уже без учебного плана решения."
+            )
+            await state.update_data(
+                ege_attempt=attempt.to_dict(), tutor_pilot_stage="task27_file_b"
+            )
+            save_ege_session(
+                message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress"
+            )
+            await _send_tutor_task27_file_stage(message, "task27_file_b")
+            return
+        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
+        await state.clear()
+        await message.answer(
+            "🏆 №27 пройден до настоящего файлового уровня: учебный пример → перенос → "
+            "официальный файл A → официальный файл Б. Диагностика не понадобилась."
+        )
+        return
+
     if stage == "supported":
         is_correct = record_tutor_pilot_answer(attempt, task_number, message.text or "")
         if is_correct:
@@ -717,6 +763,18 @@ async def receive_ege_tutor_pilot_answer(message: Message, state: FSMContext) ->
     else:
         is_correct = record_tutor_pilot_transfer_answer(attempt, task_number, message.text or "")
         if is_correct:
+            if task_number == 27:
+                await message.answer(
+                    "✅ Маленькая задача без подсказки решена. Теперь проверяем сам формат №27 — с настоящим файлом."
+                )
+                await state.update_data(
+                    ege_attempt=attempt.to_dict(), tutor_pilot_stage="task27_file_a"
+                )
+                save_ege_session(
+                    message.from_user.id, attempt.to_dict(), status="tutor_pilot_in_progress"
+                )
+                await _send_tutor_task27_file_stage(message, "task27_file_a")
+                return
             await message.answer("✅ Получилось и без подсказки. Этот навык пока не требует диагностики.")
         else:
             await message.answer("❌ На новой задаче без подсказки возникла ошибка. После пилота разберём, на каком шаге она появилась.")

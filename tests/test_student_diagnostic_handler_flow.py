@@ -84,7 +84,7 @@ def test_admin_can_run_5_14_27_pilot_through_telegram_handlers(monkeypatch):
     start_message = FakeMessage()
     asyncio.run(student_handler.start_ege_diagnostic_pilot(start_message, state))
 
-    assert any("Пилот мини-проб №5, №14 и №27" in item for item in start_message.answers)
+    assert any("Пилот разбора ошибок №5, №14 и №27" in item for item in start_message.answers)
     assert any("Задание КЕГЭ №5" in item for item in start_message.answers)
     assert sessions[42]["status"] == "diagnostics_in_progress"
 

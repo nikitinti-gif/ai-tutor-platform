@@ -155,7 +155,7 @@ def test_pilot_full_telegram_loop_updates_verified_learning_dna(monkeypatch):
     asyncio.run(student_handler.start_ege_diagnostic_pilot(start, state))
     transcript = list(start.answers)
 
-    assert any("Пилот мини-проб №5, №14 и №27" in text for text in transcript)
+    assert any("Пилот разбора ошибок №5, №14 и №27" in text for text in transcript)
     assert sessions[42]["status"] == "diagnostics_in_progress"
 
     _drive_diagnostics(state, transcript)
@@ -201,21 +201,20 @@ def test_pilot_full_telegram_loop_updates_verified_learning_dna(monkeypatch):
     assert any("🏆 Навык подтверждён" in text for text in transcript)
 
 
-def test_task27_medoid_numeric_minimum_is_not_misdiagnosed_as_concept_gap(monkeypatch):
+def test_task27_correct_first_probe_stops_before_unrelated_center_probe(monkeypatch):
     sessions = {}
     dna_store = {}
     _patch_storage(monkeypatch, sessions, dna_store)
-    from src.services.ege_exam_service import ExamAttempt, bind_current_diagnostic_probe, mark_current_diagnostic_probe_displayed, submit_diagnostic_answer
+    from src.services.ege_exam_service import ExamAttempt, bind_current_diagnostic_probe, mark_current_diagnostic_probe_displayed, next_attempt_diagnostic_probe, submit_diagnostic_answer
     from src.ai_engine.diagnostics import open_diagnostic_case
     from src.skills.skill_graph import load_skill_map
     attempt = ExamAttempt()
     attempt.diagnostics = {27: open_diagnostic_case(27, "wrong", "expected", load_skill_map())}
     bind_current_diagnostic_probe(attempt); mark_current_diagnostic_probe_displayed(attempt)
-    submit_diagnostic_answer(attempt, "2")
-    bind_current_diagnostic_probe(attempt); mark_current_diagnostic_probe_displayed(attempt)
-    result = submit_diagnostic_answer(attempt, "5")
+    result = submit_diagnostic_answer(attempt, "2")
     assert result["is_correct"] is True
     assert attempt.diagnostics[27]["status"] != "confirmed"
+    assert next_attempt_diagnostic_probe(attempt) is None
 
 
 def test_task27_remediation_accepts_numeric_minimum_as_concept_evidence():
