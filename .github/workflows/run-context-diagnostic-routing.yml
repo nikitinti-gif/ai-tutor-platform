@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   migrate:
-    if: ${{ github.event.head_commit.message == 'Run context-aware diagnostic routing' }}
+    if: ${{ github.event.head_commit.message == 'Retry context-aware diagnostic routing' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
