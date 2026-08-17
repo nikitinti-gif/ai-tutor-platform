@@ -862,6 +862,28 @@ async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
     await _begin_ege_diagnostics(message, state, attempt)
 
 
+async def start_task14_learning_path_pilot(message: Message, state: FSMContext) -> None:
+    """Admin-only shortcut to test the post-exam task14 branch without 27 tasks."""
+    is_admin = bool(
+        ADMIN_TELEGRAM_ID
+        and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
+    )
+    if not is_admin:
+        await message.answer("⛔ Эта тестовая команда доступна только администратору.")
+        return
+    from src.services.ege_exam_service import ExamAttempt
+
+    delete_ege_session(message.from_user.id)
+    await state.clear()
+    attempt = ExamAttempt()
+    attempt.results[14] = False
+    await message.answer(
+        "🧪 Симуляция результата пробного КЕГЭ: №14 не решено. "
+        "Проверяем новую модель обучения от базы до экзамена."
+    )
+    await _start_learning_path_after_exam_if_available(message, state, attempt)
+
+
 async def _start_learning_path_after_exam_if_available(message: Message, state: FSMContext, attempt) -> bool:
     """Start the first progressive post-exam branch for an actually failed task."""
     if attempt.results.get(14) is not False:
@@ -1006,6 +1028,7 @@ async def cancel_ege_exam(message: Message, state: FSMContext):
 def register_student_handlers(dp: Dispatcher):
     dp.message.register(cancel_ege_exam, F.text == "/cancel_ege")
     dp.message.register(start_ege_tutor_pilot, F.text == "/test_ege_tutor")
+    dp.message.register(start_task14_learning_path_pilot, F.text == "/test_learning_path14")
     dp.message.register(start_ege_diagnostic_pilot, F.text == "/test_ege_diagnostics")
     dp.message.register(receive_ege_tutor_pilot_answer, StudentEgeExamStates.waiting_tutor_pilot_answer)
     dp.message.register(skip_ege_task, StudentEgeExamStates.waiting_answer, F.text == "/skip_ege")
