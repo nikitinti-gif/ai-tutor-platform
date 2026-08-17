@@ -42,6 +42,8 @@ def test_open_variant_file_a_matches_official_reference_answer():
     result = solve_open_variant_a()
     assert Path(OPEN_VARIANT_TASK27_A).exists()
     assert result["point_count"] == 235
+    assert result["assigned_point_count"] == 235
+    assert result["unassigned_point_count"] == 0
     assert result["cluster_sizes"] == (114, 121)
     assert result["centers"][0].xy == (4.960398, 7.34545)
     assert result["nearest_red_giant"].xy == (4.469472, 6.975433)
@@ -51,7 +53,9 @@ def test_open_variant_file_a_matches_official_reference_answer():
 def test_open_variant_file_b_matches_official_reference_answer():
     result = solve_open_variant_b()
     assert Path(OPEN_VARIANT_TASK27_B).exists()
-    assert result["point_count"] == 1850
+    assert result["point_count"] == 1851
+    assert result["assigned_point_count"] == 1850
+    assert result["unassigned_point_count"] == 1
     assert result["cluster_sizes"] == (1170, 393, 287)
     assert tuple(center.xy for center in result["centers"]) == (
         (11.746691, 24.957689),
