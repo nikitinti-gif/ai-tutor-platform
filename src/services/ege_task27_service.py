@@ -1,11 +1,11 @@
 """Deterministic helpers for the 2026 open-variant KЕГЭ task 27.
 
-This module intentionally contains no LLM logic.  It parses the official text
+This module intentionally contains no LLM logic. It parses the official text
 files, performs the mathematical operations required by the task, and provides
 a reference solver used by tests and by the tutor's exam-level stage.
 
 The cluster rectangles below are reference partitions for the official open
-variant only.  A learner is expected to discover the groups from a plot/data;
+variant only. A learner is expected to discover the groups from a plot/data;
 the verifier must not rely on an LLM judgement for the canonical answer.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import dist
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 
 OPEN_VARIANT_TASK27_DIR = Path("Доп. файлы")
@@ -43,7 +43,7 @@ class RectangleRule:
         return self.x_min < point.x < self.x_max and self.y_min < point.y < self.y_max
 
 
-# Reference partition visible from the official datasets.  The task guarantees
+# Reference partition visible from the official datasets. The task guarantees
 # that the cluster partition is unique for H=6.0 and W=5.5.
 A_REFERENCE_RULES: tuple[RectangleRule, ...] = (
     RectangleRule(3.0, 8.0, 5.0, 10.0),
@@ -86,11 +86,14 @@ def partition_by_reference_rules(
     rules: Sequence[RectangleRule],
     *,
     final_else_cluster: bool = False,
+    allow_unassigned: bool = False,
 ) -> list[list[StarPoint]]:
     """Partition points using reference rectangles for the official variant.
 
-    For file A the first rule identifies one cluster and every remaining point
-    belongs to the second cluster.  For file B all three rules are explicit.
+    File A uses one explicit rectangle and an ``else`` cluster. The published
+    reference partition for file B leaves one boundary/noise point outside the
+    three working rectangles; it must not silently change any cluster result,
+    so callers opt into that behaviour explicitly with ``allow_unassigned``.
     """
     clusters: list[list[StarPoint]] = [[] for _ in rules]
     remainder: list[StarPoint] = []
@@ -104,7 +107,7 @@ def partition_by_reference_rules(
             remainder.append(point)
     if final_else_cluster:
         clusters.append(remainder)
-    elif remainder:
+    elif remainder and not allow_unassigned:
         raise ValueError(f"Не удалось отнести {len(remainder)} точек к эталонным кластерам.")
     if any(not cluster for cluster in clusters):
         raise ValueError("Обнаружен пустой кластер.")
@@ -169,6 +172,8 @@ def solve_open_variant_a(path: str | Path = OPEN_VARIANT_TASK27_A) -> dict[str, 
     answer = (_scaled_abs(target.x), _scaled_abs(target.y))
     return {
         "point_count": len(points),
+        "assigned_point_count": sum(map(len, clusters)),
+        "unassigned_point_count": len(points) - sum(map(len, clusters)),
         "cluster_sizes": tuple(len(cluster) for cluster in clusters),
         "centers": tuple(centers),
         "smallest_cluster_index": smallest_index,
@@ -179,7 +184,12 @@ def solve_open_variant_a(path: str | Path = OPEN_VARIANT_TASK27_A) -> dict[str, 
 
 def solve_open_variant_b(path: str | Path = OPEN_VARIANT_TASK27_B) -> dict[str, object]:
     points = load_star_points(path)
-    clusters = partition_by_reference_rules(points, B_REFERENCE_RULES)
+    clusters = partition_by_reference_rules(
+        points,
+        B_REFERENCE_RULES,
+        allow_unassigned=True,
+    )
+    assigned = sum(map(len, clusters))
     centers = [cluster_center(cluster) for cluster in clusters]
     orange_counts = [sum(is_orange_giant(point) for point in cluster) for cluster in clusters]
     min_index = min(range(len(clusters)), key=lambda index: orange_counts[index])
@@ -194,6 +204,8 @@ def solve_open_variant_b(path: str | Path = OPEN_VARIANT_TASK27_B) -> dict[str, 
     answer = (_scaled(b1), _scaled(b2))
     return {
         "point_count": len(points),
+        "assigned_point_count": assigned,
+        "unassigned_point_count": len(points) - assigned,
         "cluster_sizes": tuple(len(cluster) for cluster in clusters),
         "centers": tuple(centers),
         "orange_giant_counts": tuple(orange_counts),
