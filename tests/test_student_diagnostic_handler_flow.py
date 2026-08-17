@@ -88,7 +88,6 @@ def test_admin_can_run_5_14_27_pilot_through_telegram_handlers(monkeypatch):
     assert any("Задание КЕГЭ №5" in item for item in start_message.answers)
     assert sessions[42]["status"] == "diagnostics_in_progress"
 
-    # Two independent wrong answers confirm one operation for each pilot task.
     for task_number in (5, 14, 27):
         first = FakeMessage(text="definitely-wrong")
         asyncio.run(student_handler.receive_ege_diagnostic_answer(first, state))
@@ -167,7 +166,6 @@ def test_learning_path_answer_survives_restart(monkeypatch):
     attempt.learning_path = path.to_dict()
     sessions[42] = {"attempt": attempt.to_dict(), "status": "learning_path_in_progress"}
 
-    # Simulate a Render restart: aiogram FSM is empty, but persisted session survives.
     state = FakeState()
     message = FakeMessage(text=str(TASK14_LEVELS[5]["answers"][0]))
     asyncio.run(student_handler.resume_ege_learning_path_after_restart(message, state))
@@ -175,4 +173,4 @@ def test_learning_path_answer_survives_restart(monkeypatch):
     restored = sessions[42]["attempt"]["learning_path"]
     assert restored["current_index"] == 6
     assert any("Поднимаемся на следующий уровень" in item for item in message.answers)
-    assert any("ШАГ 7/7" in item for item in message.answers)
+    assert any("ШАГ 7/8" in item for item in message.answers)
