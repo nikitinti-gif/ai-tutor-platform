@@ -31,7 +31,7 @@ class DiagnosticLevelCheckTest(unittest.TestCase):
         self.assertTrue(result["diagnostic_mastery"]["topic_mastered"])
         self.assertEqual([x["level"] for x in result["level_results"]], ["easy", "medium", "hard"])
 
-    def test_confirmed_mastery_selects_next_curriculum_topic(self):
+    def test_confirmed_mastery_selects_next_skill_from_graph(self):
         current = {
             "student_id": 1, "signals": [], "skills": {},
             "memory": {"last_topics": [], "last_errors": [], "last_successes": []},
@@ -47,7 +47,11 @@ class DiagnosticLevelCheckTest(unittest.TestCase):
         })
         self.assertEqual(
             updated["trajectory"]["next_focus"],
-            "Арифметические операции в системах счисления",
+            "Единицы измерения информации",
+        )
+        self.assertEqual(
+            updated["trajectory"]["next_focus_skill_id"],
+            "information.units_conversion",
         )
         self.assertTrue(updated["topic_mastery"]["Системы счисления"]["mastered"])
         skill = updated["skills"]["number_systems.base_conversion"]
@@ -61,7 +65,10 @@ class DiagnosticLevelCheckTest(unittest.TestCase):
             "error_type": "diagnostic_level_gap", "knowledge_boundary": "application",
             "diagnostic_mastery": {"base": True, "application": False, "transfer": False, "topic_mastered": False},
         })
-        self.assertEqual(result["trajectory"]["next_focus"], "Системы счисления")
+        self.assertEqual(
+            result["trajectory"]["next_focus_skill_id"],
+            "number_systems.base_conversion",
+        )
         self.assertEqual(result["topic_mastery"]["Системы счисления"]["knowledge_boundary"], "application")
 
     @patch("src.ai_engine.homework_checker.LLMClient")

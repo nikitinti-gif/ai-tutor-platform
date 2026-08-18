@@ -27,6 +27,9 @@ def _ensure_adaptive_task_sets_table(connection) -> None:
     connection.execute(
         "ALTER TABLE adaptive_task_sets ADD COLUMN IF NOT EXISTS sent_to_parent_id BIGINT"
     )
+    connection.execute(
+        "ALTER TABLE adaptive_task_sets ADD COLUMN IF NOT EXISTS skill_id TEXT"
+    )
 
 
 def save_postgres_adaptive_task_set(
@@ -43,11 +46,11 @@ def save_postgres_adaptive_task_set(
             """
             INSERT INTO adaptive_task_sets (
                 task_set_id, draft_token, student_telegram_id,
-                teacher_telegram_id, topic, tasks, status, source,
+                teacher_telegram_id, topic, skill_id, tasks, status, source,
                 created_at, confirmed_at
-            ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, 'confirmed', %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, 'confirmed', %s, %s, %s)
             ON CONFLICT (draft_token) DO UPDATE
-            SET draft_token = EXCLUDED.draft_token
+            SET skill_id = EXCLUDED.skill_id
             RETURNING task_set_id, status
             """,
             (
@@ -56,6 +59,7 @@ def save_postgres_adaptive_task_set(
                 int(draft["student_id"]),
                 int(teacher_telegram_id),
                 draft["topic"],
+                draft.get("skill_id"),
                 json.dumps(draft["tasks"], ensure_ascii=False),
                 draft["created_by"],
                 now,
@@ -67,6 +71,7 @@ def save_postgres_adaptive_task_set(
         "status": row[1],
         "student_id": int(draft["student_id"]),
         "topic": draft["topic"],
+        "skill_id": draft.get("skill_id"),
     }
 
 
@@ -76,7 +81,7 @@ def get_postgres_adaptive_task_set(database_url: str, task_set_id: str) -> dict 
         row = connection.execute(
             """
             SELECT task_set_id, student_telegram_id, teacher_telegram_id,
-                   topic, tasks, status, sent_at, sent_to_parent_id
+                   topic, skill_id, tasks, status, sent_at, sent_to_parent_id
             FROM adaptive_task_sets WHERE task_set_id = %s
             """,
             (task_set_id,),
@@ -85,8 +90,9 @@ def get_postgres_adaptive_task_set(database_url: str, task_set_id: str) -> dict 
         return None
     return {
         "task_set_id": row[0], "student_id": int(row[1]),
-        "teacher_id": int(row[2]), "topic": row[3], "tasks": row[4],
-        "status": row[5], "sent_at": row[6], "parent_id": row[7],
+        "teacher_id": int(row[2]), "topic": row[3], "skill_id": row[4],
+        "tasks": row[5], "status": row[6], "sent_at": row[7],
+        "parent_id": row[8],
     }
 
 
