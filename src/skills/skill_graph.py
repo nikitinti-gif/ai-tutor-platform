@@ -52,11 +52,34 @@ def validate_skill_map(skill_map: dict) -> None:
             "EGE map must contain each task number 1..27 exactly once"
         )
 
+    tasks_by_number = {task["number"]: task for task in skill_map["tasks"]}
+    skills_by_id = {skill["id"]: skill for skill in skills}
+    for skill in skills:
+        for task_number in skill.get("exam_tasks", []):
+            if task_number not in tasks_by_number:
+                raise SkillMapValidationError(
+                    f"Unknown exam task {task_number!r} in skill {skill['id']!r}"
+                )
+            if skill["id"] not in tasks_by_number[task_number].get("skills", []):
+                raise SkillMapValidationError(
+                    f"Skill {skill['id']!r} and task {task_number} are not bidirectional"
+                )
+
     for task in skill_map["tasks"]:
         unknown = set(task.get("skills", [])).difference(skill_ids)
         if unknown:
             raise SkillMapValidationError(
                 f"Unknown skills in task {task['number']}: {sorted(unknown)}"
+            )
+        missing_reverse = [
+            skill_id
+            for skill_id in task.get("skills", [])
+            if task["number"] not in skills_by_id[skill_id].get("exam_tasks", [])
+        ]
+        if missing_reverse:
+            raise SkillMapValidationError(
+                f"Task {task['number']} has non-bidirectional skills: "
+                f"{sorted(missing_reverse)}"
             )
         if not task.get("operations") or not task.get("typical_errors"):
             raise SkillMapValidationError(

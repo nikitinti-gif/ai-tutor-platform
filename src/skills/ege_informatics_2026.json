@@ -158,7 +158,8 @@
         "algorithms.tracing"
       ],
       "exam_tasks": [
-        17
+        17,
+        26
       ],
       "priority": 94
     },
@@ -586,6 +587,10 @@
       "number": 5,
       "title": "Автомат над двоичной записью",
       "skills": [
+        "number_systems.decimal_binary_conversion",
+        "algorithms.branch_from_last_bit",
+        "algorithms.binary_suffix_append",
+        "algorithms.integer_boundary_inequality",
         "number_systems.base_conversion",
         "number_systems.binary_arithmetic",
         "algorithms.tracing"
@@ -803,6 +808,9 @@
       "number": 14,
       "title": "Большое число в 36-ричной системе",
       "skills": [
+        "number_systems.calculate_remainder",
+        "number_systems.digit_property_from_value",
+        "number_systems.preserve_digit_count",
         "number_systems.base_conversion",
         "number_systems.large_number_digits"
       ],
@@ -1111,6 +1119,10 @@
       "number": 27,
       "title": "Кластеризация и геометрия",
       "skills": [
+        "programming.cluster_count_from_separation",
+        "programming.medoid_minimum",
+        "programming.cluster_label_count",
+        "programming.max_cluster_distance",
         "programming.geometry_clusters"
       ],
       "operations": [
