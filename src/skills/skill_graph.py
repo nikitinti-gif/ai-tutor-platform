@@ -45,6 +45,12 @@ def validate_skill_map(skill_map: dict) -> None:
                 f"Unknown prerequisites for {skill['id']!r}: {sorted(unknown)}"
             )
 
+        invalid_tasks = set(skill.get("exam_tasks", [])).difference(range(1, 28))
+        if invalid_tasks:
+            raise SkillMapValidationError(
+                f"Unknown exam tasks for {skill['id']!r}: {sorted(invalid_tasks)}"
+            )
+
     task_numbers = [task.get("number") for task in skill_map["tasks"]]
     expected = list(range(1, 28))
     if sorted(task_numbers) != expected:
