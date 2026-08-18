@@ -66,18 +66,30 @@ class EgeSkillMapTest(unittest.TestCase):
                 )
                 self.assertTrue(task["mastery"]["requires_exam_level"])
 
-    def test_all_skill_exam_task_links_are_bidirectional(self):
-        tasks = {task["number"]: set(task["skills"]) for task in self.skill_map["tasks"]}
+    def test_task_entry_skills_are_in_their_diagnostic_paths(self):
+        for task in self.skill_map["tasks"]:
+            path = task_diagnostic_path(task["number"], self.skill_map)
+            for skill_id in task["skills"]:
+                with self.subTest(skill=skill_id, task=task["number"]):
+                    self.assertIn(skill_id, path)
+
+    def test_atomic_skill_exam_links_reference_real_tasks(self):
+        task_numbers = {task["number"] for task in self.skill_map["tasks"]}
         for skill in self.skill_map["skills"]:
-            for task_number in skill["exam_tasks"]:
-                with self.subTest(skill=skill["id"], task=task_number):
-                    self.assertIn(skill["id"], tasks[task_number])
+            with self.subTest(skill=skill["id"]):
+                self.assertTrue(set(skill["exam_tasks"]).issubset(task_numbers))
 
     def test_validator_rejects_prerequisite_cycle(self):
         broken = copy.deepcopy(self.skill_map)
         broken["skills"][0]["prerequisites"] = [broken["skills"][-1]["id"]]
         broken["skills"][-1]["prerequisites"] = [broken["skills"][0]["id"]]
         with self.assertRaises(SkillMapValidationError):
+            validate_skill_map(broken)
+
+    def test_validator_rejects_atomic_skill_link_to_unknown_exam_task(self):
+        broken = copy.deepcopy(self.skill_map)
+        broken["skills"][0]["exam_tasks"].append(28)
+        with self.assertRaisesRegex(SkillMapValidationError, "Unknown exam tasks"):
             validate_skill_map(broken)
 
     def test_map_file_is_valid_utf8_json(self):

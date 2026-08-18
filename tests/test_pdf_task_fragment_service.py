@@ -40,7 +40,9 @@ def test_extracts_expected_page_and_caches_index(tmp_path: Path):
     assert (cache / "fragment_index.json").exists()
     with Image.open(first) as image:
         assert image.width > 300
-        assert 180 < image.height < 600
+        # High-quality Telegram documents use a 2x render. Keep checking that
+        # the result is a cropped task fragment rather than a full PDF page.
+        assert 350 < image.height < 1200
 
 
 def test_requires_page_hint_when_index_is_empty(tmp_path: Path):
