@@ -3,7 +3,7 @@ from pathlib import Path
 import fitz
 from PIL import Image
 
-from pdf_task_fragment_service import PdfTaskFragmentService
+from src.services.pdf_task_fragment_service import PdfTaskFragmentService
 
 
 def _make_pdf(path: Path) -> None:

@@ -138,7 +138,12 @@ class PdfTaskFragmentService:
         temporary.replace(self.index_path)
 
     def _find_anchor_on_page(
-        self, document: fitz.Document, number: int, page_index: int
+        self,
+        document: fitz.Document,
+        number: int,
+        page_index: int,
+        *,
+        allow_content_fallback: bool = True,
     ) -> TaskAnchor:
         if not 0 <= page_index < document.page_count:
             raise TaskFragmentError(
@@ -164,7 +169,7 @@ class PdfTaskFragmentService:
                     continue
                 candidates.append(TaskAnchor(page_index, max(0.0, y0)))
 
-        if not candidates:
+        if not candidates and allow_content_fallback:
             # The page hint is authoritative. Some PDFs place the task number
             # as vector graphics or have a broken text layer. In that case use
             # the first meaningful content block rather than searching other pages.
@@ -180,8 +185,9 @@ class PdfTaskFragmentService:
                     meaningful.append(float(y0))
             if meaningful:
                 return TaskAnchor(page_index, min(meaningful))
+        if not candidates:
             raise TaskFragmentError(
-                f"На ожидаемой странице {page_index + 1} не найдено содержимое задания {number}."
+                f"На ожидаемой странице {page_index + 1} не найдено задание {number}."
             )
 
         return min(candidates, key=lambda item: item.y)
@@ -265,6 +271,20 @@ class PdfTaskFragmentService:
                     end = TaskAnchor(
                         int(cached_next["page_index"]), float(cached_next["y"])
                     )
+                else:
+                    # A same-page marker is unambiguous and keeps a first-time
+                    # extraction from including the following task. Do not use
+                    # the content fallback here: absence of the marker simply
+                    # means that the current task continues to the page bottom.
+                    try:
+                        end = self._find_anchor_on_page(
+                            document,
+                            task_number + 1,
+                            start.page_index,
+                            allow_content_fallback=False,
+                        )
+                    except TaskFragmentError:
+                        end = None
 
             page = document[start.page_index]
             top = max(0.0, start.y - self.margin_top)

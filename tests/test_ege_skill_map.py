@@ -42,9 +42,19 @@ class EgeSkillMapTest(unittest.TestCase):
             path.index("algorithms.tracing"),
             path.index("programming.sequences"),
         )
-        self.assertEqual(
-            prerequisite_path("programming.geometry_clusters"), path
-        )
+        aggregate_path = prerequisite_path("programming.geometry_clusters")
+        self.assertEqual(path[-len(aggregate_path):], aggregate_path)
+        for atomic_skill in (
+            "programming.cluster_count_from_separation",
+            "programming.medoid_minimum",
+            "programming.cluster_label_count",
+            "programming.max_cluster_distance",
+        ):
+            self.assertIn(atomic_skill, path)
+            self.assertLess(
+                path.index(atomic_skill),
+                path.index("programming.geometry_clusters"),
+            )
 
     def test_every_attachment_task_names_real_source_file(self):
         expected = {
@@ -78,6 +88,13 @@ class EgeSkillMapTest(unittest.TestCase):
         broken["skills"][0]["prerequisites"] = [broken["skills"][-1]["id"]]
         broken["skills"][-1]["prerequisites"] = [broken["skills"][0]["id"]]
         with self.assertRaises(SkillMapValidationError):
+            validate_skill_map(broken)
+
+    def test_validator_rejects_one_sided_exam_task_link(self):
+        broken = copy.deepcopy(self.skill_map)
+        task14 = next(task for task in broken["tasks"] if task["number"] == 14)
+        task14["skills"].remove("number_systems.calculate_remainder")
+        with self.assertRaisesRegex(SkillMapValidationError, "not bidirectional"):
             validate_skill_map(broken)
 
     def test_map_file_is_valid_utf8_json(self):
