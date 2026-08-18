@@ -23,6 +23,48 @@ def test_task14_path_runs_from_foundation_to_independent_exam_transfer():
     assert path.history[-1]["difficulty"] == "exam_transfer"
 
 
+def test_progressive_path_and_task_bank_can_confirm_diagnosed_atomic_skill():
+    from src.learning_dna.engine import confirm_ege_remediation_mastery
+    from src.learning_dna.profile import create_default_learning_dna
+    from src.services.ege_task_bank import get_task
+
+    path = build_learning_path(14)
+    for level in TASK14_LEVELS:
+        submit_answer(path, str(level["answers"][0]))
+
+    sequence = ["reshuege-92256", "reshuege-92258"]
+    bank_history = []
+    for task_id in sequence:
+        task = get_task(task_id)
+        bank_history.append({
+            "task_id": task_id,
+            "student_answer": task.canonical_answer,
+            "canonical_answer": task.canonical_answer,
+            "validator_result": True,
+            "timestamp": 1.0,
+        })
+
+    dna = create_default_learning_dna(42)
+    dna["trajectory"]["individual_plan"] = [{
+        "task_number": 14,
+        "skill_id": "number_systems.digit_property_from_value",
+    }]
+    updated = confirm_ege_remediation_mastery(
+        dna,
+        14,
+        "attempt-14",
+        remediation={
+            "learning_path": path.to_dict(),
+            "task_bank": {"sequence": sequence, "history": bank_history},
+        },
+    )
+
+    skill = updated["skills"]["number_systems.digit_property_from_value"]
+    assert skill["mastered"] is True
+    assert skill["difficulty_max"] == "exam_level"
+    assert updated["trajectory"]["next_focus_skill_id"] != skill["skill_id"]
+
+
 def test_wrong_answer_does_not_create_fake_weakness_or_advance():
     path = build_learning_path(14)
     first = current_step(path)
