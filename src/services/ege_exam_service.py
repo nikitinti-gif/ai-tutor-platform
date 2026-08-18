@@ -216,6 +216,7 @@ class ExamAttempt:
     tutor_pilot_index: int = 0
     tutor_pilot_stage: str = "supported"
     learning_path: dict = field(default_factory=dict)
+    task_bank: dict = field(default_factory=dict)
 
     @property
     def finished(self) -> bool:
@@ -242,6 +243,7 @@ class ExamAttempt:
             int(data.get("tutor_pilot_index", 0)),
             str(data.get("tutor_pilot_stage", "supported")),
             dict(data.get("learning_path", {})),
+            dict(data.get("task_bank", {})),
         )
 
 

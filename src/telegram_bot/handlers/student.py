@@ -856,8 +856,38 @@ async def resume_ege_learning_path_after_restart(message: Message, state: FSMCon
     await receive_ege_learning_path_answer(message, state)
 
 
+async def _start_task14_bank_practice(message: Message, state: FSMContext, attempt, *, pilot: bool = False) -> None:
+    """Start/continue curated real-task practice after the deterministic learning path."""
+    from src.services.ege_task_bank import get_task, render_task
+
+    sequence = ["reshuege-92256", "reshuege-92258"]
+    attempt.task_bank = {
+        "task_number": 14,
+        "sequence": sequence,
+        "current_index": 0,
+        "correct_ids": [],
+        "attempts": {},
+        "source": "admin_pilot" if pilot else "post_learning_path",
+    }
+    task = get_task(sequence[0])
+    save_ege_session(message.from_user.id, attempt.to_dict(), status="task_bank_in_progress")
+    await state.set_state(StudentEgeExamStates.waiting_task_bank_answer)
+    await state.update_data(ege_attempt=attempt.to_dict())
+    if pilot:
+        await message.answer(
+            "🧪 Проверяем связный Task Bank №14: теперь после правильного ответа Tutor не останавливается, "
+            "а даёт следующую реальную вариацию."
+        )
+    else:
+        await message.answer(
+            "✅ Учебная лестница пройдена. Теперь проверим перенос на реальных задачах №14 из курируемого банка. "
+            "Нужно решить две разные вариации без подсказок."
+        )
+    await message.answer(render_task(task))
+
+
 async def start_task14_bank_pilot(message: Message, state: FSMContext) -> None:
-    """Admin shortcut: issue one curated real-world task14 bank item."""
+    """Admin shortcut for the persisted multi-task curated bank stage."""
     is_admin = bool(
         ADMIN_TELEGRAM_ID
         and str(message.from_user.id) == str(ADMIN_TELEGRAM_ID)
@@ -865,41 +895,94 @@ async def start_task14_bank_pilot(message: Message, state: FSMContext) -> None:
     if not is_admin:
         await message.answer("⛔ Эта тестовая команда доступна только администратору.")
         return
-    from src.services.ege_task_bank import get_task, render_task
+    from src.services.ege_exam_service import ExamAttempt
 
+    delete_ege_session(message.from_user.id)
     await state.clear()
-    task = get_task("reshuege-92256")
-    await state.set_state(StudentEgeExamStates.waiting_task_bank_answer)
-    await state.update_data(task_bank_id=task.task_id)
-    await message.answer(
-        "🧪 Проверяем Task Bank: реальная задача №14 из курируемого внешнего банка, "
-        "но эталон вычисляет наш Python."
-    )
-    await message.answer(render_task(task))
+    attempt = ExamAttempt()
+    await _start_task14_bank_practice(message, state, attempt, pilot=True)
 
 
 async def receive_task14_bank_answer(message: Message, state: FSMContext) -> None:
-    from src.services.ege_task_bank import get_task, validate_answer
+    from src.services.ege_exam_service import ExamAttempt
+    from src.services.ege_task_bank import get_task, render_task, validate_answer
 
     data = await state.get_data()
-    task_id = data.get("task_bank_id")
-    if not task_id:
+    attempt_data = data.get("ege_attempt")
+    if not attempt_data:
+        saved = get_ege_session(message.from_user.id)
+        attempt_data = saved.get("attempt") if saved else None
+    if not attempt_data:
         await state.clear()
-        await message.answer("Задача банка не найдена. Запусти /test_task_bank14.")
+        await message.answer("Практика Task Bank не найдена. Запусти /test_task_bank14.")
         return
-    task = get_task(str(task_id))
-    is_correct = validate_answer(task.task_id, message.text or "")
+
+    attempt = ExamAttempt.from_dict(attempt_data)
+    bank = dict(attempt.task_bank or {})
+    sequence = list(bank.get("sequence") or [])
+    index = int(bank.get("current_index", 0))
+    if not sequence or index >= len(sequence):
+        await state.clear()
+        await message.answer("Практика Task Bank уже завершена.")
+        return
+
+    task = get_task(sequence[index])
+    answer = message.text or ""
+    attempts = dict(bank.get("attempts") or {})
+    attempts[task.task_id] = int(attempts.get(task.task_id, 0)) + 1
+    bank["attempts"] = attempts
+
+    if not validate_answer(task.task_id, answer):
+        attempt.task_bank = bank
+        save_ege_session(message.from_user.id, attempt.to_dict(), status="task_bank_in_progress")
+        await state.update_data(ege_attempt=attempt.to_dict())
+        await message.answer(
+            "❌ Пока неверно. Это не отменяет уже освоенные базовые навыки: перед нами другая вариация №14. "
+            "Остаёмся на этой задаче. Попробуй ещё раз; ответ по-прежнему проверяет локальный Python."
+        )
+        return
+
+    correct_ids = list(bank.get("correct_ids") or [])
+    if task.task_id not in correct_ids:
+        correct_ids.append(task.task_id)
+    bank["correct_ids"] = correct_ids
+    bank["current_index"] = index + 1
+    attempt.task_bank = bank
+
+    if bank["current_index"] < len(sequence):
+        next_task = get_task(sequence[bank["current_index"]])
+        save_ege_session(message.from_user.id, attempt.to_dict(), status="task_bank_in_progress")
+        await state.update_data(ege_attempt=attempt.to_dict())
+        await message.answer(
+            "✅ Верно. Python подтвердил ответ. Теперь новая вариация №14 — проверяем, переносится ли навык, "
+            "а не запомнен ли один шаблон."
+        )
+        await message.answer(render_task(next_task))
+        return
+
+    save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
     await state.clear()
-    if is_correct:
-        await message.answer(
-            "✅ Верно. Это была задача из внешнего курируемого банка, "
-            "а правильность ответа определил локальный Python-валидатор."
-        )
-    else:
-        await message.answer(
-            "❌ Пока неверно. Ответ не сверялся с сайтом: его независимо вычислил Python Tutor. "
-            "Позже эта ошибка будет направлять ученика в подходящую Learning Path."
-        )
+    await message.answer(
+        "🏆 Практика №14 завершена: учебная ветка → экзаменационный уровень → две разные реальные задачи банка. "
+        "Обе проверены локальным Python. Теперь результат можно считать сильным подтверждением переноса навыка."
+    )
+
+
+async def resume_task14_bank_after_restart(message: Message, state: FSMContext) -> None:
+    """Recover curated bank practice after Render/redeploy cleared aiogram FSM."""
+    saved = get_ege_session(message.from_user.id)
+    if not saved or saved.get("status") != "task_bank_in_progress":
+        from aiogram.dispatcher.event.bases import SkipHandler
+        raise SkipHandler
+    from src.services.ege_exam_service import ExamAttempt
+
+    attempt = ExamAttempt.from_dict(saved.get("attempt"))
+    if not attempt.task_bank:
+        from aiogram.dispatcher.event.bases import SkipHandler
+        raise SkipHandler
+    await state.set_state(StudentEgeExamStates.waiting_task_bank_answer)
+    await state.update_data(ege_attempt=attempt.to_dict())
+    await receive_task14_bank_answer(message, state)
 
 
 async def start_ege_diagnostic_pilot(message: Message, state: FSMContext):
@@ -995,12 +1078,10 @@ async def receive_ege_learning_path_answer(message: Message, state: FSMContext) 
     await state.update_data(ege_attempt=attempt.to_dict())
 
     if result["status"] == "mastered":
-        save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
-        await state.clear()
         await message.answer(
-            "🏆 Ветка №14 пройдена полностью: база → промежуточные задачи → аналог → "
-            "настоящий экзаменационный уровень. Навык подтверждён новой задачей, а не одной подсказкой."
+            "🏆 Учебная ветка №14 пройдена до независимого экзаменационного переноса."
         )
+        await _start_task14_bank_practice(message, state, attempt)
         return
 
     save_ege_session(message.from_user.id, attempt.to_dict(), status="learning_path_in_progress")
@@ -1135,4 +1216,5 @@ def register_student_handlers(dp: Dispatcher):
     dp.message.register(student_progress, F.text == "📊 Мой прогресс")
     dp.message.register(student_question, F.text == "❓ Задать вопрос")
     dp.message.register(resume_ege_learning_path_after_restart, F.text)
+    dp.message.register(resume_task14_bank_after_restart, F.text)
     dp.message.register(resume_ege_tutor_pilot_after_restart, F.text)

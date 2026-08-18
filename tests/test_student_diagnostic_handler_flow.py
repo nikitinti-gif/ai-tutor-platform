@@ -176,16 +176,49 @@ def test_learning_path_answer_survives_restart(monkeypatch):
     assert any("ШАГ 7/8" in item for item in message.answers)
 
 
-def test_admin_can_issue_curated_task_bank14_item(monkeypatch):
-    state = FakeState()
-    message = FakeMessage(user_id=42)
-    monkeypatch.setattr(student_handler, "ADMIN_TELEGRAM_ID", "42")
-    asyncio.run(student_handler.start_task14_bank_pilot(message, state))
-    assert state.data["task_bank_id"] == "reshuege-92256"
-    assert any("Task Bank" in item for item in message.answers)
-    assert any("№92256" in item for item in message.answers)
+def test_task_bank14_advances_instead_of_stopping(monkeypatch):
+    from src.services.ege_task_bank import get_task
 
-    answer = FakeMessage(user_id=42, text="71")
-    asyncio.run(student_handler.receive_task14_bank_answer(answer, state))
-    assert any("Python-валидатор" in item for item in answer.answers)
-    assert state.cleared is True
+    sessions = {}
+    _patch_sessions(monkeypatch, sessions)
+    state = FakeState()
+    start = FakeMessage(user_id=42)
+    asyncio.run(student_handler.start_task14_bank_pilot(start, state))
+
+    assert state.data["ege_attempt"]["task_bank"]["current_index"] == 0
+    first = get_task("reshuege-92256")
+    answer1 = FakeMessage(user_id=42, text=first.canonical_answer)
+    asyncio.run(student_handler.receive_task14_bank_answer(answer1, state))
+    assert any("новая вариация №14" in item for item in answer1.answers)
+    assert any("№92258" in item for item in answer1.answers)
+    assert state.data["ege_attempt"]["task_bank"]["current_index"] == 1
+
+    second = get_task("reshuege-92258")
+    answer2 = FakeMessage(user_id=42, text=second.canonical_answer)
+    asyncio.run(student_handler.receive_task14_bank_answer(answer2, state))
+    assert any("Практика №14 завершена" in item for item in answer2.answers)
+    assert sessions[42]["status"] == "completed"
+
+
+def test_task_bank14_answer_survives_restart(monkeypatch):
+    from src.services.ege_exam_service import ExamAttempt
+    from src.services.ege_task_bank import get_task
+
+    sessions = {}
+    _patch_sessions(monkeypatch, sessions)
+    attempt = ExamAttempt()
+    attempt.task_bank = {
+        "task_number": 14,
+        "sequence": ["reshuege-92256", "reshuege-92258"],
+        "current_index": 0,
+        "correct_ids": [],
+        "attempts": {},
+        "source": "post_learning_path",
+    }
+    sessions[42] = {"attempt": attempt.to_dict(), "status": "task_bank_in_progress"}
+    state = FakeState()
+    first = get_task("reshuege-92256")
+    message = FakeMessage(user_id=42, text=first.canonical_answer)
+    asyncio.run(student_handler.resume_task14_bank_after_restart(message, state))
+    assert any("№92258" in item for item in message.answers)
+    assert sessions[42]["attempt"]["task_bank"]["current_index"] == 1
