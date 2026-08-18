@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from io import BytesIO
 
 from config import (
@@ -341,11 +342,20 @@ async def _complete_ege_diagnostics(
         start_task27_remediation,
     )
 
-    remediation = start_task5_remediation(attempt)
-    if not remediation:
-        remediation = start_task14_remediation(attempt)
-    if not remediation:
-        remediation = start_task27_remediation(attempt)
+    plan = dna.get("trajectory", {}).get("individual_plan", [])
+    task14_learning_path = bool(
+        plan
+        and plan[0].get("task_number") == 14
+        and attempt.results.get(14) is False
+        and len(attempt.results) == 27
+    )
+    remediation = None
+    if not task14_learning_path:
+        remediation = start_task5_remediation(attempt)
+        if not remediation:
+            remediation = start_task14_remediation(attempt)
+        if not remediation:
+            remediation = start_task27_remediation(attempt)
     if remediation:
         dna = set_ege_remediation_status(dna, int(remediation["task_number"]), "remediating")
     LearningDNARepository.save(message.from_user.id, dna)
@@ -355,7 +365,6 @@ async def _complete_ege_diagnostics(
         status="remediation_in_progress" if remediation else "completed",
     )
 
-    plan = dna.get("trajectory", {}).get("individual_plan", [])
     next_focus = (plan[0].get("skill_name") if plan else None) or dna.get("trajectory", {}).get("next_focus")
     lines = [
         diagnostic_summary(attempt),
@@ -367,6 +376,9 @@ async def _complete_ege_diagnostics(
     if next_focus:
         lines.append(f"🎯 Следующий фокус: {next_focus}")
     await message.answer("\n".join(lines))
+    if task14_learning_path:
+        await _start_learning_path_after_exam_if_available(message, state, attempt)
+        return
     if remediation:
         await state.set_state(StudentEgeExamStates.waiting_remediation_answer)
         await state.update_data(ege_attempt=attempt.to_dict())
@@ -867,6 +879,7 @@ async def _start_task14_bank_practice(message: Message, state: FSMContext, attem
         "current_index": 0,
         "correct_ids": [],
         "attempts": {},
+        "history": [],
         "source": "admin_pilot" if pilot else "post_learning_path",
     }
     task = get_task(sequence[0])
@@ -931,8 +944,19 @@ async def receive_task14_bank_answer(message: Message, state: FSMContext) -> Non
     attempts = dict(bank.get("attempts") or {})
     attempts[task.task_id] = int(attempts.get(task.task_id, 0)) + 1
     bank["attempts"] = attempts
+    history = list(bank.get("history") or [])
+    is_correct = validate_answer(task.task_id, answer)
+    history.append({
+        "task_id": task.task_id,
+        "skill_ids": list(task.skill_ids),
+        "student_answer": answer,
+        "canonical_answer": task.canonical_answer,
+        "validator_result": is_correct,
+        "timestamp": time.time(),
+    })
+    bank["history"] = history
 
-    if not validate_answer(task.task_id, answer):
+    if not is_correct:
         attempt.task_bank = bank
         save_ege_session(message.from_user.id, attempt.to_dict(), status="task_bank_in_progress")
         await state.update_data(ege_attempt=attempt.to_dict())
@@ -960,11 +984,25 @@ async def receive_task14_bank_answer(message: Message, state: FSMContext) -> Non
         await message.answer(render_task(next_task))
         return
 
+    from src.learning_dna.engine import confirm_ege_remediation_mastery
+
+    dna = LearningDNARepository.get(message.from_user.id)
+    if dna:
+        dna = confirm_ege_remediation_mastery(
+            dna,
+            14,
+            attempt.attempt_id,
+            remediation={
+                "learning_path": attempt.learning_path,
+                "task_bank": attempt.task_bank,
+            },
+        )
+        LearningDNARepository.save(message.from_user.id, dna)
     save_ege_session(message.from_user.id, attempt.to_dict(), status="completed")
     await state.clear()
     await message.answer(
         "🏆 Практика №14 завершена: учебная ветка → экзаменационный уровень → две разные реальные задачи банка. "
-        "Обе проверены локальным Python. Теперь результат можно считать сильным подтверждением переноса навыка."
+        "Обе проверены локальным Python. Mastery записано в Learning DNA; следующий atomic skill выбран по графу."
     )
 
 
@@ -1112,8 +1150,6 @@ async def receive_ege_answer(message: Message, state: FSMContext):
 
     if attempt.finished:
         await message.answer(f"{result.message}\n\n{render_summary(attempt)}")
-        if await _start_learning_path_after_exam_if_available(message, state, attempt):
-            return
         await _begin_ege_diagnostics(message, state, attempt)
         return
 
@@ -1159,8 +1195,6 @@ async def finish_ege_exam(message: Message, state: FSMContext):
 
     attempt = ExamAttempt.from_dict(attempt_data)
     await message.answer(render_summary(attempt))
-    if await _start_learning_path_after_exam_if_available(message, state, attempt):
-        return
     await _begin_ege_diagnostics(message, state, attempt)
 
 
