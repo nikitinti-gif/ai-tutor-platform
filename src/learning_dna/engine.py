@@ -186,8 +186,26 @@ def confirm_ege_remediation_mastery(dna: dict, task_number: int, attempt_id: str
         and item.get("timestamp") is not None
     ]
     stages = [item.get("stage") for item in successful[-3:]]
-    if stages != ["control", "retest", "verification"]:
-        raise ValueError("Нельзя подтвердить навык без полного RULE → CONTROL → TRANSFER → VERIFY evidence.")
+    combined = remediation or {}
+    learning_history = list((combined.get("learning_path") or {}).get("history", []))
+    bank = combined.get("task_bank") or {}
+    bank_history = list(bank.get("history", []))
+    learning_difficulties = {
+        item.get("difficulty") for item in learning_history
+        if item.get("validator_result") is True
+    }
+    bank_successes = {
+        item.get("task_id") for item in bank_history
+        if item.get("validator_result") is True
+    }
+    progressive_path_verified = (
+        {"foundation", "basic", "intermediate", "transfer", "exam", "exam_transfer"}
+        <= learning_difficulties
+        and set(bank.get("sequence") or []) <= bank_successes
+        and len(bank_successes) >= 2
+    )
+    if stages != ["control", "retest", "verification"] and not progressive_path_verified:
+        raise ValueError("Нельзя подтвердить навык без полного независимого evidence chain.")
     processed = dna.setdefault("processed_evidence_ids", [])
     dna = set_ege_remediation_status(dna, task_number, "mastered")
     if evidence_id in processed:
@@ -201,7 +219,9 @@ def confirm_ege_remediation_mastery(dna: dict, task_number: int, attempt_id: str
                       "attempts": int(state.get("attempts", 0) or 0) + 3,
                       "successes": int(state.get("successes", 0) or 0) + 3,
                       "difficulty_max": "exam_level", "last_evidence_id": evidence_id,
-                      "remediation_evidence": successful[-3:]})
+                      "remediation_evidence": successful[-3:] if successful else (
+                          learning_history + bank_history
+                      )})
         next_skill = select_next_focus_from_graph(dna)
         trajectory = dna["trajectory"]
         trajectory["next_focus_skill_id"] = next_skill
