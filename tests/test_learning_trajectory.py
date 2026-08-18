@@ -18,7 +18,11 @@ class LearningTrajectoryTest(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(
             dna["trajectory"]["next_focus"],
-            "Арифметические операции в системах счисления",
+            "Единицы измерения информации",
+        )
+        self.assertEqual(
+            dna["trajectory"]["next_focus_skill_id"],
+            "information.units_conversion",
         )
 
     def test_does_not_overwrite_existing_focus(self):

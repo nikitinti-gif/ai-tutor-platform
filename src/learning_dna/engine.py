@@ -3,10 +3,8 @@ from datetime import datetime
 from src.learning_dna.profile import create_default_learning_dna
 from src.learning_dna.signals import build_learning_signal_from_check
 from src.learning_dna.trajectory import (
-    TOPIC_SEQUENCE,
     migrate_trajectory_to_skill_graph,
     select_next_focus_from_graph,
-    select_next_topic,
 )
 from src.skills.skill_graph import get_skill_name, migrate_legacy_focus
 from src.skills.skill_engine import update_skill_after_check
@@ -23,25 +21,15 @@ def restore_next_focus_from_mastery(dna: dict) -> bool:
     if trajectory.get("next_focus_skill_id"):
         return changed
 
-    topic_mastery = dna.get("topic_mastery") or {}
-    mastered_topics = {
-        topic
-        for topic, mastery in topic_mastery.items()
-        if isinstance(mastery, dict) and mastery.get("mastered")
-    }
-    if not mastered_topics:
+    if not (dna.get("topic_mastery") or dna.get("skills")):
         return changed
 
-    next_topic = None
-    for topic in reversed(TOPIC_SEQUENCE):
-        if topic in mastered_topics:
-            next_topic = select_next_topic(topic, topic_mastery)
-            break
-
-    if not next_topic:
+    next_skill = select_next_focus_from_graph(dna)
+    if not next_skill:
         return changed
 
-    trajectory["next_focus"] = next_topic
+    trajectory["next_focus_skill_id"] = next_skill
+    trajectory["next_focus"] = get_skill_name(next_skill)
     dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
     migrate_trajectory_to_skill_graph(dna)
     return True
@@ -77,15 +65,9 @@ def update_learning_dna_after_check(current_dna: dict | None, student_id: int, c
             "knowledge_boundary": check_result.get("knowledge_boundary"),
         }
         if mastery.get("topic_mastered"):
-            next_topic = select_next_topic(topic, dna["topic_mastery"])
-            dna["trajectory"]["next_focus"] = next_topic
             dna["trajectory"]["recommendations"].append(
                 f"Тема «{topic}» подтверждённо освоена на трёх уровнях. "
-                + (
-                    f"Следующая тема: «{next_topic}»."
-                    if next_topic
-                    else "Следующую тему выбирает преподаватель."
-                )
+                "Следующий навык определён по графу навыков."
             )
         else:
             dna["trajectory"]["next_focus"] = topic
@@ -94,7 +76,10 @@ def update_learning_dna_after_check(current_dna: dict | None, student_id: int, c
         dna["trajectory"]["recommendations"].append("Нужна ручная проверка преподавателя.")
     
     dna = update_skill_after_check(dna, check_result)
-    completed_skill = migrate_legacy_focus(topic)
+    completed_skill = (
+        migrate_legacy_focus(check_result.get("skill_id"))
+        or migrate_legacy_focus(topic)
+    )
     if isinstance(mastery, dict) and mastery.get("topic_mastered") and completed_skill:
         state = dna.setdefault("skills", {}).setdefault(completed_skill, {})
         passed_levels = sum(
@@ -113,6 +98,9 @@ def update_learning_dna_after_check(current_dna: dict | None, student_id: int, c
         next_skill = select_next_focus_from_graph(dna)
         dna["trajectory"]["next_focus_skill_id"] = next_skill
         dna["trajectory"]["next_focus"] = get_skill_name(next_skill) if next_skill else None
+    elif completed_skill and isinstance(mastery, dict):
+        dna["trajectory"]["next_focus_skill_id"] = completed_skill
+        dna["trajectory"]["next_focus"] = get_skill_name(completed_skill)
     dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
 
     return dna

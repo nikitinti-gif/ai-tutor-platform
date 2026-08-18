@@ -265,6 +265,13 @@ class PdfTaskFragmentService:
                     end = TaskAnchor(
                         int(cached_next["page_index"]), float(cached_next["y"])
                     )
+                else:
+                    try:
+                        end = self._find_anchor_on_page(
+                            document, task_number + 1, start.page_index
+                        )
+                    except TaskFragmentError:
+                        pass
 
             page = document[start.page_index]
             top = max(0.0, start.y - self.margin_top)
