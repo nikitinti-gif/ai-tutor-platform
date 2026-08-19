@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from src.skills.skill_graph import load_skill_map
+from src.services.learning_course import build_course
 
 STATUS_META = {
     "mastered": ("🟢", "Освоено"),
@@ -36,6 +37,7 @@ def build_student_dashboard(dna: dict | None, exam_session: dict | None = None) 
     skill_map = load_skill_map()
     states = dna.get("skills") or {}
     plan = list((dna.get("trajectory") or {}).get("individual_plan") or [])
+    course = build_course(plan, states)
     plan_by_skill = {item.get("skill_id"): item for item in plan if item.get("skill_id")}
     task_modes = {task["number"]: task["solution_mode"] for task in skill_map["tasks"]}
     nodes = []
@@ -75,6 +77,7 @@ def build_student_dashboard(dna: dict | None, exam_session: dict | None = None) 
             for node in nodes for prerequisite in node["prerequisites"]
         ],
         "individual_plan": plan,
+        "course": course,
         "next_focus_skill_id": (dna.get("trajectory") or {}).get("next_focus_skill_id"),
     }
 
@@ -103,5 +106,10 @@ def render_student_dashboard(view: dict) -> str:
         lines.append(f"{index}. {item.get('skill_name', 'Навык')} — {status}")
         if item.get("action"):
             lines.append(f"   Следующий шаг: {item['action']}")
+    inserted = [item for item in view["course"] if item.skill_id not in {
+        row.get("skill_id") for row in view["individual_plan"]
+    }]
+    for item in inserted:
+        lines.append(f"↳ Сначала освоить «{item.human_title}» — {item.status}")
     lines.append("\nНажми «🎓 Начать обучение» или вернись позже — прогресс сохранён.")
     return "\n".join(lines)

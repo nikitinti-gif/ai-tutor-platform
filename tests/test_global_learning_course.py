@@ -26,6 +26,7 @@ def test_every_generic_module_has_deterministic_full_ladder():
         )
         path = build_learning_path(8 if skill_id == "number_systems.base_conversion" else {
             "logic.operations": 2, "algorithms.tracing": 6,
+            "algorithms.recursion": 16, "algorithms.game_strategy": 19,
             "information.units_conversion": 7,
         }[skill_id], skill_id=skill_id)
         for step in steps:
@@ -81,7 +82,34 @@ def test_deterministic_student_personas_receive_distinct_deduplicated_courses():
     assert courses["strong"] == []
     assert len(courses["number_systems"]) == 1  # five wrong contexts, one global node
     assert len(courses["logic"]) == 1
-    assert courses["programming"][0].status == "PENDING"
+    assert courses["programming"][0].skill_id == "algorithms.tracing"
+    assert courses["programming"][0].status == "READY"
     assert [item.skill_id for item in courses["multiple_prerequisites"]] == [
         "algorithms.tracing", "number_systems.base_conversion"
     ]
+
+
+def test_course_inserts_prerequisite_with_graph_exam_context_and_unlocks_dependent():
+    plan = [{"task_number": 16, "skill_id": "algorithms.recursion"}]
+    course = build_course(plan)
+    assert [item.skill_id for item in course] == ["algorithms.tracing", "algorithms.recursion"]
+    assert course[0].related_exam_tasks == (5, 6, 12)
+    assert course[0].status == "READY"
+    assert course[1].status == "PENDING"
+
+    rebuilt = build_course(plan, {"algorithms.tracing": {"mastered": True}})
+    assert [item.skill_id for item in rebuilt] == ["algorithms.recursion"]
+    assert rebuilt[0].status == "READY"
+
+
+def test_dashboard_renders_inserted_prerequisite_without_duplicating_plan():
+    dna = create_default_learning_dna(1)
+    dna["trajectory"]["individual_plan"] = [
+        {"task_number": 16, "skill_id": "algorithms.recursion", "skill_name": "Рекурсия"}
+    ]
+    view = build_student_dashboard(dna)
+    rendered = __import__(
+        "src.services.student_dashboard_service", fromlist=["render_student_dashboard"]
+    ).render_student_dashboard(view)
+    assert len(view["individual_plan"]) == 1
+    assert "Сначала освоить «Трассировка алгоритмов»" in rendered

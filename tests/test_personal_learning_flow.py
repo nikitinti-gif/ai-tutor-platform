@@ -129,3 +129,77 @@ def test_restart_continues_current_learning_path(monkeypatch):
     assert writes == []
     assert state.state == StudentEgeExamStates.waiting_learning_path_answer
     assert message.answers[0] == "▶️ Продолжаем индивидуальную учебную ветку №14."
+
+
+def _started_skill(writes):
+    return writes[-1][1]["learning_path"]["skill_id"]
+
+
+def test_telegram_inserts_and_starts_recursion_prerequisite(monkeypatch):
+    """Regression A/D: a prerequisite absent from individual_plan is routable."""
+    item = {"skill_id": "algorithms.recursion", "task_number": 16}
+    message, state, writes = _run(monkeypatch, _dna(item), ExamAttempt())
+
+    assert _started_skill(writes) == "algorithms.tracing"
+    assert writes[-1][1]["learning_path"]["task_number"] in {5, 6, 12}
+    assert state.state == StudentEgeExamStates.waiting_learning_path_answer
+    assert "Трассировка" in message.answers[0]
+    assert not any("недоступ" in answer.lower() for answer in message.answers)
+
+
+def test_telegram_starts_recursion_after_tracing_mastery(monkeypatch):
+    """Regression B: rebuilding the course unlocks the dependent module."""
+    item = {"skill_id": "algorithms.recursion", "task_number": 16}
+    dna = _dna(item)
+    dna["skills"] = {"algorithms.tracing": {"mastered": True}}
+
+    _message, _state, writes = _run(monkeypatch, dna, ExamAttempt())
+
+    assert _started_skill(writes) == "algorithms.recursion"
+    assert writes[-1][1]["learning_path"]["task_number"] == 16
+
+
+@pytest.mark.parametrize(
+    ("mastered", "expected"),
+    [
+        ({}, "logic.operations"),
+        ({"logic.operations": {"mastered": True}}, "algorithms.tracing"),
+        ({"logic.operations": {"mastered": True}, "algorithms.tracing": {"mastered": True}}, "algorithms.recursion"),
+        ({"logic.operations": {"mastered": True}, "algorithms.tracing": {"mastered": True}, "algorithms.recursion": {"mastered": True}}, "algorithms.game_strategy"),
+    ],
+)
+def test_telegram_walks_game_strategy_prerequisite_chain(monkeypatch, mastered, expected):
+    """Regression C: every rebuild selects the first newly READY graph node."""
+    item = {"skill_id": "algorithms.game_strategy", "task_number": 19}
+    dna = _dna(item)
+    dna["skills"] = mastered
+
+    _message, _state, writes = _run(monkeypatch, dna, ExamAttempt())
+
+    assert _started_skill(writes) == expected
+
+
+def test_telegram_skips_pending_item_for_independent_ready_item(monkeypatch):
+    """Regression E: PENDING does not stop scanning the generated course."""
+    pending = {"skill_id": "graphs.adjacency_mapping", "task_number": 1}
+    ready = {"skill_id": "logic.operations", "task_number": 2}
+
+    _message, _state, writes = _run(monkeypatch, _dna(pending, ready), ExamAttempt())
+
+    assert _started_skill(writes) == "logic.operations"
+
+
+def test_restart_continues_automatically_inserted_prerequisite(monkeypatch):
+    """Regression F: persisted path identity wins over the original plan."""
+    from src.services.ege_learning_path import build_learning_path
+
+    attempt = ExamAttempt()
+    attempt.learning_path = build_learning_path(6, skill_id="algorithms.tracing").to_dict()
+    message, state, writes = _run(monkeypatch, _dna(
+        {"skill_id": "algorithms.recursion", "task_number": 16}
+    ), attempt, "learning_path_in_progress")
+
+    assert writes == []
+    assert state.state == StudentEgeExamStates.waiting_learning_path_answer
+    assert "algorithms.tracing" in message.answers[0]
+    assert "algorithms.tracing" in message.answers[1]
