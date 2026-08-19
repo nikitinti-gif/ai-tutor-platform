@@ -189,6 +189,34 @@ def set_ege_remediation_status(dna: dict, task_number: int, status: str) -> dict
     return dna
 
 
+def confirm_global_skill_mastery(dna: dict, skill_id: str, learning_path: dict) -> dict:
+    """Promote one global node after a complete independent learning ladder."""
+    if not get_skill(skill_id):
+        raise ValueError(f"Unknown global skill: {skill_id}")
+    successful = [row for row in learning_path.get("history", []) if row.get("validator_result") is True]
+    difficulties = {row.get("difficulty") for row in successful}
+    required = {"foundation", "basic", "intermediate", "transfer", "exam", "exam_transfer"}
+    if not required.issubset(difficulties):
+        raise ValueError("Mastery requires the complete ladder and two independent transfer evidences.")
+    evidence_id = f"course:{skill_id}:{successful[-1].get('timestamp')}"
+    state = dna.setdefault("skills", {}).setdefault(skill_id, {"skill_id": skill_id})
+    state.update({
+        "status": "mastered", "mastered": True, "mastery_level": 100,
+        "evidence_count": len(successful), "attempts": len(learning_path.get("history", [])),
+        "successes": len(successful), "difficulty_max": "exam_level",
+        "last_evidence_id": evidence_id, "evidence_history": successful,
+    })
+    for item in dna.setdefault("trajectory", {}).get("individual_plan", []):
+        if item.get("skill_id") == skill_id:
+            item["learning_status"] = "mastered"
+    dna.setdefault("processed_evidence_ids", []).append(evidence_id)
+    next_skill = select_next_focus_from_graph(dna)
+    dna["trajectory"]["next_focus_skill_id"] = next_skill
+    dna["trajectory"]["next_focus"] = get_skill_name(next_skill) if next_skill else None
+    dna["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    return dna
+
+
 def confirm_ege_remediation_mastery(dna: dict, task_number: int, attempt_id: str, remediation: dict | None = None) -> dict:
     evidence_id = f"ege:{attempt_id}:task:{task_number}:remediation:verified"
     history = list((remediation or {}).get("stage_history", []))

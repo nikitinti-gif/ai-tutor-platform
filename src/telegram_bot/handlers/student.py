@@ -752,8 +752,30 @@ async def start_personal_learning(message: Message, state: FSMContext) -> None:
     if saved and saved.get("attempt"):
         attempt = ExamAttempt.from_dict(saved["attempt"])
 
+    from src.services.learning_course import build_course, executable_skill_ids
+    course = build_course(plan, dna.get("skills") or {})
+    course_by_skill = {item.skill_id: item for item in course}
     pending_reported = False
     for item in plan:
+        skill_id = item.get("skill_id")
+        course_item = course_by_skill.get(skill_id)
+        if skill_id in executable_skill_ids() and attempt is not None and course_item:
+            from src.services.ege_learning_path import build_learning_path, render_current_step
+
+            task_number = int(item.get("task_number") or course_item.related_exam_tasks[0])
+            path = build_learning_path(task_number, source="individual_plan", skill_id=skill_id)
+            attempt.learning_path = path.to_dict()
+            save_ege_session(message.from_user.id, attempt.to_dict(), status="learning_path_in_progress")
+            await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
+            await state.update_data(ege_attempt=attempt.to_dict())
+            intro = (
+                "🧭 Начинаем индивидуальную учебную ветку №14."
+                if skill_id == "number_systems.large_number_digits"
+                else f"🧭 Начинаем глобальный навык «{course_item.human_title}»."
+            )
+            await message.answer(intro)
+            await message.answer(render_current_step(path))
+            return
         support = item.get("learning_support_status")
         if support == "learning_module_pending":
             pending_reported = True
@@ -761,22 +783,6 @@ async def start_personal_learning(message: Message, state: FSMContext) -> None:
             continue
 
         task_number = int(item.get("task_number") or 0)
-        if task_number == 14 and attempt is not None:
-            from src.services.ege_learning_path import build_learning_path, render_current_step
-
-            path = build_learning_path(14, source="individual_plan")
-            attempt.learning_path = path.to_dict()
-            save_ege_session(
-                message.from_user.id,
-                attempt.to_dict(),
-                status="learning_path_in_progress",
-            )
-            await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
-            await state.update_data(ege_attempt=attempt.to_dict())
-            await message.answer("🧭 Начинаем индивидуальную учебную ветку №14.")
-            await message.answer(render_current_step(path))
-            return
-
         starter = {5: start_task5_remediation, 27: start_task27_remediation}.get(task_number)
         renderer = {5: render_task5_remediation, 27: render_task27_remediation}.get(task_number)
         remediation = starter(attempt) if starter and attempt is not None else None
@@ -1238,6 +1244,16 @@ async def receive_ege_learning_path_answer(message: Message, state: FSMContext) 
     await state.update_data(ege_attempt=attempt.to_dict())
 
     if result["status"] == "mastered":
+        if path.skill_id != "number_systems.large_number_digits":
+            from src.learning_dna.engine import confirm_global_skill_mastery
+            dna = LearningDNARepository.get(message.from_user.id) or {}
+            dna = confirm_global_skill_mastery(dna, path.skill_id, path.to_dict())
+            LearningDNARepository.save(message.from_user.id, dna)
+            delete_ege_session(message.from_user.id)
+            await state.clear()
+            await message.answer("🏆 Навык подтверждён двумя независимыми переносами. Карта знаний обновлена.")
+            await start_personal_learning(message, state)
+            return
         await message.answer(
             "🏆 Учебная ветка №14 пройдена до независимого экзаменационного переноса."
         )
