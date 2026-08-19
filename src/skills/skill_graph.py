@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
@@ -33,6 +34,23 @@ def validate_skill_map(skill_map: dict) -> None:
     domain_ids = _unique_ids(skill_map["domains"], "domain")
     skills = skill_map["skills"]
     skill_ids = _unique_ids(skills, "skill")
+
+    # Atomic identity is global and must never be namespaced by an exam task.
+    task_scoped = [skill_id for skill_id in skill_ids if re.match(r"^task_?\d+[.]", skill_id)]
+    if task_scoped:
+        raise SkillMapValidationError(
+            f"Atomic skills must be global, not task-scoped: {sorted(task_scoped)}"
+        )
+    responsibilities: dict[tuple[str, str], str] = {}
+    for skill in skills:
+        semantic_key = re.sub(r"[^a-zа-я0-9]+", "", skill.get("name", "").casefold())
+        key = (str(skill.get("domain")), semantic_key)
+        if semantic_key and key in responsibilities:
+            raise SkillMapValidationError(
+                "Duplicate pedagogical responsibility: "
+                f"{responsibilities[key]!r} and {skill['id']!r}"
+            )
+        responsibilities[key] = skill["id"]
 
     for skill in skills:
         if skill.get("domain") not in domain_ids:
@@ -98,6 +116,16 @@ def validate_skill_map(skill_map: dict) -> None:
         if mastery.get("min_independent_attempts", 0) < 2:
             raise SkillMapValidationError(
                 f"Task {task['number']} allows mastery from fewer than two attempts"
+            )
+        if not task.get("evidence"):
+            raise SkillMapValidationError(f"Task {task['number']} lacks evidence model")
+
+    attachments = skill_map.get("source", {}).get("attachments", {})
+    for task in skill_map["tasks"]:
+        requires_attachment = task["solution_mode"] == "application" or task["number"] in {17, 24, 26, 27}
+        if requires_attachment and not attachments.get(str(task["number"])):
+            raise SkillMapValidationError(
+                f"Task {task['number']} requires a declared attachment"
             )
 
     _assert_acyclic(skills)
