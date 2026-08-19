@@ -653,7 +653,12 @@ async def start_ege_exam(message: Message, state: FSMContext):
         path = LearningPath.from_dict(attempt.learning_path)
         await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
         await state.update_data(ege_attempt=attempt.to_dict())
-        await message.answer("▶️ Продолжаем индивидуальную учебную ветку №14.")
+        resume_title = (
+            "▶️ Продолжаем индивидуальную учебную ветку №14."
+            if path.skill_id == "number_systems.large_number_digits"
+            else f"▶️ Продолжаем глобальный навык «{path.skill_id}»."
+        )
+        await message.answer(resume_title)
         await message.answer(render_current_step(path))
         return
     if saved and saved.get("status") == "remediation_in_progress":
@@ -727,7 +732,12 @@ async def start_personal_learning(message: Message, state: FSMContext) -> None:
         path = LearningPath.from_dict(attempt.learning_path)
         await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
         await state.update_data(ege_attempt=attempt.to_dict())
-        await message.answer("▶️ Продолжаем индивидуальную учебную ветку №14.")
+        resume_title = (
+            "▶️ Продолжаем индивидуальную учебную ветку №14."
+            if path.skill_id == "number_systems.large_number_digits"
+            else f"▶️ Продолжаем глобальный навык «{path.skill_id}»."
+        )
+        await message.answer(resume_title)
         await message.answer(render_current_step(path))
         return
     if saved and saved.get("status") == "remediation_in_progress":
@@ -754,12 +764,13 @@ async def start_personal_learning(message: Message, state: FSMContext) -> None:
 
     from src.services.learning_course import build_course, executable_skill_ids
     course = build_course(plan, dna.get("skills") or {})
-    course_by_skill = {item.skill_id: item for item in course}
     pending_reported = False
-    for item in plan:
-        skill_id = item.get("skill_id")
-        course_item = course_by_skill.get(skill_id)
-        if skill_id in executable_skill_ids() and attempt is not None and course_item:
+    plan_by_skill = {item.get("skill_id"): item for item in plan}
+    for course_item in course:
+        skill_id = course_item.skill_id
+        item = plan_by_skill.get(skill_id, {})
+        if (course_item.status == "READY" and skill_id in executable_skill_ids()
+                and attempt is not None):
             from src.services.ege_learning_path import build_learning_path, render_current_step
 
             task_number = int(item.get("task_number") or course_item.related_exam_tasks[0])
@@ -776,6 +787,12 @@ async def start_personal_learning(message: Message, state: FSMContext) -> None:
             await message.answer(intro)
             await message.answer(render_current_step(path))
             return
+        if course_item.status == "PENDING":
+            pending_reported = True
+
+    # Preserve task-specific №5/№27 remediation after every generated
+    # course item (including inserted prerequisites) has been considered.
+    for item in plan:
         support = item.get("learning_support_status")
         if support == "learning_module_pending":
             pending_reported = True

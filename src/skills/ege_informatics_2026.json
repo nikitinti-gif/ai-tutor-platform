@@ -100,7 +100,12 @@
         13,
         14
       ],
-      "priority": 99
+      "priority": 99,
+      "atomicity_role": "reusable_capability",
+      "children": [
+        "number_systems.decimal_binary_conversion",
+        "number_systems.calculate_remainder"
+      ]
     },
     {
       "id": "logic.operations",
@@ -385,7 +390,9 @@
       "exam_tasks": [
         5
       ],
-      "priority": 20
+      "priority": 20,
+      "atomicity_role": "legacy_diagnostic_subskill",
+      "parent": "number_systems.base_conversion"
     },
     {
       "id": "algorithms.branch_from_last_bit",
@@ -425,7 +432,9 @@
       "exam_tasks": [
         14
       ],
-      "priority": 20
+      "priority": 20,
+      "atomicity_role": "prerequisite_subskill",
+      "parent": "number_systems.base_conversion"
     },
     {
       "id": "number_systems.digit_property_from_value",
@@ -435,7 +444,9 @@
       "exam_tasks": [
         14
       ],
-      "priority": 20
+      "priority": 20,
+      "atomicity_role": "independent_atomic_subskill",
+      "parent": "number_systems.large_number_digits"
     },
     {
       "id": "number_systems.preserve_digit_count",
@@ -445,7 +456,9 @@
       "exam_tasks": [
         14
       ],
-      "priority": 20
+      "priority": 20,
+      "atomicity_role": "independent_atomic_subskill",
+      "parent": "number_systems.large_number_digits"
     },
     {
       "id": "programming.cluster_count_from_separation",
@@ -1153,5 +1166,9 @@
     "Алгоритмы и исполнители": "algorithms.tracing",
     "Условные операторы": "algorithms.tracing",
     "Циклы": "algorithms.tracing"
+  },
+  "atomicity_policy": {
+    "mastery_propagation": "none",
+    "note": "Parent and child mastery require evidence for the exact global skill_id; legacy IDs remain stable."
   }
 }
