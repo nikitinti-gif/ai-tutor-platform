@@ -52,6 +52,22 @@ MODULE_STEPS: dict[str, tuple[dict, ...]] = {
         _step("trace_exam", "exam", "R=0. Для N=18: пока N>0, R=R+N%2; N=N//2. Чему равен R?", "2", "Алгоритм считает единицы двоичной записи.", "10₁₀=1010₂ содержит две единицы."),
         _step("trace_exam_transfer", "exam_transfer", "Тот же алгоритм применили к N=29. Чему равен R?", "4", "Выполни независимую трассировку.", "Проверяй N после каждого целочисленного деления."),
     ),
+    "algorithms.recursion": (
+        _step("rec_foundation", "foundation", "Функция f(0)=1. Чему равно f(0)?", "1", "База рекурсии вычисляется без нового вызова.", "Для g(0)=2 ответ равен 2."),
+        _step("rec_basic", "basic", "f(0)=1, f(n)=f(n-1)+2. Чему равно f(2)?", "5", "Последовательно вычисли f(1), затем f(2).", "f(1)=3."),
+        _step("rec_intermediate", "intermediate", "f(1)=1, f(n)=n*f(n-1). Чему равно f(4)?", "24", "Это произведение чисел от 1 до n.", "f(3)=6."),
+        _step("rec_transfer", "transfer", "f(0)=0, f(1)=1, f(n)=f(n-1)+f(n-2). Чему равно f(6)?", "8", "Запиши значения от f(0) по порядку.", "f(4)=3."),
+        _step("rec_exam", "exam", "F(1)=1; F(n)=F(n-1)+n. Чему равно F(5)?", "15", "Разверни рекурсию до базового случая.", "F(3)=6."),
+        _step("rec_exam_transfer", "exam_transfer", "F(0)=2; F(n)=2*F(n-1)-1. Чему равно F(4)?", "17", "Проведи независимую пошаговую трассировку.", "F(2)=5."),
+    ),
+    "algorithms.game_strategy": (
+        _step("game_foundation", "foundation", "В куче 3 камня. За ход можно добавить 1. Сколько станет?", "4", "Примени ровно один разрешённый ход.", "Из 5 получится 6."),
+        _step("game_basic", "basic", "В куче 4 камня. Можно +1 или *2. Какое максимальное число после хода?", "8", "Сравни оба результата.", "Из 3 максимум 6."),
+        _step("game_intermediate", "intermediate", "Победа при 10 камнях. Сейчас 9, можно +1 или *2. Есть выигрыш за один ход? Ответ да/нет.", "да", "Проверь, достигает ли один ход цели.", "Из 8 ход *2 достигает цели 10."),
+        _step("game_transfer", "transfer", "Победа при 12. Сейчас 6, можно +1 или *2. Назови выигрышный ход: +1 или *2.", "*2", "Выбери ход, сразу достигающий цели.", "При цели 10 из 5 выигрывает *2."),
+        _step("game_exam", "exam", "Победа при 20. Петя получил 10 камней и может +1 или *2. Может ли он выиграть сразу? Ответ да/нет.", "да", "Проверь обе позиции следующего хода.", "Удвоение 10 даёт 20."),
+        _step("game_exam_transfer", "exam_transfer", "Победа при 25. Сейчас 13, можно +1 или *2. Какое число камней даёт немедленный выигрыш?", "26", "Выбери ход, после которого порог достигнут.", "При пороге 20 из 11 удвоение даёт 22."),
+    ),
     "information.units_conversion": (
         _step("units_foundation", "foundation", "Сколько бит в одном байте?", "8", "1 байт = 8 бит.", "2 байта = 16 бит."),
         _step("units_basic", "basic", "Сколько байт в 4 Кбайт? Используй 1 Кбайт=1024 байта.", "4096", "Умножь число Кбайт на 1024.", "2 Кбайт = 2048 байт."),
@@ -92,22 +108,33 @@ def build_course(plan: Iterable[dict], states: dict | None = None) -> list[Cours
             requested.setdefault(str(skill_id), []).append(row)
     ordered: list[str] = []
     for skill_id in requested:
-        for candidate in prerequisite_path(skill_id, skill_map):
-            if candidate in requested and candidate not in ordered:
+        # Task 14 is the established reference flow and already teaches its
+        # internal foundation nodes inside TASK14_LEVELS.
+        path = [skill_id] if skill_id == "number_systems.large_number_digits" else prerequisite_path(skill_id, skill_map)
+        for candidate in path:
+            if not states.get(candidate, {}).get("mastered") and candidate not in ordered:
                 ordered.append(candidate)
     result = []
     for skill_id in ordered:
         skill = get_skill(skill_id, skill_map)
-        rows = requested[skill_id]
+        rows = requested.get(skill_id, [])
         tasks = set(skill.get("exam_tasks", []))
         tasks.update(int(row["task_number"]) for row in rows if row.get("task_number"))
         executable = skill_id in executable_skill_ids()
+        unmet = tuple(
+            prerequisite for prerequisite in skill.get("prerequisites", [])
+            if not states.get(prerequisite, {}).get("mastered")
+        )
+        if skill_id == "number_systems.large_number_digits":
+            unmet = ()
         result.append(CourseItem(
             skill_id=skill_id, human_title=skill["name"],
-            reason="Пробел подтверждён диагностическими evidence",
+            reason=("Пробел подтверждён диагностическими evidence" if rows else "Сначала освоить prerequisite"),
             evidence_summary=f"Сигналов: {len(rows)}; контексты: " + ", ".join(f"№{n}" for n in sorted(tasks)),
             related_exam_tasks=tuple(sorted(tasks)), prerequisites=tuple(skill.get("prerequisites", [])),
-            status="READY" if executable else "PENDING", estimated_steps=6 if executable else 0,
-            next_action="Начать foundation" if executable else "Учебный модуль ещё не прошёл product gate",
+            status="READY" if executable and not unmet else "PENDING", estimated_steps=6 if executable else 0,
+            next_action=("Начать foundation" if executable and not unmet else
+                         "Сначала освоить: " + ", ".join(unmet) if unmet else
+                         "Учебный модуль ещё не прошёл product gate"),
         ))
     return result
