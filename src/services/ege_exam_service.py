@@ -9,6 +9,7 @@ import re
 import time
 from pathlib import Path
 from uuid import uuid4
+from datetime import datetime, timezone
 
 from src.ai_engine.ege_open_variant_2026 import (
     EgeTask,
@@ -217,6 +218,7 @@ class ExamAttempt:
     tutor_pilot_stage: str = "supported"
     learning_path: dict = field(default_factory=dict)
     task_bank: dict = field(default_factory=dict)
+    answer_records: list[dict] = field(default_factory=list)
 
     @property
     def finished(self) -> bool:
@@ -244,6 +246,7 @@ class ExamAttempt:
             str(data.get("tutor_pilot_stage", "supported")),
             dict(data.get("learning_path", {})),
             dict(data.get("task_bank", {})),
+            list(data.get("answer_records", [])),
         )
 
 
@@ -1027,6 +1030,17 @@ def submit_answer(attempt: ExamAttempt, answer: str) -> VerificationResult:
     result = verify_answer(task_number, answer)
     attempt.answers[task_number] = answer
     attempt.results[task_number] = result.is_correct
+    task_definition = next(
+        item for item in load_skill_map()["tasks"] if item["number"] == task_number
+    )
+    attempt.answer_records.append({
+        "task_number": task_number,
+        "student_answer": answer,
+        "canonical_answer": [list(row) for row in result.expected_answer],
+        "validator_result": result.is_correct,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "solution_mode": task_definition["solution_mode"],
+    })
     if result.is_correct:
         attempt.diagnostics.pop(task_number, None)
     else:
@@ -1041,8 +1055,8 @@ def submit_answer(attempt: ExamAttempt, answer: str) -> VerificationResult:
         )
     attempt.current_task += 1
 
-    status = "✅ Верно!" if result.is_correct else "❌ Ответ неверный."
-    feedback = f"{status}\n\n📊 {_progress_text(attempt)}"
+    # Exam mode deliberately withholds correctness until the final summary.
+    feedback = f"✅ Ответ сохранён.\n\n📊 {_progress_text(attempt)}"
     return replace(result, message=feedback)
 
 
@@ -1054,6 +1068,18 @@ def skip_task(attempt: ExamAttempt) -> int:
     if task_number not in attempt.skipped:
         attempt.skipped.append(task_number)
     attempt.results[task_number] = False
+    task_definition = next(
+        item for item in load_skill_map()["tasks"] if item["number"] == task_number
+    )
+    expected = OPEN_VARIANT_2026[task_number].answer_rows
+    attempt.answer_records.append({
+        "task_number": task_number,
+        "student_answer": None,
+        "canonical_answer": [list(row) for row in expected],
+        "validator_result": None,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "solution_mode": task_definition["solution_mode"],
+    })
     attempt.current_task += 1
     return task_number
 

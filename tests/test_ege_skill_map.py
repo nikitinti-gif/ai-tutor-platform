@@ -97,6 +97,21 @@ class EgeSkillMapTest(unittest.TestCase):
         with self.assertRaisesRegex(SkillMapValidationError, "not bidirectional"):
             validate_skill_map(broken)
 
+    def test_validator_rejects_task_scoped_atomic_identity(self):
+        broken = copy.deepcopy(self.skill_map)
+        broken["skills"][0]["id"] = "task5.decimal_to_base_conversion"
+        with self.assertRaisesRegex(SkillMapValidationError, "global"):
+            validate_skill_map(broken)
+
+    def test_validator_rejects_duplicate_pedagogical_responsibility(self):
+        broken = copy.deepcopy(self.skill_map)
+        duplicate = copy.deepcopy(broken["skills"][0])
+        duplicate["id"] = "information.duplicate_identity"
+        duplicate["exam_tasks"] = []
+        broken["skills"].append(duplicate)
+        with self.assertRaisesRegex(SkillMapValidationError, "responsibility"):
+            validate_skill_map(broken)
+
     def test_map_file_is_valid_utf8_json(self):
         parsed = json.loads(Path(DEFAULT_MAP_PATH).read_text(encoding="utf-8"))
         self.assertEqual(parsed["schema_version"], 1)

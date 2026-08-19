@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from io import BytesIO
+from pathlib import Path
 
 from config import (
     ADMIN_TELEGRAM_ID,
@@ -32,6 +33,7 @@ from src.repositories.pedagogical_decision_repository import (
 from src.services.homework_service import format_homework_for_student
 from src.telegram_bot.states.student_states import StudentHomeworkCheckStates, StudentEgeExamStates
 from src.services.ai_teacher_service import generate_ai_teacher_feedback
+from src.skills.skill_graph import load_skill_map
 
 
 logger = logging.getLogger(__name__)
@@ -272,6 +274,23 @@ async def student_progress(message: Message):
     )
 
 
+async def student_knowledge_dashboard(message: Message):
+    """Telegram fallback for the global atomic-skill graph dashboard."""
+    from src.services.student_dashboard_service import (
+        build_student_dashboard,
+        render_student_dashboard,
+    )
+
+    dna = LearningDNARepository.get(message.from_user.id)
+    session = get_ege_session(message.from_user.id)
+    await message.answer(render_student_dashboard(build_student_dashboard(dna, session)))
+
+
+async def start_personal_learning(message: Message, state: FSMContext):
+    """Resume the persisted learning route through the regular student entrypoint."""
+    await start_ege_exam(message, state)
+
+
 async def student_question(message: Message):
     await message.answer(
         "❓ Напиши вопрос по заданию или теме."
@@ -297,6 +316,14 @@ async def _send_ege_task(message: Message, task_number: int) -> None:
         zoom=2.0,
     )
     task = get_open_variant_task(task_number)
+    attachment_names = load_skill_map()["source"]["attachments"].get(str(task_number), [])
+    for filename in attachment_names:
+        attachment = Path("Доп. файлы") / filename
+        if attachment.is_file():
+            await message.answer_document(
+                document=FSInputFile(attachment, filename=filename),
+                caption=f"📎 Файл к заданию №{task_number}",
+            )
     try:
         fragment_path = await asyncio.to_thread(
             service.get_fragment, task_number, page_hint=task.pdf_page
@@ -376,6 +403,10 @@ async def _complete_ege_diagnostics(
     if next_focus:
         lines.append(f"🎯 Следующий фокус: {next_focus}")
     await message.answer("\n".join(lines))
+    await message.answer(
+        "Что дальше: 🧬 Моя карта знаний · 🎓 Начать обучение · "
+        "📊 Мой прогресс. Можно продолжить позже — всё сохранено."
+    )
     if task14_learning_path:
         await _start_learning_path_after_exam_if_available(message, state, attempt)
         return
@@ -1215,6 +1246,8 @@ def register_student_handlers(dp: Dispatcher):
     dp.message.register(skip_ege_task, StudentEgeExamStates.waiting_answer, F.text == "/skip_ege")
     dp.message.register(finish_ege_exam, StudentEgeExamStates.waiting_answer, F.text == "/finish_ege")
     dp.message.register(start_ege_exam, F.text.in_({"/ege2026", "🎓 Пройти КЕГЭ"}))
+    dp.message.register(student_knowledge_dashboard, F.text == "🧬 Моя карта знаний")
+    dp.message.register(start_personal_learning, F.text == "🎓 Начать обучение")
     dp.message.register(
         receive_ege_answer,
         StudentEgeExamStates.waiting_answer,

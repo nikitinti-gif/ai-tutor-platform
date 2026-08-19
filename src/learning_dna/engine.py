@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import cmp_to_key
 
 from src.ai_engine.diagnostic_evidence_gate import valid_diagnostic_evidence
 from src.ai_engine.diagnostics import confirmed_case_to_check_result
@@ -10,7 +11,9 @@ from src.learning_dna.trajectory import (
     select_next_focus_from_graph,
     select_next_topic,
 )
-from src.skills.skill_graph import get_skill, get_skill_name, migrate_legacy_focus
+from src.skills.skill_graph import (
+    get_skill, get_skill_name, migrate_legacy_focus, prerequisite_path,
+)
 from src.skills.skill_engine import update_skill_after_check
 
 
@@ -127,22 +130,36 @@ def apply_confirmed_ege_diagnostics(current_dna: dict | None, student_id: int, a
         processed_set.add(evidence_id)
         applied_ids.append(evidence_id)
     plan = []
-    seen_steps = set()
+    seen_skills = set()
     for case in confirmed:
-        step_key = (case.get("task_number"), case.get("failed_step"))
-        if step_key in seen_steps:
-            continue
-        seen_steps.add(step_key)
         evidence = _confirmed_evidence(case)
         skill_ids = case.get("skill_ids") or []
         evidence_skill_id = evidence.get("skill_id") if evidence else None
         skill_id = evidence_skill_id if evidence_skill_id and get_skill(evidence_skill_id) else (skill_ids[0] if skill_ids else None)
+        if not skill_id or skill_id in seen_skills:
+            continue
+        seen_skills.add(skill_id)
         skill = get_skill(skill_id) if skill_id else None
         plan.append({"order": len(plan) + 1, "task_number": case.get("task_number"), "skill_id": skill_id,
                      "skill_name": get_skill_name(skill_id) if skill_id else case.get("task_title"),
                      "failed_step": case.get("failed_step"), "action": case.get("learning_action"),
                      "prerequisites": list((skill or {}).get("prerequisites", [])), "evidence_status": "confirmed",
-                     "confidence": case.get("confidence")})
+                     "confidence": case.get("confidence"),
+                     "exam_tasks": list((skill or {}).get("exam_tasks", [])),
+                     "learning_path": ["foundation", "basic", "intermediate", "transfer", "exam", "exam_transfer"],
+                     "learning_support_status": "ready" if case.get("task_number") in {5, 14, 27} else "learning_module_pending"})
+    # Dependency order wins over exam number whenever two confirmed gaps depend
+    # on each other. The same global skill can occur only once in the course.
+    def dependency_order(left: dict, right: dict) -> int:
+        if left["skill_id"] in prerequisite_path(right["skill_id"]):
+            return -1
+        if right["skill_id"] in prerequisite_path(left["skill_id"]):
+            return 1
+        return 0  # stable sort retains evidence/exam order for unrelated gaps
+
+    plan.sort(key=cmp_to_key(dependency_order))
+    for order, item in enumerate(plan, 1):
+        item["order"] = order
     trajectory = dna.setdefault("trajectory", {})
     trajectory["individual_plan"] = plan
     if plan:

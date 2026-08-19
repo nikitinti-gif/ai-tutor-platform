@@ -3,6 +3,9 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
 student_menu = ReplyKeyboardMarkup(
     keyboard=[
+        [KeyboardButton(text="🎓 Пройти КЕГЭ")],
+        [KeyboardButton(text="🧬 Моя карта знаний")],
+        [KeyboardButton(text="🎓 Начать обучение")],
         [KeyboardButton(text="📚 Моё ДЗ")],
         [KeyboardButton(text="📸 Проверить решение")],
         [KeyboardButton(text="📊 Мой прогресс")],
