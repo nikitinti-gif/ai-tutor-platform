@@ -53,6 +53,20 @@ def test_roundtrip_state_dict():
     assert restored.current_task == 2
     assert restored.results == {1: True}
     assert restored.diagnostics == {}
+    assert restored.answer_records[0]["task_number"] == 1
+    assert restored.answer_records[0]["solution_mode"] == "reasoning"
+    assert restored.answer_records[0]["canonical_answer"] == [["9"]]
+    assert restored.answer_records[0]["validator_result"] is True
+
+
+def test_exam_mode_withholds_per_question_verdict_and_records_skip():
+    attempt = ExamAttempt()
+    result = submit_answer(attempt, "wrong")
+    assert "невер" not in result.message.lower()
+    from src.services.ege_exam_service import skip_task
+    skip_task(attempt)
+    assert attempt.answer_records[-1]["student_answer"] is None
+    assert attempt.answer_records[-1]["validator_result"] is None
 
 
 def test_diagnostic_case_survives_state_roundtrip():
