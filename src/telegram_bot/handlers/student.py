@@ -676,6 +676,102 @@ async def start_ege_exam(message: Message, state: FSMContext):
     await _send_ege_task(message, attempt.current_task)
 
 
+async def start_personal_learning(message: Message, state: FSMContext) -> None:
+    """Start the first executable course item from the persisted Learning DNA.
+
+    This entry point deliberately does not delegate to ``start_ege_exam``.  The
+    exam is evidence used to build the trajectory; it is not the course itself.
+    """
+    from src.services.ege_exam_service import (
+        ExamAttempt,
+        render_task5_remediation,
+        render_task27_remediation,
+        start_task5_remediation,
+        start_task27_remediation,
+    )
+
+    saved = get_ege_session(message.from_user.id)
+
+    # A deploy may have cleared the FSM.  Resume only an actual course session;
+    # diagnostic/exam sessions remain the responsibility of /ege2026.
+    if saved and saved.get("status") == "learning_path_in_progress":
+        from src.services.ege_learning_path import LearningPath, render_current_step
+
+        attempt = ExamAttempt.from_dict(saved["attempt"])
+        path = LearningPath.from_dict(attempt.learning_path)
+        await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
+        await state.update_data(ege_attempt=attempt.to_dict())
+        await message.answer("▶️ Продолжаем индивидуальную учебную ветку №14.")
+        await message.answer(render_current_step(path))
+        return
+    if saved and saved.get("status") == "remediation_in_progress":
+        attempt = ExamAttempt.from_dict(saved["attempt"])
+        task_number = int((attempt.remediation or {}).get("task_number", 0))
+        renderer = {5: render_task5_remediation, 27: render_task27_remediation}.get(task_number)
+        if renderer:
+            await state.set_state(StudentEgeExamStates.waiting_remediation_answer)
+            await state.update_data(ege_attempt=attempt.to_dict())
+            await message.answer(f"▶️ Продолжаем короткое обучение по заданию №{task_number}.")
+            await message.answer(renderer(attempt))
+            return
+
+    dna = LearningDNARepository.get(message.from_user.id) or {}
+    trajectory = dna.get("trajectory") or {}
+    plan = list(trajectory.get("individual_plan") or [])
+    focus_id = trajectory.get("next_focus_skill_id")
+    if focus_id:
+        plan.sort(key=lambda item: item.get("skill_id") != focus_id)
+
+    attempt = None
+    if saved and saved.get("attempt"):
+        attempt = ExamAttempt.from_dict(saved["attempt"])
+
+    pending_reported = False
+    for item in plan:
+        support = item.get("learning_support_status")
+        if support == "learning_module_pending":
+            pending_reported = True
+            await message.answer("Для этого навыка учебный модуль ещё готовится")
+            continue
+
+        task_number = int(item.get("task_number") or 0)
+        if task_number == 14 and attempt is not None:
+            from src.services.ege_learning_path import build_learning_path, render_current_step
+
+            path = build_learning_path(14, source="individual_plan")
+            attempt.learning_path = path.to_dict()
+            save_ege_session(
+                message.from_user.id,
+                attempt.to_dict(),
+                status="learning_path_in_progress",
+            )
+            await state.set_state(StudentEgeExamStates.waiting_learning_path_answer)
+            await state.update_data(ege_attempt=attempt.to_dict())
+            await message.answer("🧭 Начинаем индивидуальную учебную ветку №14.")
+            await message.answer(render_current_step(path))
+            return
+
+        starter = {5: start_task5_remediation, 27: start_task27_remediation}.get(task_number)
+        renderer = {5: render_task5_remediation, 27: render_task27_remediation}.get(task_number)
+        remediation = starter(attempt) if starter and attempt is not None else None
+        if remediation and int(remediation.get("task_number", 0)) == task_number and renderer:
+            save_ege_session(
+                message.from_user.id,
+                attempt.to_dict(),
+                status="remediation_in_progress",
+            )
+            await state.set_state(StudentEgeExamStates.waiting_remediation_answer)
+            await state.update_data(ege_attempt=attempt.to_dict())
+            await message.answer(f"🧭 Начинаем короткое обучение по заданию №{task_number}.")
+            await message.answer(renderer(attempt, include_lesson=True))
+            return
+
+    if not pending_reported:
+        await message.answer("В индивидуальном плане пока нет доступного учебного модуля.")
+    else:
+        await message.answer("Следующий доступный учебный модуль пока не найден.")
+
+
 async def _send_tutor_task27_file_stage(message: Message, stage: str) -> None:
     from src.services.ege_exam_service import TASK27_FILE_STAGE_META, render_tutor_pilot_task27_file_stage
     meta = TASK27_FILE_STAGE_META[stage]
@@ -1215,6 +1311,7 @@ def register_student_handlers(dp: Dispatcher):
     dp.message.register(skip_ege_task, StudentEgeExamStates.waiting_answer, F.text == "/skip_ege")
     dp.message.register(finish_ege_exam, StudentEgeExamStates.waiting_answer, F.text == "/finish_ege")
     dp.message.register(start_ege_exam, F.text.in_({"/ege2026", "🎓 Пройти КЕГЭ"}))
+    dp.message.register(start_personal_learning, F.text == "🎓 Начать обучение")
     dp.message.register(
         receive_ege_answer,
         StudentEgeExamStates.waiting_answer,
