@@ -11,6 +11,7 @@ import time
 
 from src.ai_engine.ege_open_variant_2026 import get_open_variant_task
 from src.skills.skill_graph import get_task_solution_mode
+from src.services.learning_course import MAX_RETRIES, MODULE_STEPS
 
 _DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -135,6 +136,7 @@ TASK14_LEVELS: tuple[dict, ...] = (
 class LearningPath:
     task_number: int
     solution_mode: str
+    skill_id: str = "number_systems.large_number_digits"
     source: str = "diagnostic_exam"
     current_index: int = 0
     status: str = "learning"
@@ -149,6 +151,7 @@ class LearningPath:
         return cls(
             task_number=int(data["task_number"]),
             solution_mode=str(data["solution_mode"]),
+            skill_id=str(data.get("skill_id", "number_systems.large_number_digits")),
             source=str(data.get("source", "diagnostic_exam")),
             current_index=int(data.get("current_index", 0)),
             status=str(data.get("status", "learning")),
@@ -157,20 +160,33 @@ class LearningPath:
         )
 
 
-def build_learning_path(task_number: int, *, source: str = "diagnostic_exam") -> LearningPath:
-    """Build the first production reasoning learning-path slice."""
-    if task_number != 14:
-        raise ValueError("Progressive Learning Path is currently enabled only for task 14.")
+def build_learning_path(
+    task_number: int, *, source: str = "diagnostic_exam", skill_id: str | None = None
+) -> LearningPath:
+    """Build an executable path for a global skill in an exam context."""
+    skill_id = skill_id or ("number_systems.large_number_digits" if task_number == 14 else "")
+    if skill_id not in MODULE_STEPS and skill_id != "number_systems.large_number_digits":
+        raise ValueError(
+            f"Progressive Learning Path was previously only for task 14; "
+            f"no production module exists for global skill {skill_id!r}."
+        )
     mode = get_task_solution_mode(task_number)
-    if mode != "reasoning":
-        raise ValueError("This learning path is only for reasoning tasks.")
-    return LearningPath(task_number=task_number, solution_mode=mode, source=source)
+    return LearningPath(task_number=task_number, solution_mode=mode, skill_id=skill_id, source=source)
+
+
+def _levels(path: LearningPath) -> tuple[dict, ...]:
+    if path.skill_id == "number_systems.large_number_digits":
+        return TASK14_LEVELS
+    return MODULE_STEPS[path.skill_id]
 
 
 def current_step(path: LearningPath) -> dict | None:
-    if path.status == "mastered" or path.current_index >= len(TASK14_LEVELS):
+    levels = _levels(path)
+    if path.status == "mastered" or path.current_index >= len(levels):
         return None
-    return TASK14_LEVELS[path.current_index]
+    step = dict(levels[path.current_index])
+    step.setdefault("skill_id", path.skill_id)
+    return step
 
 
 def render_current_step(path: LearningPath) -> str:
@@ -178,7 +194,7 @@ def render_current_step(path: LearningPath) -> str:
     if step is None:
         return "🏆 Ветка №14 завершена: экзаменационный уровень подтверждён."
     number = path.current_index + 1
-    total = len(TASK14_LEVELS)
+    total = len(_levels(path))
     if path.attempts_on_step == 0:
         support = f"\n\n💡 Перед задачей:\n{step['support']}"
     elif path.attempts_on_step >= 2 and step.get("worked_example"):
@@ -188,9 +204,10 @@ def render_current_step(path: LearningPath) -> str:
         )
     else:
         support = f"\n\n💡 Подсказка:\n{step['support']}"
+    heading = "ПУТЬ К №14" if path.skill_id == "number_systems.large_number_digits" else f"НАВЫК {path.skill_id} · КОНТЕКСТ №{path.task_number}"
     return (
         "━━━━━━━━━━━━━━━━━━━━\n"
-        f"🪜 ПУТЬ К №14 · ШАГ {number}/{total}\n"
+        f"🪜 {heading} · ШАГ {number}/{total}\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"{step['title']} · уровень: {step['difficulty']}"
         f"{support}\n\n"
@@ -223,7 +240,7 @@ def submit_answer(path: LearningPath, answer: str) -> dict:
         completed_step = step["id"]
         path.current_index += 1
         path.attempts_on_step = 0
-        if path.current_index >= len(TASK14_LEVELS):
+        if path.current_index >= len(_levels(path)):
             path.status = "mastered"
         return {
             "is_correct": True,
@@ -232,10 +249,17 @@ def submit_answer(path: LearningPath, answer: str) -> dict:
             "next_step": current_step(path),
         }
 
+    retry_limit_reached = path.attempts_on_step >= MAX_RETRIES
+    if retry_limit_reached:
+        # Never loop forever on one item. Return to a simpler prerequisite
+        # checkpoint and preserve the failed item in history as evidence.
+        path.current_index = max(0, path.current_index - 1)
+        path.attempts_on_step = 0
     return {
         "is_correct": False,
         "status": path.status,
         "attempts_on_step": path.attempts_on_step,
         "step": step,
         "needs_teaching": path.attempts_on_step >= 2,
+        "retry_limit_reached": retry_limit_reached,
     }

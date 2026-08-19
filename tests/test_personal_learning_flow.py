@@ -91,7 +91,7 @@ def test_partial_skill_uses_existing_remediation(monkeypatch, task_number):
     assert any(f"№{task_number}" in answer for answer in message.answers)
 
 
-def test_pending_item_is_explained_and_first_executable_item_is_selected(monkeypatch):
+def test_newly_executable_shared_skill_is_selected_before_task14(monkeypatch):
     attempt = ExamAttempt()
     pending = {
         "skill_id": "logic.operations",
@@ -101,12 +101,12 @@ def test_pending_item_is_explained_and_first_executable_item_is_selected(monkeyp
     ready = {"skill_id": "number_systems.large_number_digits", "task_number": 14}
     message, state, writes = _run(monkeypatch, _dna(pending, ready), attempt)
 
-    assert message.answers[0] == "Для этого навыка учебный модуль ещё готовится"
+    assert "Логические операции" in message.answers[0]
     assert writes[-1][2] == "learning_path_in_progress"
     assert state.state == StudentEgeExamStates.waiting_learning_path_answer
 
 
-def test_pending_only_does_not_create_exam_or_silently_loop(monkeypatch):
+def test_shared_logic_skill_now_starts_executable_course(monkeypatch):
     attempt = ExamAttempt()
     pending = {
         "skill_id": "logic.operations",
@@ -115,11 +115,8 @@ def test_pending_only_does_not_create_exam_or_silently_loop(monkeypatch):
     }
     message, _state, writes = _run(monkeypatch, _dna(pending), attempt)
 
-    assert writes == []
-    assert message.answers == [
-        "Для этого навыка учебный модуль ещё готовится",
-        "Следующий доступный учебный модуль пока не найден.",
-    ]
+    assert writes[-1][2] == "learning_path_in_progress"
+    assert "Логические операции" in message.answers[0]
 
 
 def test_restart_continues_current_learning_path(monkeypatch):
