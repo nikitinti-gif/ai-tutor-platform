@@ -198,6 +198,13 @@ def confirm_global_skill_mastery(dna: dict, skill_id: str, learning_path: dict) 
     required = {"foundation", "basic", "intermediate", "transfer", "exam", "exam_transfer"}
     if not required.issubset(difficulties):
         raise ValueError("Mastery requires the complete ladder and two independent transfer evidences.")
+    independent_transfer = {
+        row.get("difficulty") for row in successful if row.get("independent") is True
+    }
+    if not {"transfer", "exam_transfer"}.issubset(independent_transfer):
+        raise ValueError("Mastery requires independent transfer and exam_transfer evidence.")
+    if any(row.get("skill_id") != skill_id for row in successful):
+        raise ValueError("Mastery evidence belongs to another global skill.")
     evidence_id = f"course:{skill_id}:{successful[-1].get('timestamp')}"
     state = dna.setdefault("skills", {}).setdefault(skill_id, {"skill_id": skill_id})
     state.update({

@@ -759,7 +759,8 @@ async def start_personal_learning(message: Message, state: FSMContext) -> None:
     for item in plan:
         skill_id = item.get("skill_id")
         course_item = course_by_skill.get(skill_id)
-        if skill_id in executable_skill_ids() and attempt is not None and course_item:
+        if (skill_id in executable_skill_ids() and attempt is not None and course_item
+                and course_item.status == "READY"):
             from src.services.ege_learning_path import build_learning_path, render_current_step
 
             task_number = int(item.get("task_number") or course_item.related_exam_tasks[0])

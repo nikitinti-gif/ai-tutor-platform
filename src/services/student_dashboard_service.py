@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from src.skills.skill_graph import load_skill_map
+from src.services.learning_course import executable_skill_ids
 
 STATUS_META = {
     "mastered": ("🟢", "Освоено"),
@@ -38,6 +39,7 @@ def build_student_dashboard(dna: dict | None, exam_session: dict | None = None) 
     plan = list((dna.get("trajectory") or {}).get("individual_plan") or [])
     plan_by_skill = {item.get("skill_id"): item for item in plan if item.get("skill_id")}
     task_modes = {task["number"]: task["solution_mode"] for task in skill_map["tasks"]}
+    executable = executable_skill_ids()
     nodes = []
     for skill in skill_map["skills"]:
         skill_id = skill["id"]
@@ -54,11 +56,17 @@ def build_student_dashboard(dna: dict | None, exam_session: dict | None = None) 
             "prerequisites": list(skill.get("prerequisites", [])),
             "modes": modes,
             "evidence": evidence,
+            "evidence_count": int(state.get("evidence_count", len(evidence))),
+            "learning_support": "READY" if skill_id in executable else "PENDING",
+            "current_course_stage": plan_by_skill.get(skill_id, {}).get("current_stage"),
             "next_step": plan_by_skill.get(skill_id, {}).get("action"),
             "learning_path": plan_by_skill.get(skill_id, {}).get("learning_path", [
                 "foundation", "basic", "intermediate", "transfer", "exam"
             ]),
             "mastery": int(state.get("mastery_level", 100 if state.get("mastered") else 0)),
+            "next_action": plan_by_skill.get(skill_id, {}).get("action") or (
+                "Начать learning module" if skill_id in executable else "Ожидать product-ready module"
+            ),
         })
     counts = {status: sum(node["status"] == status for node in nodes) for status in STATUS_META}
     attempt = (exam_session or {}).get("attempt", exam_session or {})
@@ -95,6 +103,10 @@ def render_student_dashboard(view: dict) -> str:
             marker, status_label = STATUS_META[node["status"]]
             tasks = ", ".join(f"№{number}" for number in node["exam_tasks"])
             lines.append(f"{marker} {node['name']} — {status_label} (КЕГЭ {tasks})")
+            lines.append(
+                f"   Поддержка: {node['learning_support']}; evidence: {node['evidence_count']}; "
+                f"prerequisites: {', '.join(node['prerequisites']) or 'нет'}; далее: {node['next_action']}"
+            )
     lines.extend(["", "━━━━━━━━━━━━━━━━━━━━", "ТВОЙ УЧЕБНЫЙ МАРШРУТ", "━━━━━━━━━━━━━━━━━━━━"])
     if not view["individual_plan"]:
         lines.append("Подтверждённых пробелов пока нет. Продолжай практику.")
