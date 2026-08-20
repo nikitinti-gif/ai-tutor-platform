@@ -1,9 +1,11 @@
 import os
 
 from src.database.json_storage import (
+    enter_student_test_mode,
     get_user_by_telegram_id,
     create_user,
     get_users_by_role,
+    restore_user_role,
 )
 
 
@@ -53,3 +55,21 @@ class UserRepository:
                 role,
             )
         return get_users_by_role(role)
+
+    @staticmethod
+    def enter_student_test_mode(telegram_id: int, student_role: str):
+        database_url = _database_url()
+        if database_url:
+            return _postgres_function("enter_postgres_student_test_mode")(
+                database_url, telegram_id, student_role
+            )
+        return enter_student_test_mode(telegram_id, student_role)
+
+    @staticmethod
+    def restore_role(telegram_id: int, fallback_role: str):
+        database_url = _database_url()
+        if database_url:
+            return _postgres_function("restore_postgres_user_role")(
+                database_url, telegram_id, fallback_role
+            )
+        return restore_user_role(telegram_id, fallback_role)

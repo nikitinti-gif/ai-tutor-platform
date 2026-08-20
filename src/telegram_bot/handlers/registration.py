@@ -6,6 +6,9 @@ from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup
 
 from config import ADMIN_TELEGRAM_ID
 from src.core.roles import ROLE_STUDENT, ROLE_PARENT, ROLE_TEACHER, ROLE_NAMES
+from src.database.json_storage import delete_ege_session
+from src.repositories.homework_repository import HomeworkRepository
+from src.repositories.learning_dna_repository import LearningDNARepository
 from src.repositories.user_repository import UserRepository
 from src.telegram_bot.keyboards.role_menus import (
     student_menu,
@@ -133,8 +136,68 @@ async def register_teacher(message: Message):
     )
 
 
+async def test_student(message: Message, state):
+    """Reset only the admin's student data and enter the real student flow."""
+    if not is_admin(message):
+        await message.answer("Команда недоступна.")
+        return
+
+    telegram_id = message.from_user.id
+    try:
+        user = UserRepository.enter_student_test_mode(
+            telegram_id, ROLE_STUDENT
+        )
+        if not user:
+            await message.answer("Команда недоступна.")
+            return
+        LearningDNARepository.delete(telegram_id)
+        delete_ege_session(telegram_id)
+        HomeworkRepository.delete_student_progress(telegram_id)
+        await state.clear()
+    except Exception:
+        logger.exception("Student E2E test mode could not be enabled")
+        await message.answer("🔴 Не удалось включить тестовый режим.")
+        return
+
+    await message.answer(
+        "🧪 Тестовый режим ученика включён.\n"
+        "Профиль очищен для нового E2E.\n"
+        "Роль: student.\n\n"
+        "Теперь:\n"
+        "1. /start\n"
+        "2. Пробный КЕГЭ 2026\n"
+        "3. пройти 27 заданий\n"
+        "4. открыть карту знаний\n"
+        "5. начать обучение"
+    )
+
+
+async def restore_teacher(message: Message, state):
+    """Restore the admin's captured role without deleting student results."""
+    if not is_admin(message):
+        await message.answer("Команда недоступна.")
+        return
+
+    try:
+        user = UserRepository.restore_role(
+            message.from_user.id, ROLE_TEACHER
+        )
+        if not user:
+            await message.answer("Команда недоступна.")
+            return
+        await state.clear()
+    except Exception:
+        logger.exception("Teacher role could not be restored")
+        await message.answer("🔴 Не удалось восстановить роль.")
+        return
+
+    await message.answer("👨‍🏫 Роль преподавателя восстановлена.")
+
+
 def register_registration_handlers(dp: Dispatcher):
     dp.message.register(start_handler, CommandStart())
+    dp.message.register(test_student, F.text == "/test_student")
+    dp.message.register(restore_teacher, F.text == "/restore_teacher")
     dp.message.register(register_student, F.text == "👨‍🎓 Ученик")
     dp.message.register(register_parent, F.text == "👨‍👩‍👧 Родитель")
     dp.message.register(register_teacher, F.text == "👩‍🏫 Преподаватель")
