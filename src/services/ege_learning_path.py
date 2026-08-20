@@ -232,6 +232,8 @@ def submit_answer(path: LearningPath, answer: str) -> dict:
             "student_answer": answer,
             "canonical_answer": str(step["answers"][0]),
             "validator_result": is_correct,
+            "attempt_number": path.attempts_on_step,
+            "independent": path.attempts_on_step == 1,
             "timestamp": time.time(),
         }
     )
