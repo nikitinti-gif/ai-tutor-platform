@@ -22,10 +22,61 @@ def _ensure_users_table(connection) -> None:
         """
     )
     connection.execute(
-        """
-        CREATE INDEX IF NOT EXISTS app_users_role_idx ON app_users (role)
-        """
+        "ALTER TABLE app_users ADD COLUMN IF NOT EXISTS test_mode_original_role TEXT"
     )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS app_users_role_idx ON app_users (role)"
+    )
+
+
+def enter_postgres_student_test_mode(
+    database_url: str, telegram_id: int, student_role: str
+) -> dict | None:
+    if student_role not in VALID_USER_ROLES:
+        raise ValueError("Некорректная роль пользователя.")
+    with psycopg.connect(database_url) as connection:
+        _ensure_users_table(connection)
+        row = connection.execute(
+            """
+            UPDATE app_users
+            SET test_mode_original_role = COALESCE(test_mode_original_role, role),
+                role = %s, updated_at = %s
+            WHERE telegram_id = %s
+            RETURNING telegram_id, full_name, role, test_mode_original_role
+            """,
+            (student_role, datetime.now(timezone.utc), telegram_id),
+        ).fetchone()
+    if not row:
+        return None
+    fields = (
+        "telegram_id",
+        "full_name",
+        "role",
+        "test_mode_original_role",
+    )
+    return dict(zip(fields, row))
+
+
+def restore_postgres_user_role(
+    database_url: str, telegram_id: int, fallback_role: str
+) -> dict | None:
+    if fallback_role not in VALID_USER_ROLES:
+        raise ValueError("Некорректная роль пользователя.")
+    with psycopg.connect(database_url) as connection:
+        _ensure_users_table(connection)
+        row = connection.execute(
+            """
+            UPDATE app_users
+            SET role = COALESCE(test_mode_original_role, %s),
+                test_mode_original_role = NULL, updated_at = %s
+            WHERE telegram_id = %s
+            RETURNING telegram_id, full_name, role
+            """,
+            (fallback_role, datetime.now(timezone.utc), telegram_id),
+        ).fetchone()
+    if not row:
+        return None
+    return dict(zip(("telegram_id", "full_name", "role"), row))
 
 
 def create_postgres_user(

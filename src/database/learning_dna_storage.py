@@ -58,6 +58,19 @@ def save_postgres_learning_dna(
     return dna
 
 
+def delete_postgres_learning_dna(
+    database_url: str,
+    student_telegram_id: int,
+) -> bool:
+    with psycopg.connect(database_url) as connection:
+        _ensure_learning_dna_table(connection)
+        result = connection.execute(
+            "DELETE FROM student_learning_dna WHERE student_telegram_id = %s",
+            (student_telegram_id,),
+        )
+    return result.rowcount > 0
+
+
 def complete_submission_with_learning_dna(
     database_url: str,
     submission_id: str,

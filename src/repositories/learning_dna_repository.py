@@ -1,6 +1,7 @@
 import os
 
 from src.database.json_storage import (
+    delete_learning_dna,
     get_learning_dna,
     get_synthetic_learning_checks,
     save_learning_dna,
@@ -39,6 +40,15 @@ class LearningDNARepository:
                 dna,
             )
         return save_learning_dna(student_id, dna)
+
+    @staticmethod
+    def delete(student_id: int):
+        database_url = _database_url()
+        if database_url:
+            return _postgres_function("delete_postgres_learning_dna")(
+                database_url, student_id
+            )
+        return delete_learning_dna(student_id)
 
     @staticmethod
     def save_synthetic_check(check_result: dict):

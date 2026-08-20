@@ -97,6 +97,29 @@ def get_users_by_role(role: str):
     ]
 
 
+def enter_student_test_mode(telegram_id: int, student_role: str):
+    """Change one existing user to student while retaining their first role."""
+    db = load_db()
+    for user in db["users"]:
+        if user["telegram_id"] == telegram_id:
+            user.setdefault("test_mode_original_role", user["role"])
+            user["role"] = student_role
+            save_db(db)
+            return user
+    return None
+
+
+def restore_user_role(telegram_id: int, fallback_role: str):
+    """Restore the role captured on first entry into student test mode."""
+    db = load_db()
+    for user in db["users"]:
+        if user["telegram_id"] == telegram_id:
+            user["role"] = user.pop("test_mode_original_role", fallback_role)
+            save_db(db)
+            return user
+    return None
+
+
 def create_homework(topic: str, homework_data: dict, teacher_id: int):
     db = load_db()
 
@@ -134,6 +157,13 @@ def save_learning_dna(student_id: int, dna: dict):
     db["learning_dna"][str(student_id)] = dna
     save_db(db)
     return dna
+
+
+def delete_learning_dna(student_id: int):
+    db = load_db()
+    removed = db["learning_dna"].pop(str(student_id), None)
+    save_db(db)
+    return removed
 
 
 def save_synthetic_learning_check(check_result: dict):
@@ -262,6 +292,19 @@ def get_latest_student_homework(student_id: int):
         return None
 
     return student_items[-1]
+
+
+def delete_student_homework_progress(student_id: int):
+    """Remove assignments/progress for one student, never global homework."""
+    db = load_db()
+    before = len(db["student_homework"])
+    db["student_homework"] = [
+        item
+        for item in db["student_homework"]
+        if item["student_id"] != student_id
+    ]
+    save_db(db)
+    return before - len(db["student_homework"])
 
 
 def get_ege_session(student_id: int):

@@ -5,10 +5,15 @@ from src.database.json_storage import (
     get_student_homework_by_student_id,
     update_student_homework_status,
     get_latest_student_homework,
+    delete_student_homework_progress,
 )
 
 
 class HomeworkRepository:
+    @staticmethod
+    def delete_student_progress(student_id: int):
+        return delete_student_homework_progress(student_id)
+
     @staticmethod
     def create(topic: str, homework_data: dict, teacher_id: int):
         return create_homework(
