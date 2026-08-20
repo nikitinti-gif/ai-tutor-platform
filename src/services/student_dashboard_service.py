@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from src.skills.skill_graph import load_skill_map
+from src.services.learning_course import build_course, executable_skill_ids
 
 STATUS_META = {
     "mastered": ("🟢", "Освоено"),
@@ -37,6 +38,8 @@ def build_student_dashboard(dna: dict | None, exam_session: dict | None = None) 
     states = dna.get("skills") or {}
     plan = list((dna.get("trajectory") or {}).get("individual_plan") or [])
     plan_by_skill = {item.get("skill_id"): item for item in plan if item.get("skill_id")}
+    course = build_course(plan, states)
+    course_by_skill = {item.skill_id: item for item in course}
     task_modes = {task["number"]: task["solution_mode"] for task in skill_map["tasks"]}
     nodes = []
     for skill in skill_map["skills"]:
@@ -45,16 +48,35 @@ def build_student_dashboard(dna: dict | None, exam_session: dict | None = None) 
         exam_tasks = list(skill.get("exam_tasks", []))
         modes = sorted({task_modes[number] for number in exam_tasks})
         status = _status(skill_id, state, plan_by_skill)
+        course_item = course_by_skill.get(skill_id)
+        module_support = (
+            "READY_MODULE" if skill_id in executable_skill_ids() else "PENDING_MODULE"
+        )
+        if state.get("mastered"):
+            course_status = "MASTERED"
+            next_action = "Навык освоен"
+        elif course_item:
+            course_status = course_item.status
+            next_action = course_item.next_action
+        elif module_support == "PENDING_MODULE":
+            course_status = "PENDING_MODULE"
+            next_action = "Учебный модуль ещё не прошёл product gate"
+        else:
+            unmet = [p for p in skill.get("prerequisites", []) if not states.get(p, {}).get("mastered")]
+            course_status = "BLOCKED_BY_PREREQUISITE" if unmet else "READY"
+            next_action = None
         evidence = list(state.get("evidence_history") or state.get("remediation_evidence") or [])
         nodes.append({
             "skill_id": skill_id,
             "name": skill["name"],
             "status": status,
+            "module_support": module_support,
+            "course_status": course_status,
             "exam_tasks": exam_tasks,
             "prerequisites": list(skill.get("prerequisites", [])),
             "modes": modes,
             "evidence": evidence,
-            "next_step": plan_by_skill.get(skill_id, {}).get("action"),
+            "next_step": next_action,
             "learning_path": plan_by_skill.get(skill_id, {}).get("learning_path", [
                 "foundation", "basic", "intermediate", "transfer", "exam"
             ]),
@@ -75,6 +97,17 @@ def build_student_dashboard(dna: dict | None, exam_session: dict | None = None) 
             for node in nodes for prerequisite in node["prerequisites"]
         ],
         "individual_plan": plan,
+        "course": [
+            {
+                "skill_id": item.skill_id,
+                "course_status": item.status,
+                "module_support": (
+                    "READY_MODULE" if item.skill_id in executable_skill_ids() else "PENDING_MODULE"
+                ),
+                "next_action": item.next_action,
+            }
+            for item in course
+        ],
         "next_focus_skill_id": (dna.get("trajectory") or {}).get("next_focus_skill_id"),
     }
 
@@ -98,10 +131,12 @@ def render_student_dashboard(view: dict) -> str:
     lines.extend(["", "━━━━━━━━━━━━━━━━━━━━", "ТВОЙ УЧЕБНЫЙ МАРШРУТ", "━━━━━━━━━━━━━━━━━━━━"])
     if not view["individual_plan"]:
         lines.append("Подтверждённых пробелов пока нет. Продолжай практику.")
-    for index, item in enumerate(view["individual_plan"], 1):
-        status = "подтверждено" if item.get("evidence_status") == "confirmed" else "нужно уточнить"
-        lines.append(f"{index}. {item.get('skill_name', 'Навык')} — {status}")
-        if item.get("action"):
-            lines.append(f"   Следующий шаг: {item['action']}")
+    nodes_by_skill = {node["skill_id"]: node for node in view["nodes"]}
+    for index, item in enumerate(view["course"], 1):
+        node = nodes_by_skill[item["skill_id"]]
+        lines.append(f"{index}. {node['name']} — {item['course_status']}")
+        lines.append(f"   Поддержка: {item['module_support']}")
+        if item.get("next_action"):
+            lines.append(f"   Следующий шаг: {item['next_action']}")
     lines.append("\nНажми «🎓 Начать обучение» или вернись позже — прогресс сохранён.")
     return "\n".join(lines)
