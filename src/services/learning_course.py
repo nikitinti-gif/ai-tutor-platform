@@ -88,26 +88,48 @@ def build_course(plan: Iterable[dict], states: dict | None = None) -> list[Cours
     requested: dict[str, list[dict]] = {}
     for row in plan:
         skill_id = row.get("skill_id")
-        if get_skill(str(skill_id), skill_map) and not states.get(skill_id, {}).get("mastered"):
+        if get_skill(str(skill_id), skill_map):
             requested.setdefault(str(skill_id), []).append(row)
     ordered: list[str] = []
     for skill_id in requested:
         for candidate in prerequisite_path(skill_id, skill_map):
-            if candidate in requested and candidate not in ordered:
+            if candidate not in ordered:
                 ordered.append(candidate)
     result = []
     for skill_id in ordered:
         skill = get_skill(skill_id, skill_map)
-        rows = requested[skill_id]
+        rows = requested.get(skill_id, [])
         tasks = set(skill.get("exam_tasks", []))
         tasks.update(int(row["task_number"]) for row in rows if row.get("task_number"))
         executable = skill_id in executable_skill_ids()
+        mastered = bool(states.get(skill_id, {}).get("mastered"))
+        unmet_prerequisites = [
+            prerequisite
+            for prerequisite in prerequisite_path(skill_id, skill_map)[:-1]
+            if not states.get(prerequisite, {}).get("mastered")
+        ]
+        if mastered:
+            status = "MASTERED"
+            next_action = "Навык освоен"
+        elif not executable:
+            # Module readiness is independent of prerequisite readiness.  A
+            # missing module is the actionable product limitation even when a
+            # prerequisite is also unmet.
+            status = "PENDING_MODULE"
+            next_action = "Учебный модуль ещё не прошёл product gate"
+        elif unmet_prerequisites:
+            status = "BLOCKED_BY_PREREQUISITE"
+            prerequisite_name = get_skill(unmet_prerequisites[0], skill_map)["name"]
+            next_action = f"Сначала освоить «{prerequisite_name}»"
+        else:
+            status = "READY"
+            next_action = "Начать foundation"
         result.append(CourseItem(
             skill_id=skill_id, human_title=skill["name"],
             reason="Пробел подтверждён диагностическими evidence",
             evidence_summary=f"Сигналов: {len(rows)}; контексты: " + ", ".join(f"№{n}" for n in sorted(tasks)),
             related_exam_tasks=tuple(sorted(tasks)), prerequisites=tuple(skill.get("prerequisites", [])),
-            status="READY" if executable else "PENDING", estimated_steps=6 if executable else 0,
-            next_action="Начать foundation" if executable else "Учебный модуль ещё не прошёл product gate",
+            status=status, estimated_steps=6 if executable else 0,
+            next_action=next_action,
         ))
     return result

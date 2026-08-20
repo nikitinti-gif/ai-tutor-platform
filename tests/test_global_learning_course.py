@@ -81,7 +81,8 @@ def test_deterministic_student_personas_receive_distinct_deduplicated_courses():
     assert courses["strong"] == []
     assert len(courses["number_systems"]) == 1  # five wrong contexts, one global node
     assert len(courses["logic"]) == 1
-    assert courses["programming"][0].status == "PENDING"
+    assert courses["programming"][-1].skill_id == "programming.geometry_clusters"
+    assert courses["programming"][-1].status == "PENDING_MODULE"
     assert [item.skill_id for item in courses["multiple_prerequisites"]] == [
         "algorithms.tracing", "number_systems.base_conversion"
     ]

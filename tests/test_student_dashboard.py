@@ -5,6 +5,7 @@ from src.services.student_dashboard_service import (
     build_student_dashboard,
     render_student_dashboard,
 )
+from src.services.learning_course import MODULE_STEPS, build_course
 from src.skills.skill_graph import load_skill_map
 
 
@@ -57,3 +58,62 @@ def test_dashboard_updates_same_node_after_mastery():
     assert _node(before, skill_id)["status"] == "confirmed_weak"
     assert _node(after, skill_id)["status"] == "mastered"
     assert len([n for n in after["nodes"] if n["skill_id"] == skill_id]) == 1
+
+
+def _recursion_plan():
+    return [{"task_number": 16, "skill_id": "algorithms.recursion"}]
+
+
+def _dna_with_recursion_plan():
+    dna = create_default_learning_dna(1)
+    dna["trajectory"]["individual_plan"] = _recursion_plan()
+    return dna
+
+
+def test_dashboard_separates_module_support_from_prerequisite_availability(monkeypatch):
+    monkeypatch.setitem(MODULE_STEPS, "algorithms.recursion", MODULE_STEPS["algorithms.tracing"])
+    view = build_student_dashboard(_dna_with_recursion_plan())
+
+    tracing = _node(view, "algorithms.tracing")
+    recursion = _node(view, "algorithms.recursion")
+    assert tracing["course_status"] == "READY"
+    assert recursion["module_support"] == "READY_MODULE"
+    assert recursion["course_status"] == "BLOCKED_BY_PREREQUISITE"
+    assert "Трассировка алгоритмов" in recursion["next_step"]
+    assert "Начать learning module" not in render_student_dashboard(view)
+
+
+def test_dashboard_unlocks_dependent_module_after_prerequisite_mastery(monkeypatch):
+    monkeypatch.setitem(MODULE_STEPS, "algorithms.recursion", MODULE_STEPS["algorithms.tracing"])
+    dna = _dna_with_recursion_plan()
+    dna["skills"]["algorithms.tracing"] = {"mastered": True, "mastery_level": 100}
+    view = build_student_dashboard(dna)
+
+    assert _node(view, "algorithms.tracing")["course_status"] == "MASTERED"
+    assert _node(view, "algorithms.recursion")["course_status"] == "READY"
+
+
+def test_dashboard_reports_missing_module_before_prerequisite_block():
+    dna = create_default_learning_dna(1)
+    dna["trajectory"]["individual_plan"] = [
+        {"task_number": 17, "skill_id": "programming.sequences"}
+    ]
+    node = _node(build_student_dashboard(dna), "programming.sequences")
+    assert node["module_support"] == "PENDING_MODULE"
+    assert node["course_status"] == "PENDING_MODULE"
+
+
+def test_dashboard_mastery_wins_regardless_of_module_support():
+    dna = create_default_learning_dna(1)
+    dna["skills"]["programming.sequences"] = {"mastered": True}
+    node = _node(build_student_dashboard(dna), "programming.sequences")
+    assert node["module_support"] == "PENDING_MODULE"
+    assert node["course_status"] == "MASTERED"
+
+
+def test_dashboard_course_order_is_course_engine_order(monkeypatch):
+    monkeypatch.setitem(MODULE_STEPS, "algorithms.recursion", MODULE_STEPS["algorithms.tracing"])
+    dna = _dna_with_recursion_plan()
+    expected = build_course(_recursion_plan(), dna["skills"])
+    view = build_student_dashboard(dna)
+    assert [item["skill_id"] for item in view["course"]] == [item.skill_id for item in expected]
