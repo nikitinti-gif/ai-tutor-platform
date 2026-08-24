@@ -27,6 +27,8 @@ from src.learning_dna.engine import update_learning_dna_after_check
 from src.pedagogy.engine import make_pedagogical_decision
 from src.repositories.homework_repository import HomeworkRepository
 from src.repositories.learning_dna_repository import LearningDNARepository
+from src.repositories.user_repository import UserRepository
+from src.core.roles import ROLE_STUDENT
 from src.repositories.pedagogical_decision_repository import (
     PedagogicalDecisionRepository,
 )
@@ -1314,6 +1316,57 @@ async def receive_ege_answer(message: Message, state: FSMContext):
     await _send_ege_task(message, attempt.current_task)
 
 
+async def recover_ege_answer_after_restart(message: Message, state: FSMContext) -> None:
+    """Restore lost in-memory FSM and route the update through normal exam logic."""
+    from aiogram.dispatcher.event.bases import SkipHandler
+    from src.services.ege_exam_service import ExamAttempt
+
+    student_id = message.from_user.id
+    user = UserRepository.get_by_telegram_id(student_id)
+    if not user or user.get("role") != ROLE_STUDENT:
+        raise SkipHandler
+
+    saved = get_ege_session(student_id)
+    if not saved or saved.get("status") != "in_progress":
+        raise SkipHandler
+
+    fsm_before = await state.get_state()
+    try:
+        attempt_data = saved.get("attempt")
+        if not isinstance(attempt_data, dict):
+            raise ValueError("missing attempt snapshot")
+        attempt = ExamAttempt.from_dict(attempt_data)
+        if attempt.finished or not 1 <= attempt.current_task <= 27:
+            raise ValueError("current task is outside active exam")
+        completed = set(attempt.results) | set(attempt.skipped)
+        expected = set(range(1, attempt.current_task))
+        if not expected.issubset(completed):
+            raise ValueError("previous task results are incomplete")
+    except (TypeError, ValueError, AttributeError) as error:
+        logger.warning(
+            "EGE_SESSION_RECOVERY_CORRUPTED student_id=%s error=%s",
+            student_id,
+            error,
+        )
+        await message.answer(
+            "⚠️ Не удалось восстановить активный КЕГЭ: сохранённая сессия "
+            "неполна или повреждена. Ответ не записан. Обратись к преподавателю."
+        )
+        return
+
+    await state.set_state(StudentEgeExamStates.waiting_answer)
+    await state.update_data(ege_attempt=attempt.to_dict())
+    fsm_after = await state.get_state()
+    logger.info(
+        "EGE_SESSION_RECOVERY student_id=%s task=%s fsm_before=%s fsm_after=%s",
+        student_id,
+        attempt.current_task,
+        fsm_before,
+        fsm_after,
+    )
+    await receive_ege_answer(message, state)
+
+
 async def skip_ege_task(message: Message, state: FSMContext):
     from src.services.ege_exam_service import ExamAttempt, render_summary, skip_task
 
@@ -1409,3 +1462,4 @@ def register_student_handlers(dp: Dispatcher):
     dp.message.register(resume_ege_learning_path_after_restart, F.text)
     dp.message.register(resume_task14_bank_after_restart, F.text)
     dp.message.register(resume_ege_tutor_pilot_after_restart, F.text)
+    dp.message.register(recover_ege_answer_after_restart, F.text)
