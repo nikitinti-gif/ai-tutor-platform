@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from src.ai_engine.ege_open_variant_2026 import get_open_variant_task
-from src.database.json_storage import get_ege_session
+from src.repositories.ege_session_repository import EgeSessionRepository
 from src.services.ai_teacher_service import generate_ege_hint
 from src.services.ege_exam_service import ExamAttempt
 from src.telegram_bot.states.student_states import StudentEgeExamStates
@@ -35,7 +35,7 @@ async def send_ege_hint(message: Message, state: FSMContext) -> None:
     attempt_data = data.get("ege_attempt")
 
     if not attempt_data:
-        saved = get_ege_session(message.from_user.id)
+        saved = EgeSessionRepository.get(message.from_user.id)
         attempt_data = saved.get("attempt") if saved else None
 
     if not attempt_data:

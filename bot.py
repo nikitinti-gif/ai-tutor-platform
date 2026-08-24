@@ -45,6 +45,7 @@ def create_dispatcher() -> Dispatcher:
     register_student_handlers(dp)
     register_parent_handlers(dp)
     register_teacher_handlers(dp)
+    dp.startup.register(log_ege_persistence_backend)
     dp.startup.register(log_outbound_location)
     dp.startup.register(schedule_submission_worker)
     dp.startup.register(schedule_live_diagnostic_self_check)
@@ -58,8 +59,33 @@ async def run_polling() -> None:
     await dp.start_polling(bot)
 
 
+def ege_persistence_report() -> dict:
+    """Describe whether EGE state can survive replacement of a Render instance."""
+    if os.getenv("DATABASE_URL", "").strip():
+        return {"backend": "postgres", "durable": True}
+    return {
+        "backend": "json",
+        "durable": False,
+        "warning": "Render restart/deploy may lose student exam state",
+    }
+
+
+async def log_ege_persistence_backend() -> None:
+    report = ege_persistence_report()
+    message = "EGE_PERSISTENCE backend=%s durable=%s"
+    args = [report["backend"], str(report["durable"]).lower()]
+    if report.get("warning"):
+        message += ' warning="%s"'
+        args.append(report["warning"])
+    logger.warning(message, *args) if not report["durable"] else logger.info(message, *args)
+
+
 async def health_check(_: web.Request) -> web.Response:
-    payload = {"status": "ok", "mode": BOT_MODE}
+    payload = {
+        "status": "ok",
+        "mode": BOT_MODE,
+        "ege_persistence": ege_persistence_report(),
+    }
     if LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED:
         from src.services.ege_exam_service import SELF_CHECK_RESULT_PATH
 
