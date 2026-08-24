@@ -6,7 +6,7 @@ from aiogram.types import Message, KeyboardButton, ReplyKeyboardMarkup
 
 from config import ADMIN_TELEGRAM_ID
 from src.core.roles import ROLE_STUDENT, ROLE_PARENT, ROLE_TEACHER, ROLE_NAMES
-from src.database.json_storage import delete_ege_session
+from src.repositories.ege_session_repository import EgeSessionRepository
 from src.repositories.homework_repository import HomeworkRepository
 from src.repositories.learning_dna_repository import LearningDNARepository
 from src.repositories.user_repository import UserRepository
@@ -151,7 +151,7 @@ async def test_student(message: Message, state):
             await message.answer("Команда недоступна.")
             return
         LearningDNARepository.delete(telegram_id)
-        delete_ege_session(telegram_id)
+        EgeSessionRepository.delete(telegram_id)
         HomeworkRepository.delete_student_progress(telegram_id)
         await state.clear()
     except Exception:
