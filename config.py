@@ -21,7 +21,7 @@ AI_DIAGNOSTIC_PROBES_ENABLED = os.getenv(
 ).strip().lower() in {"1", "true", "yes", "on"}
 LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED = os.getenv(
     "LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED",
-    "true",
+    "false",
 ).strip().lower() in {"1", "true", "yes", "on"}
 SYNTHETIC_WORKER_INTERVAL_SECONDS = max(
     5,

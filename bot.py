@@ -24,6 +24,7 @@ from config import (
     LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED,
 )
 from src.services.submission_worker import run_synthetic_submission_worker
+from src.repositories.ege_session_repository import persistence_info
 from src.telegram_bot.handlers.registration import register_registration_handlers
 from src.telegram_bot.handlers.student import register_student_handlers
 from src.telegram_bot.handlers.ege_hint import register_ege_hint_handlers
@@ -59,7 +60,7 @@ async def run_polling() -> None:
 
 
 async def health_check(_: web.Request) -> web.Response:
-    payload = {"status": "ok", "mode": BOT_MODE}
+    payload = {"status": "ok", "mode": BOT_MODE, "ege_persistence": persistence_info()}
     if LIVE_DIAGNOSTIC_SELF_CHECK_ENABLED:
         from src.services.ege_exam_service import SELF_CHECK_RESULT_PATH
 
@@ -176,6 +177,12 @@ def run_webhook() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    ege_persistence = persistence_info()
+    logger.info(
+        "EGE_PERSISTENCE backend=%s durable=%s",
+        ege_persistence["backend"],
+        str(ege_persistence["durable"]).lower(),
+    )
 
     if BOT_MODE == "webhook":
         run_webhook()

@@ -18,11 +18,11 @@ from src.ai_engine.homework_checker import (
     check_homework_text,
     render_check_result_for_student,
 )
-from src.database.json_storage import (
-    delete_ege_session,
-    get_ege_session,
-    save_ege_session,
-)
+from src.repositories.ege_session_repository import EgeSessionRepository
+
+get_ege_session = EgeSessionRepository.get
+save_ege_session = EgeSessionRepository.save
+delete_ege_session = EgeSessionRepository.delete
 from src.learning_dna.engine import update_learning_dna_after_check
 from src.pedagogy.engine import make_pedagogical_decision
 from src.repositories.homework_repository import HomeworkRepository
@@ -1359,6 +1359,69 @@ async def cancel_ege_exam(message: Message, state: FSMContext):
     await message.answer("КЕГЭ-вариант отменён и удалён. Запустить заново: /ege2026")
 
 
+def _validated_recovery_attempt(saved: dict):
+    """Validate the normal exam snapshot before accepting a user's answer."""
+    from src.services.ege_exam_service import ExamAttempt, TOTAL_TASKS
+
+    if not isinstance(saved.get("attempt"), dict):
+        raise ValueError("поле attempt отсутствует или имеет неверный формат")
+    attempt = ExamAttempt.from_dict(saved["attempt"])
+    if attempt.finished:
+        raise ValueError("экзамен уже завершён")
+    if not 1 <= attempt.current_task <= TOTAL_TASKS:
+        raise ValueError("current_task вне диапазона 1..27")
+    for task in range(1, attempt.current_task):
+        if task in attempt.skipped:
+            if task not in attempt.results:
+                raise ValueError(f"у пропущенного задания {task} нет result")
+        elif task not in attempt.answers or task not in attempt.results:
+            raise ValueError(f"у выполненного задания {task} нет answer/result")
+    return attempt
+
+
+async def recover_ege_exam_after_restart(message: Message, state: FSMContext):
+    """Production gate for routing a text as the next persisted exam answer."""
+    from aiogram.dispatcher.event.bases import SkipHandler
+    from src.core.roles import ROLE_STUDENT
+    from src.repositories.user_repository import UserRepository
+
+    fsm_before = await state.get_state()
+    if fsm_before is not None:
+        raise SkipHandler
+    user = UserRepository.get_by_telegram_id(message.from_user.id)
+    if not user or user.get("role") != ROLE_STUDENT:
+        raise SkipHandler
+    saved = get_ege_session(message.from_user.id)
+    if not saved or saved.get("status") != "in_progress":
+        raise SkipHandler
+
+    try:
+        attempt = _validated_recovery_attempt(saved)
+    except (TypeError, ValueError, KeyError) as error:
+        logger.error(
+            "EGE_SESSION_RECOVERY_CORRUPTED student_id=%s error=%s",
+            message.from_user.id,
+            error,
+        )
+        await message.answer(
+            "⚠️ Сохранённая сессия экзамена повреждена. "
+            "Ответ не записан — начни новый вариант командой /ege2026 "
+            "или обратись в поддержку."
+        )
+        return
+
+    await state.set_state(StudentEgeExamStates.waiting_answer)
+    await state.update_data(ege_attempt=attempt.to_dict())
+    fsm_after = await state.get_state()
+    logger.info(
+        "EGE_SESSION_RECOVERY student_id=%s task=%s fsm_before=None fsm_after=%s",
+        message.from_user.id,
+        attempt.current_task,
+        fsm_after,
+    )
+    await receive_ege_answer(message, state)
+
+
 def register_student_handlers(dp: Dispatcher):
     dp.message.register(cancel_ege_exam, F.text == "/cancel_ege")
     dp.message.register(start_ege_tutor_pilot, F.text == "/test_ege_tutor")
@@ -1406,6 +1469,7 @@ def register_student_handlers(dp: Dispatcher):
     )
     dp.message.register(student_progress, F.text == "📊 Мой прогресс")
     dp.message.register(student_question, F.text == "❓ Задать вопрос")
+    dp.message.register(recover_ege_exam_after_restart, F.text)
     dp.message.register(resume_ege_learning_path_after_restart, F.text)
     dp.message.register(resume_task14_bank_after_restart, F.text)
     dp.message.register(resume_ege_tutor_pilot_after_restart, F.text)
