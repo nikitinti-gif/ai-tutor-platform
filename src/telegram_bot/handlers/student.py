@@ -18,11 +18,19 @@ from src.ai_engine.homework_checker import (
     check_homework_text,
     render_check_result_for_student,
 )
-from src.database.json_storage import (
-    delete_ege_session,
-    get_ege_session,
-    save_ege_session,
-)
+from src.repositories.ege_session_repository import EgeSessionRepository
+
+
+def get_ege_session(student_id: int):
+    return EgeSessionRepository.get(student_id)
+
+
+def save_ege_session(student_id: int, attempt_data: dict, status: str = "in_progress"):
+    return EgeSessionRepository.save(student_id, attempt_data, status)
+
+
+def delete_ege_session(student_id: int):
+    return EgeSessionRepository.delete(student_id)
 from src.learning_dna.engine import update_learning_dna_after_check
 from src.pedagogy.engine import make_pedagogical_decision
 from src.repositories.homework_repository import HomeworkRepository
@@ -1359,6 +1367,31 @@ async def cancel_ege_exam(message: Message, state: FSMContext):
     await message.answer("КЕГЭ-вариант отменён и удалён. Запустить заново: /ege2026")
 
 
+
+async def recover_ege_answer_after_restart(message: Message, state: FSMContext) -> None:
+    """Consume an exam answer only when a restart erased the in-memory FSM."""
+    from aiogram.dispatcher.event.bases import SkipHandler
+    from src.core.roles import ROLE_STUDENT
+    from src.repositories.user_repository import UserRepository
+
+    if await state.get_state() is not None:
+        raise SkipHandler
+
+    saved = get_ege_session(message.from_user.id)
+    user = UserRepository.get_by_telegram_id(message.from_user.id)
+    if (
+        not saved
+        or saved.get("status") != "in_progress"
+        or not user
+        or user.get("role") != ROLE_STUDENT
+    ):
+        raise SkipHandler
+
+    await state.set_state(StudentEgeExamStates.waiting_answer)
+    await state.update_data(ege_attempt=saved["attempt"])
+    await receive_ege_answer(message, state)
+
+
 def register_student_handlers(dp: Dispatcher):
     dp.message.register(cancel_ege_exam, F.text == "/cancel_ege")
     dp.message.register(start_ege_tutor_pilot, F.text == "/test_ege_tutor")
@@ -1409,3 +1442,4 @@ def register_student_handlers(dp: Dispatcher):
     dp.message.register(resume_ege_learning_path_after_restart, F.text)
     dp.message.register(resume_task14_bank_after_restart, F.text)
     dp.message.register(resume_ege_tutor_pilot_after_restart, F.text)
+    dp.message.register(recover_ege_answer_after_restart, F.text)
