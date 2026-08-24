@@ -308,25 +308,52 @@ def delete_student_homework_progress(student_id: int):
 
 
 def get_ege_session(student_id: int):
+    database_url = _get_database_url()
+    if database_url:
+        from src.database.postgres_storage import load_ege_session
+
+        session = load_ege_session(database_url, student_id)
+        if session is not None:
+            return session
+        # One-time compatibility migration for sessions created before the
+        # PostgreSQL EGE backend existed. This only helps when the old file is
+        # still present; new writes are always durable.
+        db = load_db()
+        legacy = db["ege_sessions"].get(str(student_id))
+        if isinstance(legacy, dict):
+            from src.database.postgres_storage import save_ege_session as save_postgres_ege_session
+
+            return save_postgres_ege_session(database_url, student_id, legacy)
+        return None
     db = load_db()
     session = db["ege_sessions"].get(str(student_id))
     return session if isinstance(session, dict) else None
 
 
 def save_ege_session(student_id: int, attempt_data: dict, status: str = "in_progress"):
-    db = load_db()
     record = {
         "variant_id": "ege_open_2026",
         "status": status,
         "attempt": attempt_data,
         "updated_at": datetime.now().isoformat(timespec="seconds"),
     }
+    database_url = _get_database_url()
+    if database_url:
+        from src.database.postgres_storage import save_ege_session as save_postgres_ege_session
+
+        return save_postgres_ege_session(database_url, student_id, record)
+    db = load_db()
     db["ege_sessions"][str(student_id)] = record
     save_db(db)
     return record
 
 
 def delete_ege_session(student_id: int):
+    database_url = _get_database_url()
+    if database_url:
+        from src.database.postgres_storage import delete_ege_session as delete_postgres_ege_session
+
+        return delete_postgres_ege_session(database_url, student_id)
     db = load_db()
     removed = db["ege_sessions"].pop(str(student_id), None)
     save_db(db)
